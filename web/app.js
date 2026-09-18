@@ -90,13 +90,19 @@ window.handleNativeLogsReceived = function(logsJsonStr) {
   clearScanTimeout();
   try {
     const logs = typeof logsJsonStr === 'string' ? JSON.parse(logsJsonStr) : logsJsonStr;
-    if (!logs.length) { showEmptyState(); return; }
+    if (!logs.length) {
+      showEmptyState();
+      showToast('Không tìm thấy file log nào — thử nạp thủ công', 4000);
+      return;
+    }
     setDemoBanner(false);
     updateScanStatus(`Đã phân tích ${logs.length} log thật từ máy.`, false);
+    showToast(`✓ Đọc được ${logs.length} file log từ máy`, 3000);
     parseAndIngestLogs(logs);
   } catch (e) {
     console.error("Error parsing native logs:", e);
     updateScanStatus("Lỗi đọc log từ hệ thống.", false);
+    showToast('Đọc log thất bại — thử nạp file thủ công', 4000);
   }
 };
 
@@ -180,18 +186,22 @@ function normalizeI2CError(m) {
 
 function extractI2CEvents(text) {
   const events = [];
-  const re = /i2c[^\n]{0,140}/gi;
+  const re = /i2c[^\n]{0,200}/gi;
   let m;
   while ((m = re.exec(text)) !== null && events.length < 5) {
     const line = m[0];
     const busM  = line.match(/i2c[\s_\-]?([0-3])\b/i);
     const addrM = line.match(/0x[0-9a-f]{2,4}\b/i);
     const errM  = line.match(/\b(timeout|timed out|timedout|nack|arbitration|invalid response)\b/i)
-                || line.match(/(S[CD]L is stuck \w+|stuck low|stuck high|bus busy|_checkBusStatus)/i);
-    if (!errM && !addrM) continue;
+                || line.match(/(S[CD]L is stuck \w+|stuck low|stuck high|bus busy|_checkBusStatus|_checkInterrupts)/i);
+    // Trích tên thiết bị: "for device ad5860", "device roswell", "device_name=xxx"
+    const devM = line.match(/(?:for device|device[_\s]+name[=:\s]+)\s*([a-zA-Z][a-zA-Z0-9_\-]+)/i)
+               || line.match(/\b(ad5860|roswell|audio-speaker-(?:top|bottom)|mic\d+|prs\d+|als\d+|gyro\d+|accel\d+|orb|haptics)\b/i);
+    if (!errM && !addrM && !devM) continue;
     events.push({
       bus: busM ? 'i2c' + busM[1] : 'unknown',
       address: addrM ? addrM[0].toLowerCase() : null,
+      deviceName: devM ? devM[1].toLowerCase() : null,
       error: normalizeI2CError(errM),
       controller: 'AppleARMPlatform / SPU'
     });
@@ -213,7 +223,8 @@ function parseLogContent(rawText, filename = "log.ips") {
     confidence: "Thấp", title: "Log chẩn đoán iOS",
     suspectedComponent: "Chưa xác định",
     repairAdvice: "Xem thông tin kỹ thuật trong raw log.",
-    modelSpecific: false
+    modelSpecific: false,
+    resetCounter: null
   };
 
   const lines = rawText.split('\n');
@@ -294,6 +305,9 @@ function parseLogContent(rawText, filename = "log.ips") {
   if (sm) record.missingSensors = sm[1].split(/[ \t]*,[ \t]*/).filter(Boolean).slice(0, 8);
 
   record.i2cEvents = extractI2CEvents(text);
+  // Đọc reset counter / panic count từ header log
+  const rcm = rawText.match(/(?:panic count|reset counter|Num recent panics)[:\s]+?(\d+)/i);
+  if (rcm) record.resetCounter = parseInt(rcm[1], 10);
 
   applyRules(record, text);
   return record;
@@ -358,28 +372,52 @@ function applyRules(record, text) {
     }
   }
 
-  // Làm giàu: I2C (chỉ NGHI NGỜ, theo model nếu có bằng chứng)
+  // Làm giàu: I2C — ưu tiên tra theo tên thiết bị (ad5860, roswell…), sau đó mới theo địa chỉ hex
   if (record.i2cEvents.length && record.panicFamily === 'I2C') {
     const ev = record.i2cEvents[0];
     const db = ruleDatabases.i2c_rules || {};
-    const bus = (db.buses || {})[ev.bus];
-    const addr = bus && ev.address ? (bus.addresses || {})[ev.address] : null;
-    record.title = `Lỗi I2C - ${ev.bus}${ev.address ? ' @ ' + ev.address : ''} (${ev.error})`;
-    if (addr) {
-      const byModel = addr.models && record.product ? addr.models[record.product] : null;
+    const devLabel = ev.deviceName
+      ? ` (thiết bị: ${ev.deviceName})`
+      : (ev.address ? ` @ ${ev.address}` : '');
+    record.title = `Lỗi I2C - ${ev.bus}${devLabel} (${ev.error})`;
+
+    // Tra theo tên thiết bị trước (độ chính xác cao hơn địa chỉ hex)
+    const devEntry = ev.deviceName ? ((db.device_names || {})[ev.deviceName]) : null;
+    if (devEntry) {
+      const byModel = devEntry.models && record.product ? devEntry.models[record.product] : null;
       if (byModel) {
-        record.suspectedComponent = `Nghi ngờ: ${byModel.component}`;
-        record.confidence = byModel.confidence || 'Cao';
+        record.suspectedComponent = `${devEntry.component}`;
+        record.confidence = devEntry.confidence || 'Cao';
         record.modelSpecific = true;
-        record.repairAdvice = byModel.advice || addr.advice;
+        record.repairAdvice = `${byModel} — ${devEntry.advice}`;
       } else {
-        record.suspectedComponent = `Nghi ngờ: ${addr.component} (chưa xác minh cho model này)`;
-        record.confidence = addr.confidence || 'Trung bình';
-        record.repairAdvice = `${addr.advice} Lưu ý: cùng địa chỉ có thể là linh kiện khác trên đời máy khác.`;
+        record.suspectedComponent = devEntry.component;
+        record.confidence = devEntry.confidence || 'Cao';
+        record.repairAdvice = devEntry.advice;
+      }
+      if (devEntry.priority) {
+        record.repairAdvice += `\n\nThứ tự kiểm tra: ${devEntry.priority}`;
       }
     } else {
-      record.suspectedComponent = `IC ngoại vi trên bus ${ev.bus} (chưa xác định)`;
-      record.confidence = 'Thấp';
+      // Fallback tra theo địa chỉ hex
+      const bus = (db.buses || {})[ev.bus];
+      const addr = bus && ev.address ? (bus.addresses || {})[ev.address] : null;
+      if (addr) {
+        const byModel = addr.models && record.product ? addr.models[record.product] : null;
+        if (byModel) {
+          record.suspectedComponent = `Nghi ngờ: ${byModel.component}`;
+          record.confidence = byModel.confidence || 'Cao';
+          record.modelSpecific = true;
+          record.repairAdvice = byModel.advice || addr.advice;
+        } else {
+          record.suspectedComponent = `Nghi ngờ: ${addr.component} (chưa xác minh cho model này)`;
+          record.confidence = addr.confidence || 'Trung bình';
+          record.repairAdvice = `${addr.advice} Lưu ý: cùng địa chỉ có thể là linh kiện khác trên đời máy khác.`;
+        }
+      } else {
+        record.suspectedComponent = `IC ngoại vi trên bus ${ev.bus} (chưa xác định)`;
+        record.confidence = 'Thấp';
+      }
     }
   }
 }
@@ -620,17 +658,27 @@ function openDetailModal(index) {
 
   let i2cHtml = '';
   if (rec.i2cEvents && rec.i2cEvents.length > 0) {
+    const ev0 = rec.i2cEvents[0];
+    const devRow = ev0.deviceName
+      ? `<b>Thiết bị:</b> <span style="color:var(--accent);font-weight:700;">${escapeHtml(ev0.deviceName)}</span><br>` : '';
+    const addrRow = ev0.address ? `<b>Địa chỉ Hex:</b> ${ev0.address}<br>` : '';
     i2cHtml = `
       <div class="detail-section">
         <div class="detail-label">Thông tin giao tiếp I2C phát hiện</div>
         <div class="detail-text">
-          <b>Bus:</b> ${rec.i2cEvents[0].bus} | <b>Địa chỉ Hex:</b> ${rec.i2cEvents[0].address}<br>
-          <b>Loại lỗi:</b> ${rec.i2cEvents[0].error}<br>
-          <b>Bộ điều khiển:</b> ${rec.i2cEvents[0].controller}
+          <b>Bus:</b> ${ev0.bus}<br>
+          ${devRow}${addrRow}
+          <b>Loại lỗi:</b> ${ev0.error}<br>
+          <b>Bộ điều khiển:</b> ${ev0.controller}
         </div>
       </div>
     `;
   }
+  // Hiện reset counter nếu có
+  const rcMatch = (rec.panicString || rec.rawText || '').match(/(?:panic count|reset counter)[:\s]+?(\d+)/i);
+  const resetCountHtml = rcMatch
+    ? `<div class="detail-section"><div class="detail-label">Số lần panic gần đây</div><div class="detail-text">Máy đã ghi nhận <b>${rcMatch[1]}</b> lần panic (theo bộ đếm của hệ thống)</div></div>`
+    : '';
 
   let sensorHtml = '';
   if (rec.missingSensors && rec.missingSensors.length > 0) {
@@ -661,6 +709,7 @@ function openDetailModal(index) {
       </div>
 
       ${sensorHtml}
+      ${resetCountHtml}
       ${i2cHtml}
 
       <div class="detail-section">
@@ -765,8 +814,10 @@ window.onNativeScanMode = function(isAutoScan, count) {
   if (count > 0) {
     setDemoBanner(false);
     updateScanStatus(`Đã phân tích ${count} log thật từ máy.`, false);
+    showToast(`✓ Đọc được ${count} file log từ máy`, 3000);
   } else {
     showEmptyState();
+    showToast('Không đọc được log hệ thống — iOS sandbox chặn. Nạp thủ công.', 4500);
   }
 };
 
@@ -896,6 +947,28 @@ function renderRulesInfo(info) {
     + `<button class="link-btn" onclick="refreshRulesNow()">Cập nhật</button>`;
 }
 
+// Toast thông báo nhẹ ở đáy màn hình
+function showToast(msg, durationMs) {
+  let t = document.getElementById('appToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'appToast';
+    t.style.cssText = [
+      'position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 72px)',
+      'left:50%;transform:translateX(-50%)',
+      'background:rgba(30,30,32,0.92);color:#f0f0f0;border:1px solid rgba(255,150,40,0.3)',
+      'padding:10px 20px;border-radius:20px;font-size:14px;font-weight:500',
+      'pointer-events:none;z-index:9999;max-width:90vw;text-align:center',
+      'transition:opacity .3s;backdrop-filter:blur(8px)'
+    ].join(';');
+    document.body.appendChild(t);
+  }
+  t.innerText = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(() => { t.style.opacity = '0'; }, durationMs || 3000);
+}
+
 function refreshRulesNow() {
   const el = document.getElementById('rulesInfo');
   if (el) el.innerHTML = '<span>Đang tải bộ luật mới…</span>';
@@ -914,7 +987,12 @@ window.onNativeRulesUpdated = function (info) {
     }
   }
   renderRulesInfo(info);
-  if (info && info.changed) reanalyzeStoredLogs();
+  if (info && info.changed) {
+    reanalyzeStoredLogs();
+    showToast(`✓ Bộ luật đã cập nhật — ${rulesCount()} lỗi`, 3500);
+  } else {
+    showToast('Đang dùng bộ luật mới nhất (' + rulesCount() + ' lỗi)', 2500);
+  }
 };
 
 // Phân tích lại các log đang giữ bằng bộ luật mới
@@ -969,7 +1047,8 @@ function sendToAdmin() {
 let appUpdateInfo = null;
 
 window.onNativeAppUpdate = function (info) {
-  if (!info || !info.version) return;
+  if (!info) { showToast('Đang dùng bản mới nhất', 2500); return; }
+  if (!info.version) { showToast('Đang dùng bản mới nhất', 2500); return; }
   appUpdateInfo = info;
   const el = document.getElementById('updateBanner');
   if (!el) return;
