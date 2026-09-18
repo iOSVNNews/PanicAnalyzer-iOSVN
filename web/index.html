@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Panic Analyzer</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-content">
+      <div class="brand">
+        <img src="logo.png" alt="iOSVN" class="logo-img">
+        <div>
+          <h1 class="app-title">PANICFULL</h1>
+          <p class="app-subtitle">Chẩn đoán Panic-Full & Phần cứng iOS</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="refresh-btn" onclick="triggerAutoScan()" title="Quét lại log">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.2" fill="none">
+            <path d="M23 4v6h-6M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+        <span class="version-badge">v2.5 Pro</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <section class="card health-card" id="healthOverview">
+      <div class="health-header">
+        <div class="health-title-wrap">
+          <span class="pulse-dot" id="statusPulse"></span>
+          <h2 class="card-title">TÌNH TRẠNG THIẾT BỊ</h2>
+        </div>
+        <span class="device-model-badge" id="detectedModelBadge">iPhone (Tự phát hiện)</span>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-box critical" onclick="filterBySeverity('critical')">
+          <div class="stat-number" id="statCriticalCount">0</div>
+          <div class="stat-label">Lỗi cần quan tâm</div>
+          <div class="stat-sub">SMC, I2C, NVMe, BB</div>
+        </div>
+        <div class="stat-box warning" onclick="filterBySeverity('warning')">
+          <div class="stat-number" id="statWarningCount">0</div>
+          <div class="stat-label">Cần theo dõi</div>
+          <div class="stat-sub">Watchdog, Thermal</div>
+        </div>
+        <div class="stat-box normal" onclick="filterBySeverity('normal')">
+          <div class="stat-number" id="statNormalCount">0</div>
+          <div class="stat-label">Có thể bỏ qua</div>
+          <div class="stat-sub">Jetsam, Crash lẻ</div>
+        </div>
+      </div>
+
+      <div class="scan-status-bar" id="scanStatusBar">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" class="spin-icon" id="scanSpinIcon">
+          <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
+          <path d="M12 2a10 10 0 0 1 10 10"/>
+        </svg>
+        <span id="scanStatusText">Đang sẵn sàng quét tự động tại /var/mobile/Library/Logs/...</span>
+      </div>
+
+      <div class="rules-info" id="rulesInfo"></div>
+    </section>
+
+    <section class="action-grid">
+      <button class="action-btn primary" id="btnAutoScan" onclick="triggerAutoScan()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+        </svg>
+        <span>Tự động quét Log hệ thống</span>
+      </button>
+      
+      <button class="action-btn secondary" id="btnImportFile" onclick="triggerFilePicker()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="12" y1="18" x2="12" y2="12"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+        <span>Chọn file .ips / .crash</span>
+      </button>
+
+      <button class="action-btn secondary" id="btnSampleLogs" onclick="openSampleLogsModal()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        <span>Nạp log mẫu kiểm thử</span>
+      </button>
+    </section>
+
+    <input type="file" id="nativeFileInput" multiple accept=".ips,.crash,.panic,.txt,.synced" style="display:none" onchange="handleNativeFileSelect(event)">
+
+    <section class="filter-section">
+      <div class="search-input-wrap">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" class="search-icon">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="searchInput" placeholder="Tìm mã lỗi, cảm biến, I2C, NVMe..." oninput="handleSearch(event)">
+        <button class="clear-search-btn" id="btnClearSearch" onclick="clearSearch()" style="display:none">&times;</button>
+      </div>
+
+      <div class="chips-scroll">
+        <button class="filter-chip active" data-filter="all" onclick="setChipFilter('all')">Tất cả</button>
+        <button class="filter-chip critical" data-filter="critical" onclick="setChipFilter('critical')">Cần quan tâm</button>
+        <button class="filter-chip warning" data-filter="warning" onclick="setChipFilter('warning')">Cần theo dõi</button>
+        <button class="filter-chip normal" data-filter="normal" onclick="setChipFilter('normal')">Có thể bỏ qua</button>
+        <button class="filter-chip i2c" data-filter="i2c" onclick="setChipFilter('i2c')">Lỗi I2C</button>
+        <button class="filter-chip smc" data-filter="smc" onclick="setChipFilter('smc')">SMC Sensor</button>
+      </div>
+    </section>
+
+    <section class="results-section">
+      <div class="results-header">
+        <h3 class="section-heading" id="resultsHeading">DANH SÁCH LỖI ĐÃ PHÂN TÍCH</h3>
+        <span class="results-count-badge" id="resultsCountBadge">0 cụm lỗi</span>
+      </div>
+
+      <div class="incident-list" id="incidentList">
+        <div class="empty-state" id="emptyState">
+          <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" stroke-width="1.5" fill="none" class="empty-icon">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <h4>Chưa có dữ liệu log</h4>
+          <p>Nhấn <b>"Tự động quét Log hệ thống"</b> để quét log từ <code>/var/mobile/Library/Logs/</code> hoặc chọn file <b>.ips</b> để kiểm tra.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal-overlay" id="detailModal" onclick="closeModalOnOverlay(event)">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="badge" id="modalSeverityBadge">NGHIÊM TRỌNG</span>
+          <h3 id="modalTitle">Chi tiết chẩn đoán</h3>
+        </div>
+        <button class="modal-close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+
+      <div class="modal-body" id="modalBody"></div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="exportSanitizedReport()">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+          Xuất báo cáo Sanitize
+        </button>
+        <button class="btn btn-outline" id="adminBtn" style="display:none" onclick="sendToAdmin()">
+          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+          Gửi log cho admin
+        </button>
+        <button class="btn btn-primary" onclick="closeDetailModal()">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="sampleModal" onclick="closeSampleModalOnOverlay(event)">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="badge badge-info">THỬ NGHIỆM</span>
+          <h3>Thư viện Log mẫu</h3>
+        </div>
+        <button class="modal-close-btn" onclick="closeSampleModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="sample-intro">Chọn một mẫu log thực tế dưới đây để kiểm tra ngay khả năng nhận diện lỗi:</p>
+        <button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="loadAllSamples()">Nạp tất cả mẫu để xem thử</button>
+        <div class="sample-list" id="sampleListContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+
+  
+</body>
+</html>
