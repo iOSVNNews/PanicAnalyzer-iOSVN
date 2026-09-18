@@ -1,0 +1,96 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: build-ipa
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chọn Xcode mới nhất
+        run: |
+          LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "dùng: $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+
+      - name: Cài XcodeGen
+        run: brew install xcodegen
+
+      - name: Tạo project Xcode
+        run: |
+          set +e
+          xcodegen generate --spec project.yml > xcgen.log 2>&1
+          rc=$?
+          echo "::group::xcodegen"; cat xcgen.log; echo "::endgroup::"
+          if [ ! -d PanicAnalyzer.xcodeproj ]; then
+            echo "KHONG TAO DUOC .xcodeproj"
+            head -30 xcgen.log | while IFS= read -r l; do echo "::error::XCGEN $l"; done
+            exit 1
+          fi
+
+      - name: Build (không ký)
+        run: |
+          set +e
+          xcodebuild \
+            -project PanicAnalyzer.xcodeproj \
+            -scheme PanicAnalyzer \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO \
+            clean build > build.log 2>&1
+          rc=$?
+          echo "xcodebuild rc=$rc"
+          if [ $rc -ne 0 ]; then
+            echo "::group::Build log (tail)"; tail -120 build.log; echo "::endgroup::"
+            grep -E "error:|fatal error:|xcodebuild:|Could not|not found" build.log \
+              | sort -u | head -25 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+
+      - name: Đóng gói thành .ipa
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name "*.app" | head -1)
+          echo "app: $APP"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qry PanicAnalyzer-unsigned.ipa Payload
+          ls -lh PanicAnalyzer-unsigned.ipa
+          VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
+          echo "APP_VERSION=$VER" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PanicAnalyzer-unsigned-ipa
+          path: PanicAnalyzer-unsigned.ipa
+
+      - name: Phát hành bản mới nhất
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
+          gh release delete latest --yes 2>/dev/null || true
+          git push --delete origin latest 2>/dev/null || true
+          gh release create latest PanicAnalyzer-unsigned.ipa \
+            --title "PanicAnalyzer $APP_VERSION (chưa ký)" \
+            --notes "Bản dựng tự động từ nhánh main.
+
+          - Phiên bản: $APP_VERSION
+          - Bộ luật chẩn đoán: $RULES lỗi
+          - Commit: \`${GITHUB_SHA::7}\`
+
+          File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.
+
+          Tải trực tiếp: [PanicAnalyzer-unsigned.ipa](https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/PanicAnalyzer-unsigned.ipa)"
