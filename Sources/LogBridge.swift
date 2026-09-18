@@ -62,6 +62,18 @@ final class LogBridge: NSObject {
         }
     }
 
+    /// Phiên bản iOS đang chạy, ví dụ "26.2".
+    var iosVersion: String { UIDevice.current.systemVersion }
+
+    /// Phiên bản ứng dụng đang cài, ví dụ "2.5.0".
+    var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+    }
+
+    /// Bản mới nhất trên kho phát hành (điền sau khi kiểm tra).
+    private(set) var latestVersion = ""
+    private(set) var latestURL = ""
+
     // MARK: - Hộp thư App Group (Share Extension ghi vào đây)
 
     static let appGroupID = "group.com.iosvn.panicanalyzer"
@@ -187,7 +199,48 @@ final class LogBridge: NSObject {
                 self.rulesUpdatedAt = f.string(from: Date())
             }
             if notifyJS { self.pushRulesToJS(changed: updated > 0) }
+            self.checkAppUpdate()
         }
+    }
+
+    /// So sánh hai chuỗi phiên bản dạng "2.5.1" — trả về true nếu a mới hơn b.
+    private func isNewer(_ a: String, than b: String) -> Bool {
+        let x = a.split(separator: ".").map { Int($0) ?? 0 }
+        let y = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let l = i < x.count ? x[i] : 0
+            let r = i < y.count ? y[i] : 0
+            if l != r { return l > r }
+        }
+        return false
+    }
+
+    /// Hỏi kho phát hành xem đã có bản ứng dụng mới chưa.
+    func checkAppUpdate() {
+        guard let url = URL(string: rulesBaseURL + "app_version.json") else { return }
+        var req = URLRequest(url: url)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        req.timeoutInterval = 8
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, _ in
+            guard let self,
+                  let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let remote = obj["version"] as? String,
+                  self.isNewer(remote, than: self.appVersion)
+            else { return }
+            self.latestVersion = remote
+            self.latestURL = (obj["url"] as? String) ?? ""
+            let notes = (obj["notes"] as? String) ?? ""
+            DispatchQueue.main.async {
+                let payload = """
+                {"version":"\(remote)","url":"\(self.latestURL)","notes":"\(notes)","current":"\(self.appVersion)"}
+                """
+                self.webView?.evaluateJavaScript("""
+                (function(){ if (window.onNativeAppUpdate) window.onNativeAppUpdate(\(payload)); })();
+                """)
+            }
+        }.resume()
     }
 
     private func pushRulesToJS(changed: Bool) {
@@ -213,6 +266,8 @@ final class LogBridge: NSObject {
         parts.append("window.__RULES_INFO__ = {\"source\":\"\(rulesSource)\",\"updatedAt\":\"\(rulesUpdatedAt)\",\"changed\":false};")
         parts.append("window.__ADMIN_TELEGRAM__ = \"\(Self.adminTelegram)\";")
         parts.append("window.__CAN_READ_LOGS__ = \(canReadSystemLogs ? "true" : "false");")
+        parts.append("window.__IOS_VERSION__ = \"\(iosVersion)\";")
+        parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
         parts.append("window.__NATIVE_BRIDGE_READY__ = true;")
         return parts.joined(separator: "\n")
     }
