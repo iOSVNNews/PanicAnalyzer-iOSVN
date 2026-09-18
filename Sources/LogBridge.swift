@@ -16,7 +16,7 @@ final class LogBridge: NSObject {
                            "model_database", "sample_logs"]
 
     /// Kho luật công khai — sửa file JSON trên GitHub là app nhận ngay lần mở sau.
-    private let rulesBaseURL = "https://raw.githubusercontent.com/longdz0311/PanicAnalyzer-iOSVN/main/assets/"
+    private let rulesBaseURL = "https://raw.githubusercontent.com/iOSVNNews/PanicAnalyzer-iOSVN/main/assets/"
 
     /// Kênh liên hệ khi gặp log không tra được.
     static let adminTelegram = "https://t.me/longdzqua"
