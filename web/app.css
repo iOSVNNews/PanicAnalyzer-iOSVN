@@ -735,24 +735,23 @@ body {
 .card { box-shadow: none; border: 1px solid var(--card-border); }
 .version-badge { box-shadow: none; }
 
-/* --- Bộ luật tải về + nút gửi admin --- */
-.rules-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--card-border);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--brand);
-  font-size: 12px;
+
+/* --- Thông báo có bản ứng dụng mới --- */
+.update-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-md);
+  background: #1b1411;
+  color: var(--text-primary);
+  font-size: 13px;
   font-weight: 600;
-  padding: 2px 0;
+  line-height: 1.45;
   cursor: pointer;
 }
+.update-banner span { display: block; font-weight: 500; color: var(--text-secondary); margin-top: 3px; }
+
+/* --- Nhãn thiết bị: không ngắt dòng giữa chừng --- */
+.health-header { flex-wrap: wrap; gap: 6px 10px; }
+.device-model-badge { white-space: nowrap; font-size: 11px; }
+.health-title-wrap { flex: 1 1 auto; }

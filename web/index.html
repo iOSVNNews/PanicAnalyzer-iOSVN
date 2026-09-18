@@ -29,6 +29,7 @@
   </header>
 
   <main class="main-container">
+    <div class="update-banner" id="updateBanner" onclick="openAppUpdate()" style="display:none"></div>
     <section class="card health-card" id="healthOverview">
       <div class="health-header">
         <div class="health-title-wrap">
@@ -63,8 +64,6 @@
         </svg>
         <span id="scanStatusText">Đang sẵn sàng quét tự động tại /var/mobile/Library/Logs/...</span>
       </div>
-
-      <div class="rules-info" id="rulesInfo"></div>
     </section>
 
     <section class="action-grid">

@@ -141,9 +141,11 @@ function updateDetectedModel() {
   const badge = document.getElementById('detectedModelBadge');
   if (!badge) return;
   const id = window.__DEVICE_MODEL__ || '';   // mã máy THẬT do Swift bơm vào
+  const ios = window.__IOS_VERSION__ || '';
   if (id) {
-    const name = (ruleDatabases.model_database || {})[id];
-    badge.innerText = name ? `${name} (${id})` : id;
+    const name = (ruleDatabases.model_database || {})[id] || id;
+    badge.innerText = ios ? `${name} · iOS ${ios}` : name;
+    badge.title = id;
   } else {
     badge.innerText = 'Chế độ xem trước';
   }
@@ -953,6 +955,34 @@ function sendToAdmin() {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(report);
   } catch (e) { /* bỏ qua */ }
   const url = window.__ADMIN_TELEGRAM__ || 'https://t.me/longdzqua';
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'openURL', url: url });
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// 9. Báo có bản ứng dụng mới
+// ---------------------------------------------------------------------------
+let appUpdateInfo = null;
+
+window.onNativeAppUpdate = function (info) {
+  if (!info || !info.version) return;
+  appUpdateInfo = info;
+  const el = document.getElementById('updateBanner');
+  if (!el) return;
+  const notes = info.notes ? `<span>${escapeHtml(info.notes)}</span>` : '';
+  el.innerHTML = `Đã có bản ${escapeHtml(info.version)} — chạm để tải`
+    + `<span>Bạn đang dùng bản ${escapeHtml(info.current || window.__APP_VERSION__ || '')}</span>`
+    + notes;
+  el.style.display = '';
+};
+
+function openAppUpdate() {
+  const url = (appUpdateInfo && appUpdateInfo.url)
+    || 'https://github.com/longdz0311/PanicAnalyzer-iOSVN/releases/latest';
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'openURL', url: url });
   } else {
