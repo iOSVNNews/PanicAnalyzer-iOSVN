@@ -1,0 +1,1066 @@
+[
+  {
+    "id": "i2c-scl-stuck-low",
+    "family": "I2C",
+    "baseSeverity": "warning",
+    "subsystemWeight": 3,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "_checkBusStatus SCL is stuck low",
+        "SCL is stuck low"
+      ]
+    },
+    "title": "Lỗi I2C - Chân SCL bị giữ mức thấp",
+    "suspected": "IC hoặc cáp trên bus I2C bị chập (tên thiết bị nằm ngay sau \"for device\")",
+    "subsystem": "I2C Bus Controller",
+    "advice": "Một thiết bị đang giữ chân clock của bus xuống thấp nên cả bus chết. Đọc tên ngay sau \"for device\" để biết IC nào: roswell = cảm ứng, audio-speaker-top = loa trên, ad5860 = bộ điều khiển rung/âm thanh. Gần như luôn là lỗi phần cứng.",
+    "confidence": "Cao",
+    "source": "VERIFIED ifixit.com/Answers/View/843331"
+  },
+  {
+    "id": "i2c-error-interrupt",
+    "family": "I2C",
+    "baseSeverity": "warning",
+    "subsystemWeight": 3,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "_checkInterrupts error interrupt"
+      ]
+    },
+    "title": "Lỗi I2C - Ngắt báo lỗi truyền",
+    "suspected": "Thiết bị trên bus I2C tương ứng",
+    "subsystem": "I2C Bus Controller",
+    "advice": "Bus I2C báo lỗi trong lúc truyền. Kết hợp số bus (i2c0..i2c3) và tên thiết bị để khoanh vùng cáp/IC.",
+    "confidence": "Cao",
+    "source": "VERIFIED ifixit.com/Answers/View/799472"
+  },
+  {
+    "id": "smc-bsc-failure",
+    "family": "SMC",
+    "baseSeverity": "warning",
+    "subsystemWeight": 3,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "SMC BSC failure"
+      ]
+    },
+    "title": "SMC Panic - Mất dữ liệu cảm biến (BSC failure)",
+    "suspected": "Cụm cảm biến theo bitmask trong \"S.sensor array\"",
+    "subsystem": "System Management Controller",
+    "advice": "SMC không nhận đủ dữ liệu cảm biến nên buộc khởi động lại. Đọc dãy sau \"S.sensor array 0 - 4 is\" và đối chiếu ĐÚNG đời máy — cùng một bit ở đời máy khác là linh kiện khác. iOS mới in giá trị thập phân, cần đổi sang hex trước khi tra.",
+    "confidence": "Cao",
+    "source": "VERIFIED ifixit.com/Answers/View/799078"
+  },
+  {
+    "id": "ans2-recoverable-panic",
+    "family": "Storage",
+    "baseSeverity": "critical",
+    "subsystemWeight": 3,
+    "escalateAt": 1,
+    "windowHours": 72,
+    "match": {
+      "anyOf": [
+        "ANS2 Recoverable Panic",
+        "ANS2 Panic"
+      ]
+    },
+    "title": "Lỗi bộ nhớ trong - ANS2 Panic",
+    "suspected": "Chip NAND hoặc đường PCIe tới bộ điều khiển bộ nhớ",
+    "subsystem": "Apple NAND Storage (ANS2)",
+    "advice": "Bộ điều khiển bộ nhớ mất liên kết PCIe với NAND. Hầu như luôn là phần cứng: chân NAND, mạch nguồn NAND hoặc đường mạch trên main. Xem thêm \"Unexpected link down\" và \"ltssm=\".",
+    "confidence": "Cao",
+    "source": "VERIFIED discussions.apple.com/thread/254968902"
+  },
+  {
+    "id": "ans2-pcie-link-down",
+    "family": "Storage",
+    "baseSeverity": "critical",
+    "subsystemWeight": 3,
+    "escalateAt": 1,
+    "windowHours": 72,
+    "match": {
+      "allOf": [
+        "Unexpected link down"
+      ],
+      "regexAny": [
+        "apcie\\d"
+      ]
+    },
+    "title": "Lỗi bộ nhớ trong - Mất liên kết PCIe",
+    "suspected": "Đường PCIe giữa SoC và NAND",
+    "subsystem": "Apple NAND Storage (ANS2)",
+    "advice": "Liên kết PCIe tới bộ nhớ không thiết lập được (ltssm=0x00 DETECT_QUIET nghĩa là chưa bắt tay được lần nào). Lỗi phần cứng: kiểm tra NAND và mạch nguồn của nó.",
+    "confidence": "Cao",
+    "source": "VERIFIED discussions.apple.com/thread/254968902"
+  },
+  {
+    "id": "aop-moly-bad-data",
+    "family": "AOP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 3,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "moly: bad data"
+      ]
+    },
+    "title": "AOP Panic - Dữ liệu cảm biến sai (moly)",
+    "suspected": "Bus cảm biến của AOP, thường là cụm cáp cổng sạc",
+    "subsystem": "Always-On Processor",
+    "advice": "Bộ đồng xử lý cảm biến nhận dữ liệu không hợp lệ. Hay gặp sau khi thay cổng sạc hoặc dùng cáp không chính hãng.",
+    "confidence": "Cao",
+    "source": "VERIFIED discussions.apple.com/thread/254691803"
+  },
+  {
+    "id": "aop-bmp284",
+    "family": "AOP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 3,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "BMP284"
+      ]
+    },
+    "title": "AOP Panic - Cảm biến áp suất BMP284",
+    "suspected": "Cảm biến áp suất Bosch BMP284 (nằm trên cụm cáp cổng sạc ở phần lớn đời máy)",
+    "subsystem": "Always-On Processor",
+    "advice": "Cảm biến áp suất khí quyển không phản hồi. Kiểm tra cụm cáp cổng sạc; nếu vừa thay cổng sạc lô thì thay lại hàng chuẩn.",
+    "confidence": "Cao",
+    "source": "VERIFIED discussions.apple.com/thread/254691803"
+  },
+  {
+    "id": "aop-scm-global-errors",
+    "family": "AOP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 3,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "allOf": [
+        "global-errors"
+      ],
+      "regexAny": [
+        "i2cscm[0-4]",
+        "i2csm[0-3]",
+        "i2cm[0-1]"
+      ]
+    },
+    "title": "AOP Panic - Lỗi bus cảm biến",
+    "suspected": "Bus cảm biến của AOP (số bus nằm ngay trong chuỗi lỗi)",
+    "subsystem": "Always-On Processor",
+    "advice": "Đọc số bus trong chuỗi (i2cscm0..4, i2csm0..3, i2cm0..1) rồi kiểm tra cụm cáp nối với bus đó. Chưa có bảng đối chiếu bus sang linh kiện đã kiểm chứng, nên đây chỉ là gợi ý khoanh vùng.",
+    "confidence": "Thấp",
+    "source": "Chua kiem chung bang log that"
+  },
+  {
+    "id": "sep-sks-timeout",
+    "family": "SEP",
+    "baseSeverity": "critical",
+    "subsystemWeight": 3,
+    "escalateAt": 1,
+    "windowHours": 72,
+    "match": {
+      "anyOf": [
+        "sks request timeout",
+        "AppleSEPManager panic for AppleSEPKeyStore"
+      ]
+    },
+    "title": "SEP Panic - Secure Enclave không phản hồi",
+    "suspected": "Secure Enclave hoặc liên kết SoC-SEP",
+    "subsystem": "Secure Enclave Processor",
+    "advice": "SEP không trả lời yêu cầu trong thời hạn. Xem thêm \"SEP state:\" và \"Mailbox status\". Nếu vẫn lặp lại sau khi khôi phục iOS thì nghiêng về phần cứng.",
+    "confidence": "Cao",
+    "source": "VERIFIED developer.apple.com/forums/thread/718309"
+  },
+  {
+    "id": "soc-watchdog-reset",
+    "family": "Watchdog",
+    "baseSeverity": "critical",
+    "subsystemWeight": 3,
+    "escalateAt": 1,
+    "windowHours": 72,
+    "match": {
+      "anyOf": [
+        "Unexpected SoC (system) watchdog reset",
+        "SoC (system) watchdog reset"
+      ]
+    },
+    "title": "Watchdog - SoC tự reset khi ngủ/thức",
+    "suspected": "Mạch nguồn SoC / PMU (cộng đồng sửa chữa hay quy về Tristar)",
+    "subsystem": "SoC Watchdog",
+    "advice": "Nguồn cấp cho SoC sụt trong lúc chuyển trạng thái ngủ/thức. Kiểm tra mạch nguồn, Tristar và pin.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED discussions.apple.com/thread/253624966"
+  },
+  {
+    "id": "sleep-wake-hang",
+    "family": "Power",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "Sleep/Wake hang detected"
+      ]
+    },
+    "title": "Treo khi chuyển trạng thái ngủ/thức",
+    "suspected": "Driver chặn quá trình ngủ/thức (hay gặp: Wi-Fi, codec âm thanh, IC khuếch đại)",
+    "subsystem": "IOPMrootDomain",
+    "advice": "Một driver không hoàn tất bước ngủ/thức đúng hạn. Chỉ xảy ra sau khi cập nhật iOS thì nghiêng về phần mềm; lặp lại đều đặn thì kiểm tra Wi-Fi và mạch âm thanh.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu IOPMrootDomain.cpp"
+  },
+  {
+    "id": "shutdown-phase-timeout",
+    "family": "Power",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "timed out in phase '"
+      ]
+    },
+    "title": "Hết thời gian chờ khi tắt máy / khởi động lại",
+    "suspected": "Kext hoặc driver chặn tiến trình tắt máy",
+    "subsystem": "IOPMrootDomain",
+    "advice": "Đọc tên pha trong dấu nháy để biết bước nào bị treo. Phần lớn là lỗi phần mềm.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu IOPMrootDomain.cpp"
+  },
+  {
+    "id": "applesochot",
+    "family": "Thermal",
+    "baseSeverity": "critical",
+    "subsystemWeight": 3,
+    "escalateAt": 1,
+    "windowHours": 72,
+    "match": {
+      "anyOf": [
+        "AppleSocHot"
+      ]
+    },
+    "title": "SoC quá nhiệt - AppleSocHot",
+    "suspected": "SoC hoặc đường cảm biến nhiệt giữa PMIC và CPU",
+    "subsystem": "Thermal",
+    "advice": "SoC chạm ngưỡng nhiệt bảo vệ. Nếu máy không hề nóng mà vẫn báo thì nghi đường cảm biến nhiệt trên main bị đứt.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED-weak ifixit.com/Wiki/iPhone_Kernel_Panics"
+  },
+  {
+    "id": "smc-missing-sensor",
+    "family": "SMC",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "Missing sensor(s)",
+        "Missing sensor"
+      ]
+    },
+    "title": "SMC Panic - Mất tín hiệu cảm biến",
+    "suspected": "Module cảm biến ngoại vi (cáp sạc, cáp màn hình, pin)",
+    "subsystem": "SMC / Thermal & Power Monitor",
+    "advice": "Đọc mã cảm biến ngay sau 'Missing sensor(s)' để xác định cụm cáp cần kiểm tra. Lỗi lặp lại nhiều lần là dấu hiệu phần cứng thật.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "smc-assert",
+    "family": "SMC",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "SMC PANIC\\s*-?\\s*ASSERT",
+        "SMC_VAL_ABSENT",
+        "SMC.*assertion failed"
+      ]
+    },
+    "title": "SMC Panic - Lỗi khẳng định (Assertion Failed)",
+    "suspected": "Mảng cảm biến ngoại vi (iPhone 13 trở lên)",
+    "subsystem": "System Management Controller",
+    "advice": "SMC không nhận đủ dữ liệu cảm biến trong 3 phút nên buộc khởi động lại. Mã trong log chỉ ra cụm cảm biến lỗi, NHƯNG bitmask khác nhau giữa các đời máy — không suy ra linh kiện nếu chưa đối chiếu đúng model.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "i2c-bus-error",
+    "family": "I2C",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "\\bI2C\\b",
+        "\\bi2c[0-3]\\b",
+        "AppleHIDTransportI2C"
+      ],
+      "anyOf": [
+        "timeout",
+        "timed out",
+        "timedout",
+        "NACK",
+        "nack",
+        "arbitration",
+        "invalid response",
+        "transaction failed",
+        "stuck low",
+        "stuck high",
+        "is stuck",
+        "_checkBusStatus",
+        "bus busy"
+      ]
+    },
+    "title": "Lỗi giao tiếp I2C",
+    "suspected": "IC ngoại vi trên bus I2C — hay gặp nhất là cảm biến ánh sáng (ALS) và camera trước",
+    "subsystem": "I2C Bus Controller",
+    "advice": "Đo điện áp và điện trở kéo lên 1.8V trên SDA/SCL của bus lỗi. SCL/SDA bị giữ mức thấp thường do một IC trên bus chạm hoặc chết — tháo lần lượt để cô lập.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "dcp-display-panic",
+    "family": "DisplayCamera",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "DCP PANIC",
+        "AppleDCP",
+        "\\bDCP\\b.*(PANIC|RTKit)",
+        "dpIrq\\("
+      ]
+    },
+    "title": "DCP Panic - Lỗi bộ đồng xử lý màn hình",
+    "suspected": "Màn hình, cáp/socket màn hình, hoặc khối DCP trong CPU",
+    "subsystem": "Display Coprocessor (DCP / RTKit)",
+    "advice": "DCP là bộ xử lý riêng điều khiển màn hình. Lỗi timing element thường do màn hình không tương thích, cáp màn hình lỏng/đứt, hoặc màn thay lô kém. Thử màn khác trước khi nghi CPU.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "ane-power-panic",
+    "family": "Power",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "PMGR_PS_ANE",
+        "ANE_SYS_PS",
+        "AppleANE"
+      ]
+    },
+    "title": "Panic nguồn khối ANE (Neural Engine)",
+    "suspected": "Khối Neural Engine trong CPU hoặc đường cấp nguồn của nó",
+    "subsystem": "Power Management / Apple Neural Engine",
+    "advice": "Khối ANE không hạ nguồn được khi ngủ/tắt máy. Thường là lỗi CPU hoặc IC nguồn, không phải linh kiện rời.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "soc-hot",
+    "family": "Thermal",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "AppleSocHot",
+        "Hot Hot Hot",
+        "SOC_HOT"
+      ]
+    },
+    "title": "AppleSocHot - CPU quá nhiệt nghiêm trọng",
+    "suspected": "Đường cấp nguồn từ IC nguồn lên CPU, hoặc IC WiFi/Audio chạm tải",
+    "subsystem": "SoC Thermal Protection",
+    "advice": "CPU vượt ngưỡng nhiệt an toàn. Thường do chạm tải trên đường nguồn chứ không phải nóng do dùng nặng. Đo dòng tiêu thụ lúc máy đứng yên; cách ly IC WiFi và IC audio.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "sep-rom-boot",
+    "family": "SEP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "SEP ROM",
+        "sep_rom",
+        "AppleSEPBooter",
+        "SEPROM"
+      ]
+    },
+    "title": "SEP ROM Boot - Lỗi khởi động Secure Enclave",
+    "suspected": "Vùng ROM của Secure Enclave trong CPU",
+    "subsystem": "Secure Enclave Processor",
+    "advice": "Hỏng vùng ROM của SEP. Dữ liệu SEP là duy nhất cho từng máy và KHÔNG thay thế được — cảnh báo khách trước nguy cơ mất dữ liệu trước khi can thiệp.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "sep-panic",
+    "family": "SEP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "AppleSEPManager",
+        "\\bSEP\\s+(panic|PANIC|failed)",
+        "sepOS",
+        "AppleMesa.*SEP"
+      ]
+    },
+    "title": "SEP (Secure Enclave) Panic",
+    "suspected": "Secure Enclave trong CPU, cụm Face ID / Touch ID",
+    "subsystem": "Secure Enclave Processor",
+    "advice": "Thường gặp sau khi thay cảm biến vân tay/Face ID không đúng cặp với CPU. Kiểm tra cáp Face ID và lịch sử sửa chữa máy.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "aop-nmi-power",
+    "family": "AOP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "AOP NMI POWER",
+        "AOP.*NMI"
+      ]
+    },
+    "title": "AOP NMI POWER - Ngắt không che được từ AOP",
+    "suspected": "Cáp nút nguồn, hoặc cụm camera trước",
+    "subsystem": "Always-On Processor",
+    "advice": "NMI là ngắt phần cứng không thể bỏ qua. Theo kinh nghiệm sửa chữa, thường liên quan cáp nút nguồn và cụm camera trước. Cách ly từng cụm để khoanh vùng.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "aop-k2-bosch",
+    "family": "AOP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "K2 Bosch",
+        "\\bBosch\\b"
+      ]
+    },
+    "title": "AOP Panic - K2 Bosch (cảm biến Bosch)",
+    "suspected": "Cụm cáp chân sạc hoặc loa ngoài",
+    "subsystem": "Always-On Processor / Sensor Bus",
+    "advice": "Thường xảy ra khi dùng chức năng âm thanh. Liên quan đường tín hiệu tới loa và cụm cáp đuôi sạc. Thử cách ly loa ngoài trước.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "aop-panic",
+    "family": "AOP",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "\\bAOP\\s+(PANIC|DATA ABORT|NMI)",
+        "AOPEndpoint",
+        "\\bAOP\\b.*panic"
+      ]
+    },
+    "title": "AOP (Always-On Processor) Panic",
+    "suspected": "Taptic Engine, IC Audio, cảm biến tiệm cận hoặc hở chân CPU",
+    "subsystem": "Always-On Processor Subsystem",
+    "advice": "Cách ly cụm cáp loa trong (chứa cảm biến tiệm cận) và Taptic Engine. Vẫn lỗi thì đo đường tín hiệu AOP vào CPU.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "pmgr-power-panic",
+    "family": "Power",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "ApplePMGR",
+        "Apple\\w*PMGR::",
+        "PMGR_PS_",
+        "quiesceHW",
+        "Apple PMGR Fatal"
+      ],
+      "anyOf": [
+        "REQUIRE failed",
+        "Fatal",
+        "coherency",
+        "PMP NMI FIQ",
+        "CP_COM_NORM",
+        "quiesceHW"
+      ]
+    },
+    "title": "PMGR Power Panic - Lỗi mạch quản lý nguồn",
+    "suspected": "IC nguồn chính (PMIC), cuộn cảm cấp pha CPU hoặc hở chân CPU",
+    "subsystem": "Power Management Subsystem (PMGR)",
+    "advice": "Panic khi hạ nguồn khối chức năng (quiesce). Kiểm tra cuộn cảm quanh CPU, đo áp các pha VCORE. REQUIRE failed ở PMGR_PS_* chỉ ra khối cụ thể không tắt được nguồn.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "gpu-panic",
+    "family": "GPU",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "AGXAccelerator",
+        "\\bIOGPU\\b",
+        "AppleGPU",
+        "\\bsgx\\b.*(fault|panic)",
+        "GPU (hang|fault|panic)"
+      ]
+    },
+    "title": "GPU Panic - Lỗi xử lý đồ hoạ",
+    "suspected": "GPU trong CPU, nguồn cấp GPU hoặc quá nhiệt",
+    "subsystem": "Graphics Subsystem",
+    "advice": "Kiểm tra máy có nóng bất thường khi dùng nặng không. Đo áp cấp pha GPU. Lỗi lặp lại nhiều là dấu hiệu hở chân/suy CPU.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "nand-boot-fail",
+    "family": "Storage",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "Anc-postrand",
+        "boot.*NAND.*fail",
+        "NAND.*boot.*fail",
+        "ANS2 Recoverable"
+      ]
+    },
+    "title": "Lỗi khởi động NAND",
+    "suspected": "Ổ cứng NAND Flash hoặc đường cấp nguồn NAND",
+    "subsystem": "Storage / NAND Boot",
+    "advice": "Kiểm tra áp cấp NAND (0.9V / 1.8V / 2.5V). Mất áp thì thay cuộn/IC nguồn; đủ áp thì đóng lại hoặc thay NAND.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "storage-ans-nvme",
+    "family": "Storage",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "\\bANS2\\b",
+        "AppleANS",
+        "\\bNVMe\\b",
+        "\\bnvme\\b",
+        "Anc-postrand",
+        "WKDMD ERROR"
+      ]
+    },
+    "title": "Lỗi bộ điều khiển ổ cứng NVMe / ANS2",
+    "suspected": "NAND Flash hoặc đường cấp nguồn NAND từ CPU",
+    "subsystem": "Storage Subsystem (NVMe/ANS)",
+    "advice": "Đo áp 0.9V, 1.8V, 2.5V cho NAND Flash. Mất áp thì thay cuộn dây/IC nguồn; đủ áp thì cần đóng lại hoặc thay NAND.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "baseband-panic",
+    "family": "Baseband",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "\\bbaseband\\b",
+        "\\bBaseband\\b",
+        "BB PMU",
+        "AppleBasebandd",
+        "CommCenter.*crash"
+      ],
+      "noneOf": [
+        "basebandMigrated"
+      ]
+    },
+    "title": "Baseband / Modem Panic - Lỗi sóng viễn thông",
+    "suspected": "IC Baseband (Modem), IC nguồn Baseband hoặc hở chân bo ghép",
+    "subsystem": "Cellular Baseband Subsystem",
+    "advice": "Kiểm tra máy có mất vi trình Modem trong Cài đặt không. Máy 2 tầng (iPhone X trở lên) kiểm tra hở chân viền ghép.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "wifi-bcmwlan-panic",
+    "family": "Connectivity",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "AppleBCMWLAN",
+        "apcie[2:wlan]",
+        "AppleBCMWLANBusInterfacePCIe"
+      ]
+    },
+    "title": "Lỗi IC WiFi / Bluetooth (BCMWLAN)",
+    "suspected": "IC WiFi/Bluetooth hoặc bus PCIe cấp cho module WiFi",
+    "subsystem": "Wireless Subsystem",
+    "advice": "Kiểm tra công tắc WiFi có bị xám mờ không. Làm chân lại hoặc thay IC WiFi.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "pcie-port-enable",
+    "family": "Connectivity",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "port enable.*fail",
+        "apcie.*link",
+        "PCIe.*link.*(down|fail)",
+        "AppleT[0-9]+PCIe"
+      ]
+    },
+    "title": "Lỗi bật cổng PCIe (WiFi/BT hoặc Baseband)",
+    "suspected": "IC WiFi/Bluetooth hoặc IC Baseband trên bus PCIe",
+    "subsystem": "PCIe Link / Port Enable",
+    "advice": "Cổng PCIe không bật được — thường là IC WiFi/BT hoặc Baseband chết hoặc hở chân. Kiểm tra WiFi có bị xám mờ và máy có mất sóng không để phân biệt hai bên.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "display-camera-smmu",
+    "family": "DisplayCamera",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "Dart-disp\\d+ SMMU error",
+        "Port-disp\\d+ SMMU error",
+        "AppleDisplayPipe",
+        "applesysopsysMIPID"
+      ]
+    },
+    "title": "Lỗi điều khiển Màn hình / Camera (SMMU)",
+    "suspected": "Cụm Camera hoặc cáp/socket màn hình",
+    "subsystem": "DART / Display / Camera Subsystem",
+    "advice": "Cách ly lần lượt camera sau, camera trước và màn hình. Kiểm tra socket cong vênh hoặc lỏng chân.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "undefined-kernel-instruction",
+    "family": "KernelPanic",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "Undefined Kernel Instruction",
+        "undefined instruction"
+      ]
+    },
+    "title": "Undefined Kernel Instruction",
+    "suspected": "Thường do phần mềm; lặp lại nhiều mới nghi RAM/NAND",
+    "subsystem": "Kernel",
+    "advice": "Lệnh nhân bị hỏng khi thực thi. Đa số là lỗi phần mềm — thử khôi phục firmware trước. Chỉ nghi RAM/NAND khi lỗi lặp lại nhiều lần sau khi đã cài lại.",
+    "confidence": "Thấp"
+  },
+  {
+    "id": "watchdog-thermalmonitord",
+    "family": "Watchdog",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "allOf": [
+        "thermalmonitord"
+      ],
+      "anyOf": [
+        "watchdog",
+        "timeout",
+        "did not check in"
+      ]
+    },
+    "title": "Watchdog Timeout - Mất phản hồi từ thermalmonitord",
+    "suspected": "Cảm biến nhiệt trên bo mạch, cáp sạc hoặc cáp nút nguồn",
+    "subsystem": "Thermal Monitoring Daemon",
+    "advice": "Hệ điều hành khởi động lại vì không nhận báo cáo nhiệt sau 180s. Kiểm tra đường cảm biến nhiệt trên cụm cáp sạc và nút bấm.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "watchdog-generic",
+    "family": "Watchdog",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "watchdog timeout",
+        "WatchdogTimeout",
+        "wdog",
+        "did not check in with the watchdog"
+      ]
+    },
+    "title": "Watchdog Timeout - Tiến trình hệ thống treo",
+    "suspected": "Tiến trình hệ thống bị treo, chưa chắc do phần cứng",
+    "subsystem": "System Watchdog",
+    "advice": "Tiến trình hệ thống không báo cáo đúng hạn. Nếu là SpringBoard, logd, wifid thì gần như luôn là lỗi phần mềm. Chỉ nghi phần cứng khi lặp lại nhiều lần cùng một tiến trình.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "thermal-event",
+    "family": "Thermal",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 24,
+    "match": {
+      "anyOf": [
+        "ThermalTrap",
+        "thermal_trap",
+        "Thermal Event",
+        "kThermalLevel",
+        "thermalpressure"
+      ],
+      "noneOf": [
+        "Missing sensor"
+      ]
+    },
+    "title": "Thermal Event - Máy quá nhiệt",
+    "suspected": "Quá nhiệt do tải nặng, pin chai hoặc IC nguồn chập tải",
+    "subsystem": "Thermal Management",
+    "advice": "Một vài lần là bình thường (sạc + dùng nặng). Lặp lại thường xuyên thì kiểm tra pin và dòng tiêu thụ khi idle.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "zone-metadata-corruption",
+    "family": "Memory",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "metadata list corruption through element"
+      ]
+    },
+    "title": "Hỏng vùng nhớ kernel (zone metadata)",
+    "suspected": "Driver ghi sai bộ nhớ; nếu đổi tên zone liên tục thì nghi RAM",
+    "subsystem": "Kernel Memory (zalloc)",
+    "advice": "Đọc tên zone ngay sau \"detected in zone\" để biết hệ thống con nào gây ra. Cùng một zone lặp lại = lỗi phần mềm; nhiều zone khác nhau = nghi RAM.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu zalloc.c"
+  },
+  {
+    "id": "zone-double-free",
+    "family": "Memory",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "allOf": [
+        "double free of 0x"
+      ]
+    },
+    "title": "Hỏng vùng nhớ kernel - Giải phóng hai lần",
+    "suspected": "Driver giải phóng cùng một vùng nhớ hai lần",
+    "subsystem": "Kernel Memory (zalloc)",
+    "advice": "Lỗi phần mềm trong driver. Thử khôi phục iOS trước khi nghĩ tới phần cứng.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu zalloc.c"
+  },
+  {
+    "id": "zone-modified-after-free",
+    "family": "Memory",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "element modified after free"
+      ]
+    },
+    "title": "Hỏng vùng nhớ kernel - Ghi vào vùng đã giải phóng",
+    "suspected": "Driver ghi vào bộ nhớ đã trả lại",
+    "subsystem": "Kernel Memory (zalloc)",
+    "advice": "Lỗi phần mềm. Nếu chỉ xuất hiện trên một máy và lặp lại thì cân nhắc kiểm tra RAM.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu zalloc.c"
+  },
+  {
+    "id": "zone-not-from-zone-map",
+    "family": "Memory",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "isn't from zone map"
+      ]
+    },
+    "title": "Hỏng vùng nhớ kernel - Con trỏ lạc",
+    "suspected": "Driver giải phóng con trỏ không thuộc vùng cấp phát",
+    "subsystem": "Kernel Memory (zalloc)",
+    "advice": "Lỗi phần mềm trong driver.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu zalloc.c"
+  },
+  {
+    "id": "zone-ptr-validation",
+    "family": "Memory",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "zone element pointer validation failed"
+      ]
+    },
+    "title": "Hỏng vùng nhớ kernel - Con trỏ không hợp lệ",
+    "suspected": "Trạng thái bộ cấp phát bị hỏng",
+    "subsystem": "Kernel Memory (zalloc)",
+    "advice": "Lỗi phần mềm; nếu lặp lại sau khi khôi phục iOS thì kiểm tra RAM/NAND.",
+    "confidence": "Trung bình",
+    "source": "VERIFIED xnu zalloc.c"
+  },
+  {
+    "id": "kernel-instruction-fetch-abort",
+    "family": "KernelPanic",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "Kernel instruction fetch abort"
+      ]
+    },
+    "title": "Kernel Panic - Không đọc được lệnh",
+    "suspected": "Trang mã bị lỗi; phần lớn là phần mềm",
+    "subsystem": "Kernel",
+    "advice": "CPU nhảy vào vùng nhớ không hợp lệ. Thường là lỗi driver. Chỉ khi lặp lại sau khi khôi phục iOS sạch mới nghi NAND/RAM.",
+    "confidence": "Thấp",
+    "source": "VERIFIED xnu sleh.c"
+  },
+  {
+    "id": "unaligned-kernel-data-abort",
+    "family": "KernelPanic",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "Unaligned kernel data abort"
+      ]
+    },
+    "title": "Kernel Panic - Truy cập bộ nhớ lệch địa chỉ",
+    "suspected": "Lỗi driver",
+    "subsystem": "Kernel",
+    "advice": "Gần như luôn là lỗi phần mềm trong driver.",
+    "confidence": "Thấp",
+    "source": "VERIFIED xnu sleh.c"
+  },
+  {
+    "id": "kernel-stack-overflow",
+    "family": "KernelPanic",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "Invalid kernel stack pointer"
+      ]
+    },
+    "title": "Kernel Panic - Tràn ngăn xếp",
+    "suspected": "Lỗi driver",
+    "subsystem": "Kernel",
+    "advice": "Lỗi phần mềm. Khôi phục iOS nếu lặp lại.",
+    "confidence": "Thấp",
+    "source": "VERIFIED xnu sleh.c"
+  },
+  {
+    "id": "pac-bti-failure",
+    "family": "KernelPanic",
+    "baseSeverity": "warning",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "PAC failure \\(ESR",
+        "BTI failure"
+      ]
+    },
+    "title": "Kernel Panic - Vi phạm Pointer Authentication",
+    "suspected": "Thường do khai thác lỗ hổng hoặc lỗi JIT",
+    "subsystem": "Kernel",
+    "advice": "Cơ chế bảo vệ con trỏ của Apple chặn một thao tác bất thường. Gần như luôn là phần mềm.",
+    "confidence": "Thấp",
+    "source": "VERIFIED xnu sleh.c"
+  },
+  {
+    "id": "kernel-data-abort",
+    "family": "KernelPanic",
+    "baseSeverity": "warning",
+    "subsystemWeight": 0,
+    "escalateAt": 4,
+    "windowHours": 48,
+    "match": {
+      "anyOf": [
+        "Kernel data abort"
+      ]
+    },
+    "title": "Kernel Panic - Lỗi truy cập bộ nhớ (chưa phân loại)",
+    "suspected": "Chưa xác định — đây là nhóm rất rộng",
+    "subsystem": "Kernel",
+    "advice": "Đây là loại panic phổ biến nhất và KHÔNG chỉ ra linh kiện nào. Mở \"Thông tin kỹ thuật\" đọc panicString và backtrace, hoặc gom nhiều lần lỗi để tìm quy luật.",
+    "confidence": "Thấp",
+    "source": "VERIFIED xnu sleh.c — nhom rong, xep cuoi"
+  },
+  {
+    "id": "springboard-crash",
+    "family": "SpringBoard",
+    "baseSeverity": "normal",
+    "subsystemWeight": 1,
+    "escalateAt": 3,
+    "windowHours": 24,
+    "match": {
+      "anyOf": [
+        "SpringBoard",
+        "backboardd"
+      ],
+      "noneOf": [
+        "Missing sensor"
+      ]
+    },
+    "title": "SpringBoard Crash - Giao diện hệ thống khởi động lại",
+    "suspected": "Xung đột phần mềm hoặc tweak; hiếm khi do phần cứng",
+    "subsystem": "SpringBoard / UI",
+    "advice": "Lẻ tẻ thì bỏ qua. Lặp lại nhiều lần trong ngày mới cần xem tweak/cấu hình hoặc RAM.",
+    "confidence": "Trung bình"
+  },
+  {
+    "id": "cpu-resource",
+    "family": "CPUResource",
+    "baseSeverity": "normal",
+    "subsystemWeight": 0,
+    "escalateAt": 20,
+    "windowHours": 24,
+    "match": {
+      "anyOf": [
+        "EXC_RESOURCE",
+        "CPU_FATAL",
+        "WAKEUPS",
+        "cpu_usage"
+      ]
+    },
+    "title": "CPUResource - Ứng dụng dùng CPU vượt ngưỡng",
+    "suspected": "Ứng dụng chạy nền tiêu tốn CPU",
+    "subsystem": "Resource Monitor",
+    "advice": "Đây là báo cáo hiệu năng của iOS, không phải lỗi phần cứng. Có thể bỏ qua.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "disk-writes",
+    "family": "DiskWrites",
+    "baseSeverity": "normal",
+    "subsystemWeight": 0,
+    "escalateAt": 20,
+    "windowHours": 24,
+    "match": {
+      "anyOf": [
+        "DiskWrites",
+        "disk_writes",
+        "WRITES_CAUSE"
+      ]
+    },
+    "title": "DiskWrites - Ứng dụng ghi đĩa nhiều",
+    "suspected": "Ứng dụng ghi dữ liệu nhiều bất thường",
+    "subsystem": "Storage Resource Monitor",
+    "advice": "Báo cáo hiệu năng thông thường của iOS. Không liên quan phần cứng.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "jetsam-memory",
+    "family": "Jetsam",
+    "baseSeverity": "normal",
+    "subsystemWeight": 0,
+    "escalateAt": 25,
+    "windowHours": 24,
+    "match": {
+      "anyOf": [
+        "JetsamEvent",
+        "largestProcess",
+        "jettisoning",
+        "per-process-limit",
+        "vm-pageshortage"
+      ]
+    },
+    "title": "Jetsam Event - Giải phóng bộ nhớ RAM",
+    "suspected": "Ứng dụng nền vượt ngưỡng RAM",
+    "subsystem": "Memory Manager (Jetsam)",
+    "advice": "Cơ chế bảo vệ tự động của iOS khi RAM đầy, không phải lỗi phần cứng. Bỏ qua an toàn.",
+    "confidence": "Cao"
+  },
+  {
+    "id": "generic-app-crash",
+    "family": "AppCrash",
+    "baseSeverity": "normal",
+    "subsystemWeight": 0,
+    "escalateAt": 30,
+    "windowHours": 24,
+    "match": {
+      "anyOf": [
+        "EXC_CRASH",
+        "EXC_BAD_ACCESS",
+        "EXC_BAD_INSTRUCTION",
+        "Termination Reason",
+        "SIGABRT",
+        "SIGSEGV"
+      ]
+    },
+    "title": "Crash ứng dụng thông thường",
+    "suspected": "Lỗi lập trình của ứng dụng bên thứ ba",
+    "subsystem": "User Application Space",
+    "advice": "Không liên quan phần cứng. Cập nhật hoặc cài lại ứng dụng bị crash.",
+    "confidence": "Cao"
+  }
+]

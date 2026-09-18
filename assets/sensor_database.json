@@ -1,0 +1,56 @@
+{
+  "Prs0": {
+    "name": "Barometric Pressure Sensor",
+    "location": "Cáp chân sạc (đuôi sạc) hoặc cáp nút nguồn trên",
+    "meaning": "Cảm biến áp suất khí quyển",
+    "action": "Thay cáp sạc dưới hoặc kiểm tra socket"
+  },
+  "TG0B": {
+    "name": "Battery Gas Gauge Voltage",
+    "location": "Mạch BMS Pin / Socket Pin",
+    "meaning": "Cảm biến đo điện áp pin",
+    "action": "Kiểm tra chân pin giữa (BSI), thay thử pin khác"
+  },
+  "TG0V": {
+    "name": "Battery Voltage Monitor",
+    "location": "Socket Pin",
+    "meaning": "Đo điện áp cell pin",
+    "action": "Kiểm tra socket pin tiếp xúc chập chờn"
+  },
+  "TG0P": {
+    "name": "Power Management Thermal",
+    "location": "IC nguồn chính (PMIC)",
+    "meaning": "Nhiệt độ IC nguồn",
+    "action": "Kiểm tra IC nguồn có bị quá nhiệt / chập tải"
+  },
+  "TT0P": {
+    "name": "Taptic Engine Temp",
+    "location": "Cục rung Taptic Engine",
+    "meaning": "Cảm biến nhiệt cụm rung",
+    "action": "Kiểm tra cáp và socket cắm Taptic Engine"
+  },
+  "TT0B": {
+    "name": "Taptic Bottom Sensor",
+    "location": "Vùng đáy máy / Cáp sạc",
+    "meaning": "Nhiệt độ vùng đáy máy",
+    "action": "Kiểm tra cụm đuôi sạc"
+  },
+  "Mic1": {
+    "name": "Bottom Microphone Sensor",
+    "location": "Cáp đuôi sạc",
+    "meaning": "Cảm biến tích hợp trong mic dưới",
+    "action": "Thay thế cụm cáp đuôi sạc"
+  },
+  "Nand": {
+    "name": "NAND Flash Thermal",
+    "location": "Ổ cứng NAND Flash",
+    "meaning": "Nhiệt độ ổ cứng",
+    "action": "Kiểm tra ổ cứng NAND có nóng bất thường"
+  },
+  "Th0H": {
+    "name": "Wireless Charging / NFC Temp",
+    "location": "Cuộn sạc không dây lưng máy",
+    "meaning": "Nhiệt độ NFC & sạc không dây",
+    "action": "Kiểm tra cáp sạc không dây mặt lưng"
+  }
+}

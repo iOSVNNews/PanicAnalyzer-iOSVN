@@ -1,0 +1,27 @@
+[
+  {
+    "name": "panic-full-2026-09-15-SMC-Prs0.ips",
+    "type": "Kernel Panic (SMC Missing Sensor)",
+    "content": "{\"bug_type\":\"210\",\"timestamp\":\"2026-09-15 14:22:10.00 +0700\",\"os_version\":\"iPhone OS 17.5.1 (21F90)\",\"incident_id\":\"E8F9A102-3B4C-5D6E-7F8A-9B0C1D2E3F4A\"}\n{\n  \"build\" : \"iPhone OS 17.5.1 (21F90)\",\n  \"product\" : \"iPhone14,3\",\n  \"socId\" : \"0x8110\",\n  \"socRevision\" : \"0x11\",\n  \"panicString\" : \"panic(cpu 1 caller 0xfffffff024a1b020): SMC PANIC - thermal sensor failure; Missing sensor(s): Prs0\\nTarget: AppleARMPE\\nDebugger message: panic\\nMemory ID: 0xff\\nOS version: 21F90\\nKernel version: Darwin Kernel Version 23.5.0\\nKernelCache UUID: 3A4B5C6D7E8F9A0B1C2D3E4F5A6B7C8D\\nKernel slide: 0x000000001c400000\\nPanicked task 0xffffffe589a1c000: 242 pages, 4 threads: pid 0: kernel_task\\nPanicked thread: 0xffffffe59a22d400, backtrace: 0xffffffe5b0123890, tid: 104\\n  lr: 0xfffffff024a1b020  fp: 0xffffffe5b0123900\\n  lr: 0xfffffff024128030  fp: 0xffffffe5b0123980\\n\"\n}"
+  },
+  {
+    "name": "panic-full-2026-09-14-I2C0-Timeout.ips",
+    "type": "Kernel Panic (I2C Bus Error)",
+    "content": "{\"bug_type\":\"210\",\"timestamp\":\"2026-09-14 09:15:33.00 +0700\",\"os_version\":\"iPhone OS 18.0 (22A3354)\",\"incident_id\":\"A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D\"}\n{\n  \"build\" : \"iPhone OS 18.0 (22A3354)\",\n  \"product\" : \"iPhone15,2\",\n  \"panicString\" : \"panic(cpu 3 caller 0xfffffff018d99040): I2C transaction failed on i2c0: timeout waiting for bus response at slave address 0x48 (controller: AppleSPU / AppleARMPlatform)\\nDebugger message: panic\\nOS version: 22A3354\\nPanicked task 0xffffffe112345000: 180 pages, 3 threads: pid 0: kernel_task\\nPanicked thread: 0xffffffe123456700, backtrace: 0xffffffe188223900\\n  lr: 0xfffffff018d99040  fp: 0xffffffe188223960\\n\"\n}"
+  },
+  {
+    "name": "panic-full-2026-09-12-NVMe-ANS2.ips",
+    "type": "Kernel Panic (NVMe Storage)",
+    "content": "{\"bug_type\":\"210\",\"timestamp\":\"2026-09-12 18:40:02.00 +0700\",\"os_version\":\"iPhone OS 17.4.1 (21E236)\",\"incident_id\":\"F1E2D3C4-B5A6-9788-7766-554433221100\"}\n{\n  \"build\" : \"iPhone OS 17.4.1 (21E236)\",\n  \"product\" : \"iPhone13,4\",\n  \"panicString\" : \"panic(cpu 0 caller 0xfffffff01f224010): ANS2: Fatal firmware crash reported by storage controller. WKDMD ERROR: command submission timeout (NVMe NAND)\\nDebugger message: panic\\nOS version: 21E236\\nPanicked task: pid 0: kernel_task\\n\"\n}"
+  },
+  {
+    "name": "Watchdog-2026-09-10-thermalmonitord.ips",
+    "type": "Watchdog Timeout",
+    "content": "{\"bug_type\":\"309\",\"timestamp\":\"2026-09-10 11:05:20.00 +0700\",\"os_version\":\"iPhone OS 17.6 (21G5066d)\",\"incident_id\":\"99887766-5544-3322-1100-AABBCCDDEEFF\"}\n{\n  \"build\" : \"iPhone OS 17.6 (21G5066d)\",\n  \"product\" : \"iPhone12,1\",\n  \"panicString\" : \"userspace watchdog timeout: no successful checking from com.apple.thermalmonitord in 180 seconds\\nservice: com.apple.thermalmonitord, description: Thermal monitoring daemon failed to respond\\n\"\n}"
+  },
+  {
+    "name": "JetsamEvent-2026-09-08.ips",
+    "type": "Jetsam Event (Có thể bỏ qua)",
+    "content": "{\"bug_type\":\"298\",\"timestamp\":\"2026-09-08 22:15:00.00 +0700\",\"os_version\":\"iPhone OS 17.5.1 (21F90)\",\"incident_id\":\"12345678-9ABC-DEF0-1234-56789ABCDEF0\"}\n{\n  \"build\" : \"iPhone OS 17.5.1 (21F90)\",\n  \"product\" : \"iPhone14,2\",\n  \"reason\" : \"highwater\",\n  \"largestProcess\" : \"TikTok\",\n  \"processes\" : [\n    {\"pid\": 4521, \"name\": \"TikTok\", \"rpages\": 128450, \"states\": [\"frontmost\"]},\n    {\"pid\": 1204, \"name\": \"Safari\", \"rpages\": 45210}\n  ]\n}"
+  }
+]

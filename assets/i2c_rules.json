@@ -1,0 +1,119 @@
+{
+  "_meta": {
+    "note": "Địa chỉ I2C KHÔNG được map tuyệt đối thành linh kiện. Cùng một địa chỉ có ý nghĩa khác nhau giữa các đời máy. Mọi kết quả dưới đây là NGHI NGỜ. Chỉ nâng độ tin cậy lên Cao khi có mục trùng trong 'models' cho đúng model đang phân tích.",
+    "defaultConfidence": "Thấp",
+    "genericConfidence": "Trung bình"
+  },
+  "buses": {
+    "i2c0": {
+      "name": "I2C Bus 0 (Power & Sensors)",
+      "addresses": {
+        "0x48": {
+          "component": "Cảm biến Barometer / Nhiệt độ (Prs0/Thermal)",
+          "advice": "Kiểm tra cụm cáp sạc, cáp phím nguồn hoặc IC cảm biến áp suất",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x38": {
+          "component": "Cảm biến Tiệm cận & Ánh sáng (ALS/Proximity)",
+          "advice": "Kiểm tra cụm cáp loa trong/FaceID",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x10": {
+          "component": "IC Quản lý sạc (Tristar / Hydra / Tigris)",
+          "advice": "Kiểm tra cáp sạc, IC sạc hoặc đường VBUS USB",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x34": {
+          "component": "IC Nguồn phụ (Sub-PMIC)",
+          "advice": "Đo chạm các tụ lọc xung quanh IC nguồn phụ",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x6b": {
+          "component": "IC Sạc nhanh / BQ Charger",
+          "advice": "Kiểm tra mạch sạc và cuộn cảm sạc",
+          "confidence": "Trung bình",
+          "models": {}
+        }
+      }
+    },
+    "i2c1": {
+      "name": "I2C Bus 1 (Display & FaceID)",
+      "addresses": {
+        "0x20": {
+          "component": "IC Điều khiển Màn hình & Cảm ứng",
+          "advice": "Kiểm tra socket màn hình, thử thay màn hình khác",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x50": {
+          "component": "EEPROM Màn hình (True Tone)",
+          "advice": "Kiểm tra mạch nạp True Tone hoặc cáp màn hình",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x30": {
+          "component": "Cụm FaceID TrueDepth (Dot Projector / Flood)",
+          "advice": "Kiểm tra cáp Face ID, cáp cảm biến loa trên",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x70": {
+          "component": "Bộ mở rộng I2C Multiplexer",
+          "advice": "Đo áp 1.8V cấp cho chip chuyển mạch I2C",
+          "confidence": "Trung bình",
+          "models": {}
+        }
+      }
+    },
+    "i2c2": {
+      "name": "I2C Bus 2 (Audio & Haptics)",
+      "addresses": {
+        "0x40": {
+          "component": "IC Âm thanh (Audio Codec / Speaker Amp)",
+          "advice": "Kiểm tra IC chuông, IC âm thanh chính",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x68": {
+          "component": "Cảm biến Con quay hồi chuyển (IMU Gyro/Accel)",
+          "advice": "Kiểm tra IC la bàn/gia tốc",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x76": {
+          "component": "Cảm biến Áp suất cao cấp",
+          "advice": "Kiểm tra đường áp cấp cho sensor",
+          "confidence": "Trung bình",
+          "models": {}
+        }
+      }
+    },
+    "i2c3": {
+      "name": "I2C Bus 3 (Cameras & Sensors)",
+      "addresses": {
+        "0x18": {
+          "component": "Camera sau chính (Wide Camera)",
+          "advice": "Kiểm tra socket camera sau, thay thử cụm camera",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x1a": {
+          "component": "Camera trước (Front Selfie Camera)",
+          "advice": "Kiểm tra socket camera trước",
+          "confidence": "Trung bình",
+          "models": {}
+        },
+        "0x28": {
+          "component": "Cảm biến LIDAR Scanner (bản Pro)",
+          "advice": "Kiểm tra module LIDAR và cáp nối",
+          "confidence": "Trung bình",
+          "models": {}
+        }
+      }
+    }
+  }
+}
