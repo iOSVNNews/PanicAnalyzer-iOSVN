@@ -982,7 +982,7 @@ window.onNativeAppUpdate = function (info) {
 
 function openAppUpdate() {
   const url = (appUpdateInfo && appUpdateInfo.url)
-    || 'https://github.com/longdz0311/PanicAnalyzer-iOSVN/releases/latest';
+    || 'https://github.com/iOSVNNews/PanicAnalyzer-iOSVN/releases/latest';
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'openURL', url: url });
   } else {
