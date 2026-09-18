@@ -1,0 +1,85 @@
+name: PanicAnalyzer
+options:
+  bundleIdPrefix: com.iosvn
+  deploymentTarget:
+    iOS: '15.0'
+targets:
+  PanicAnalyzer:
+    type: application
+    platform: iOS
+    sources:
+    - path: Sources
+    - path: web
+      type: folder
+    - path: assets
+      type: folder
+    - path: Assets.xcassets
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: PanicAnalyzer
+        CFBundleShortVersionString: 2.5.0
+        CFBundleVersion: 2.5.0
+        UILaunchScreen: {}
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIRequiredDeviceCapabilities:
+        - arm64
+        UISupportedInterfaceOrientations:
+        - UIInterfaceOrientationPortrait
+        CFBundleDocumentTypes:
+        - CFBundleTypeName: Apple Diagnostic Report
+          CFBundleTypeRole: Viewer
+          LSHandlerRank: Alternate
+          CFBundleTypeExtensions:
+          - ips
+          - crash
+          - panic
+          - synced
+          LSItemContentTypes:
+          - public.plain-text
+          - public.data
+        LSRequiresIPhoneOS: true
+        CFBundleDevelopmentRegion: vi
+        CFBundlePackageType: APPL
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.iosvn.panicanalyzer
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGNING_REQUIRED: 'NO'
+        CODE_SIGNING_ALLOWED: 'NO'
+        CODE_SIGN_IDENTITY: ''
+    entitlements:
+      path: PanicAnalyzer.entitlements
+      properties:
+        com.apple.security.application-groups:
+        - group.com.iosvn.panicanalyzer
+    dependencies:
+    - target: PanicAnalyzerShare
+      embed: true
+  PanicAnalyzerShare:
+    type: app-extension
+    platform: iOS
+    sources:
+    - path: ShareExtension
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: PanicAnalyzer
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 20
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+        - group.com.iosvn.panicanalyzer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.iosvn.panicanalyzer.share
+        CODE_SIGNING_REQUIRED: 'NO'
+        CODE_SIGNING_ALLOWED: 'NO'
+        CODE_SIGN_IDENTITY: ''
