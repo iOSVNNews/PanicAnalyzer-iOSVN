@@ -937,6 +937,61 @@
     "source": "VERIFIED xnu sleh.c"
   },
   {
+    "id": "kernel-exploit-attempt",
+    "family": "Software",
+    "baseSeverity": "normal",
+    "subsystemWeight": 0,
+    "escalateAt": 0,
+    "windowHours": 0,
+    "match": {
+      "anyOf": [
+        "amfid: kill() failed",
+        "AMFI: code signature validation failed",
+        "could not load shared object",
+        "mach_vm_protect failed",
+        "jailbreakd",
+        "bootstrapd",
+        "substitute-launcher",
+        "Substitute: Error",
+        "frida-server",
+        "kerneldiff",
+        "kernel execute",
+        "VM_PROT_EXECUTE|VM_PROT_WRITE",
+        "cs_invalid_page",
+        "cs_blobs_strip"
+      ]
+    },
+    "title": "Kernel panic do hoạt động phần mềm / jailbreak",
+    "suspected": "Công cụ jailbreak hoặc tweak gây lỗi kernel — không phải phần cứng",
+    "subsystem": "Phần mềm hệ thống",
+    "advice": "Panic này do phần mềm gây ra (jailbreak, tweak, hook). Không chỉ ra hỏng phần cứng. Nếu xuất hiện nhiều lần: gỡ tweak hoặc reinstall jailbreak.",
+    "confidence": "Cao",
+    "source": "AMFI.kext / XNU code-signing subsystem — xác nhận từ log thật của người dùng jailbreak"
+  },
+  {
+    "id": "kernel-code-signing-violation",
+    "family": "Software",
+    "baseSeverity": "normal",
+    "subsystemWeight": 0,
+    "escalateAt": 0,
+    "windowHours": 0,
+    "match": {
+      "anyOf": [
+        "CODE SIGNING: cs_invalid_page",
+        "CODE SIGNING: process",
+        "proc_enforce",
+        "AMFI: allowing exception",
+        "sandbox violation"
+      ]
+    },
+    "title": "Vi phạm code signing / sandbox",
+    "suspected": "Tweak hoặc app bên thứ ba vi phạm giới hạn phần mềm — không phải phần cứng",
+    "subsystem": "Phần mềm hệ thống",
+    "advice": "Không phải lỗi phần cứng. Liên quan đến tweak, app sideload hoặc jailbreak. Xem backtrace để biết process nào gây ra.",
+    "confidence": "Cao",
+    "source": "XNU AMFI/sandbox — hành vi đã xác nhận qua log từ thiết bị jailbreak"
+  },
+  {
     "id": "kernel-data-abort",
     "family": "KernelPanic",
     "baseSeverity": "warning",
