@@ -14,6 +14,8 @@ final class ShareViewController: UIViewController {
 
     private let appGroupID = "group.com.iosvn.panicanalyzer"
     private let queue = DispatchQueue(label: "share.inbox")
+    private let maxFiles = 20
+    private let maxFileBytes = 12 * 1024 * 1024
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -40,24 +42,54 @@ final class ShareViewController: UIViewController {
         var saved = 0
         let group = DispatchGroup()
 
-        for provider in providers {
+        for provider in providers.prefix(maxFiles) {
             group.enter()
-            provider.loadFileRepresentation(forTypeIdentifier: UTType.data.identifier) { url, _ in
+            guard let typeIdentifier = preferredTypeIdentifier(for: provider) else {
+                group.leave()
+                continue
+            }
+            provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, _ in
                 defer { group.leave() }
-                guard let url else { return }
-                // Bản sao tạm bị xoá ngay khi closure kết thúc -> phải copy đồng bộ
-                let name = url.lastPathComponent.isEmpty ? "shared.ips" : url.lastPathComponent
-                let dst = inbox.appendingPathComponent(self.uniqueName(name, in: inbox))
-                do {
-                    try FileManager.default.copyItem(at: url, to: dst)
-                    self.queue.sync { saved += 1 }
-                } catch { }
+                guard let data, !data.isEmpty, data.count <= self.maxFileBytes else { return }
+                let didSave = self.queue.sync {
+                    let name = self.safeName(provider.suggestedName)
+                    let destination = inbox.appendingPathComponent(self.uniqueName(name, in: inbox))
+                    do {
+                        try data.write(to: destination, options: [.atomic])
+                        try? FileManager.default.setAttributes(
+                            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                            ofItemAtPath: destination.path
+                        )
+                        return true
+                    } catch {
+                        return false
+                    }
+                }
+                if didSave { self.queue.sync { saved += 1 } }
             }
         }
 
         group.notify(queue: .main) {
             self.finish(saved: saved, reason: saved == 0 ? "Không đọc được file" : nil)
         }
+    }
+
+    private func preferredTypeIdentifier(for provider: NSItemProvider) -> String? {
+        provider.registeredTypeIdentifiers.first { identifier in
+            guard let type = UTType(identifier) else { return false }
+            return type.conforms(to: .data) || type.conforms(to: .plainText)
+        }
+    }
+
+    private func safeName(_ suggestedName: String?) -> String {
+        var name = ((suggestedName ?? "shared-log") as NSString).lastPathComponent
+            .replacingOccurrences(of: ":", with: "-")
+        if name.isEmpty { name = "shared-log" }
+        let lower = name.lowercased()
+        let supported = [".ips", ".crash", ".panic", ".synced", ".txt"]
+            .contains { lower.hasSuffix($0) }
+        if !supported { name += ".ips" }
+        return name
     }
 
     private func uniqueName(_ name: String, in dir: URL) -> String {
@@ -73,8 +105,12 @@ final class ShareViewController: UIViewController {
     }
 
     private func finish(saved: Int, reason: String?) {
-        let title = saved > 0 ? "Đã nhận \(saved) log" : "Không nhận được log"
-        let msg = saved > 0 ? "Mở PanicAnalyzer để xem kết quả phân tích." : reason
+        if saved > 0 {
+            extensionContext?.completeRequest(returningItems: nil)
+            return
+        }
+        let title = "Không nhận được log"
+        let msg = reason
         let alert = UIAlertController(title: title, message: msg, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Xong", style: .default) { _ in
             self.extensionContext?.completeRequest(returningItems: nil)

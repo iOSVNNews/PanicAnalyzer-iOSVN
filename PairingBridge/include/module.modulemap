@@ -1,0 +1,4 @@
+module PanicPairingFFI {
+  header "PanicPairingFFI.h"
+  export *
+}

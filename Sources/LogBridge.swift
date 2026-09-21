@@ -15,6 +15,13 @@ final class LogBridge: NSObject {
     private let dbNames = ["panic_rules", "i2c_rules", "sensor_database",
                            "model_database", "sample_logs"]
 
+    private enum PickerMode {
+        case logs
+        case pairing
+    }
+
+    private var pickerMode: PickerMode = .logs
+
     /// Kho luật công khai — sửa file JSON trên GitHub là app nhận ngay lần mở sau.
     private let rulesBaseURL = "https://raw.githubusercontent.com/iOSVNNews/PanicAnalyzer-iOSVN/main/assets/"
 
@@ -93,14 +100,18 @@ final class LogBridge: NSObject {
               let names = try? FileManager.default.contentsOfDirectory(atPath: inbox.path)
         else { return 0 }
         var results: [[String: String]] = []
+        var totalBytes = 0
         for n in names where isLogFile(n) {
             let f = inbox.appendingPathComponent(n)
-            if let text = try? String(contentsOf: f, encoding: .utf8) {
-                results.append(["name": n, "content": text])
+            if let data = try? Data(contentsOf: f),
+               data.count <= 12 * 1024 * 1024,
+               totalBytes + data.count <= 24 * 1024 * 1024 {
+                totalBytes += data.count
+                results.append(["name": n, "content": String(decoding: data, as: UTF8.self)])
             }
             try? FileManager.default.removeItem(at: f)
         }
-        if !results.isEmpty { deliver(results, autoScan: false) }
+        if !results.isEmpty { deliver(results, autoScan: false, source: "share") }
         return results.count
     }
 
@@ -266,6 +277,7 @@ final class LogBridge: NSObject {
         parts.append("window.__RULES_INFO__ = {\"source\":\"\(rulesSource)\",\"updatedAt\":\"\(rulesUpdatedAt)\",\"changed\":false};")
         parts.append("window.__ADMIN_TELEGRAM__ = \"\(Self.adminTelegram)\";")
         parts.append("window.__CAN_READ_LOGS__ = \(canReadSystemLogs ? "true" : "false");")
+        parts.append("window.__PAIRING_CONFIGURED__ = \(PairingLogService.shared.isConfigured ? "true" : "false");")
         parts.append("window.__IOS_VERSION__ = \"\(iosVersion)\";")
         parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
         parts.append("window.__NATIVE_BRIDGE_READY__ = true;")
@@ -281,7 +293,7 @@ final class LogBridge: NSObject {
         DispatchQueue.main.async { UIApplication.shared.open(url) }
     }
 
-    // MARK: - Quét log (chỉ chạy được trên .tipa)
+    // MARK: - Quét log trực tiếp hoặc qua Remote Pairing
 
     func scanLogs() {
         DispatchQueue.global(qos: .userInitiated).async {
@@ -296,19 +308,39 @@ final class LogBridge: NSObject {
                     results.append(["name": n, "content": text])
                 }
             }
-            self.deliver(results, autoScan: true)
+            if !results.isEmpty {
+                self.deliver(results, autoScan: true, source: "filesystem")
+                return
+            }
+
+            guard PairingLogService.shared.isConfigured else {
+                self.deliver([], autoScan: true, source: "sandbox")
+                return
+            }
+            do {
+                let pairedLogs = try PairingLogService.shared.scanLogs()
+                self.deliver(pairedLogs, autoScan: true, source: "pairing")
+            } catch {
+                self.deliver([], autoScan: true, source: "pairing")
+                self.notifyPairingStatus(
+                    configured: true,
+                    message: error.localizedDescription,
+                    isError: true
+                )
+            }
         }
     }
 
     private func isLogFile(_ name: String) -> Bool {
         let l = name.lowercased()
         return l.hasSuffix(".ips") || l.hasSuffix(".crash") || l.hasSuffix(".panic")
-            || l.contains("panic-full") || l.contains("watchdog")
+            || l.hasSuffix(".synced") || l.contains("panic-full") || l.contains("watchdog")
     }
 
     // MARK: - Nhập file thủ công (đường hợp pháp trên non-JB)
 
     func presentPicker() {
+        pickerMode = .logs
         let types: [UTType] = [
             UTType(filenameExtension: "ips") ?? .data,
             UTType(filenameExtension: "crash") ?? .data,
@@ -322,15 +354,67 @@ final class LogBridge: NSObject {
         topViewController()?.present(picker, animated: true)
     }
 
+    func presentPairingPicker() {
+        pickerMode = .pairing
+        let propertyList = UTType("com.apple.property-list") ?? .data
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [propertyList, .xml, .data],
+            asCopy: true
+        )
+        picker.allowsMultipleSelection = false
+        picker.delegate = self
+        topViewController()?.present(picker, animated: true)
+    }
+
     func importFiles(_ urls: [URL]) {
         var results: [[String: String]] = []
+        var totalBytes = 0
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            results.append(["name": url.lastPathComponent, "content": text])
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+                  data.count <= 12 * 1024 * 1024,
+                  totalBytes + data.count <= 24 * 1024 * 1024 else { continue }
+            totalBytes += data.count
+            results.append([
+                "name": url.lastPathComponent,
+                "content": String(decoding: data, as: UTF8.self)
+            ])
         }
-        deliver(results, autoScan: false)
+        deliver(results, autoScan: false, source: "file")
+    }
+
+    private func importPairingFile(_ url: URL) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try PairingLogService.shared.importPairingFile(from: url)
+                self.notifyPairingStatus(
+                    configured: true,
+                    message: "Đã lưu Remote Pairing file. Hãy bật LocalDevVPN để quét log.",
+                    isError: false
+                )
+                self.scanLogs()
+            } catch {
+                self.notifyPairingStatus(
+                    configured: PairingLogService.shared.isConfigured,
+                    message: error.localizedDescription,
+                    isError: true
+                )
+            }
+        }
+    }
+
+    private func removePairingFile() {
+        do {
+            try PairingLogService.shared.removePairingFile()
+            notifyPairingStatus(
+                configured: false,
+                message: "Đã xoá Remote Pairing file khỏi ứng dụng.",
+                isError: false
+            )
+        } catch {
+            notifyPairingStatus(configured: true, message: error.localizedDescription, isError: true)
+        }
     }
 
     // MARK: - Chia sẻ báo cáo
@@ -347,7 +431,7 @@ final class LogBridge: NSObject {
 
     // MARK: - Đẩy kết quả về JS
 
-    func deliver(_ logs: [[String: String]], autoScan: Bool) {
+    func deliver(_ logs: [[String: String]], autoScan: Bool, source: String) {
         guard let data = try? JSONSerialization.data(withJSONObject: logs),
               let jsonStr = String(data: data, encoding: .utf8) else { return }
         // Bọc thành string literal an toàn cho JS (bỏ cặp ngoặc vuông của mảng)
@@ -359,7 +443,22 @@ final class LogBridge: NSObject {
         let js = """
         (function(){
           if (window.handleNativeLogsReceived) window.handleNativeLogsReceived(\(quoted));
-          if (window.onNativeScanMode) window.onNativeScanMode(\(autoScan ? "true" : "false"), \(logs.count));
+          if (window.onNativeScanMode) window.onNativeScanMode(\(autoScan ? "true" : "false"), \(logs.count), "\(source)");
+        })();
+        """
+        DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
+    }
+
+    private func notifyPairingStatus(configured: Bool, message: String, isError: Bool) {
+        guard let data = try? JSONSerialization.data(withJSONObject: [message]),
+              let array = String(data: data, encoding: .utf8) else { return }
+        let quoted = String(array.dropFirst().dropLast())
+        let js = """
+        (function(){
+          window.__PAIRING_CONFIGURED__ = \(configured ? "true" : "false");
+          if (window.onNativePairingStatus) {
+            window.onNativePairingStatus({configured:\(configured ? "true" : "false"),error:\(isError ? "true" : "false"),message:\(quoted)});
+          }
         })();
         """
         DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
@@ -385,6 +484,8 @@ extension LogBridge: WKScriptMessageHandler {
         switch action {
         case "autoScanLogs": scanLogs()
         case "pickFiles":    presentPicker()
+        case "importPairing": presentPairingPicker()
+        case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
         case "refreshRules": refreshRules()
         case "openURL":      openExternal(body["url"] as? String ?? "")
@@ -398,6 +499,16 @@ extension LogBridge: WKScriptMessageHandler {
 extension LogBridge: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
-        importFiles(urls)
+        switch pickerMode {
+        case .logs:
+            importFiles(urls)
+        case .pairing:
+            if let url = urls.first { importPairingFile(url) }
+        }
+        pickerMode = .logs
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        pickerMode = .logs
     }
 }

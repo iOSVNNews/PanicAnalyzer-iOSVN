@@ -23,7 +23,7 @@
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
         </button>
-        <span class="version-badge">v2.5 Pro</span>
+        <span class="version-badge">v2.6 Pro</span>
       </div>
     </div>
   </header>
@@ -62,7 +62,7 @@
           <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
           <path d="M12 2a10 10 0 0 1 10 10"/>
         </svg>
-        <span id="scanStatusText">Đang sẵn sàng quét tự động tại /var/mobile/Library/Logs/...</span>
+        <span id="scanStatusText">Sẵn sàng nhận log qua Chia sẻ, tệp hoặc Remote Pairing.</span>
       </div>
     </section>
 
@@ -82,6 +82,14 @@
           <line x1="9" y1="15" x2="15" y2="15"/>
         </svg>
         <span>Chọn file .ips / .crash</span>
+      </button>
+
+      <button class="action-btn secondary" id="btnPairing" onclick="triggerPairingImport()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+          <rect x="3" y="11" width="18" height="10" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span id="pairingButtonLabel">Nhập Remote Pairing file</span>
       </button>
 
       <button class="action-btn secondary" id="btnSampleLogs" onclick="openSampleLogsModal()">
@@ -128,7 +136,7 @@
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
           <h4>Chưa có dữ liệu log</h4>
-          <p>Nhấn <b>"Tự động quét Log hệ thống"</b> để quét log từ <code>/var/mobile/Library/Logs/</code> hoặc chọn file <b>.ips</b> để kiểm tra.</p>
+          <p>Mở log trong <b>Dữ liệu phân tích</b> rồi bấm <b>Chia sẻ → PanicAnalyzer</b>, hoặc dùng Remote Pairing + LocalDevVPN để quét CrashReporter.</p>
         </div>
       </div>
     </section>

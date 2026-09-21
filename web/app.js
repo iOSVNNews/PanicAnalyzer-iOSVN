@@ -20,11 +20,13 @@ let ruleDatabases = {
 document.addEventListener('DOMContentLoaded', async () => {
   await loadDatabases();
   updateDetectedModel();
+  updatePairingButton(!!window.__PAIRING_CONFIGURED__);
 
   const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge);
-  if (hasBridge && window.__CAN_READ_LOGS__) {
-    // Máy đọc được /var/mobile/Library/Logs/ -> tự khai thác ngay
-    updateScanStatus("Đang đọc log hệ thống...", true);
+  if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__)) {
+    updateScanStatus(window.__PAIRING_CONFIGURED__
+      ? "Đang kết nối CrashReporter qua pairing..."
+      : "Đang đọc log hệ thống...", true);
     armScanTimeout();
     try {
       window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
@@ -85,19 +87,16 @@ function updateScanStatus(text, isSpinning) {
   }
 }
 
-// Native Bridge Callback: Called by Frida script when logs are scanned
+// Native Bridge Callback: called after direct, pairing, picker or Share Sheet import.
 window.handleNativeLogsReceived = function(logsJsonStr) {
   clearScanTimeout();
   try {
     const logs = typeof logsJsonStr === 'string' ? JSON.parse(logsJsonStr) : logsJsonStr;
     if (!logs.length) {
       showEmptyState();
-      showToast('Không tìm thấy file log nào — thử nạp thủ công', 4000);
       return;
     }
     setDemoBanner(false);
-    updateScanStatus(`Đã phân tích ${logs.length} log thật từ máy.`, false);
-    showToast(`✓ Đọc được ${logs.length} file log từ máy`, 3000);
     parseAndIngestLogs(logs);
   } catch (e) {
     console.error("Error parsing native logs:", e);
@@ -115,6 +114,14 @@ function triggerAutoScan() {
   } else {
     showEmptyState();
   }
+}
+
+function triggerPairingImport() {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'importPairing' });
+    return;
+  }
+  showToast('Tính năng pairing chỉ có trong ứng dụng iOS.', 3500);
 }
 
 
@@ -790,13 +797,15 @@ function exportSanitizedReport() {
 // 6. Native File Input Handling
 // ---------------------------------------------------------------------------
 let scanTimeoutId = null;
-const SANDBOX_HINT = 'Chưa có log nào. App không đọc được log hệ thống vì sandbox iOS chặn. '
-  + 'Lấy log thật: Cài đặt \u2192 Quyền riêng tư & Bảo mật \u2192 Phân tích & Cải thiện '
-  + '\u2192 Dữ liệu phân tích \u2192 chọn file panic \u2192 Chia sẻ \u2192 PanicAnalyzer.';
+const SANDBOX_HINT = 'Chưa có log. Cách nhanh nhất: mở log trong Dữ liệu phân tích, bấm Chia sẻ '
+  + '\u2192 PanicAnalyzer. Có thể nhập Remote Pairing file và bật LocalDevVPN để quét CrashReporter.';
 
 function armScanTimeout() {
   clearTimeout(scanTimeoutId);
-  scanTimeoutId = setTimeout(() => showEmptyState(), 4000);   // không để spinner treo
+  scanTimeoutId = setTimeout(() => {
+    showEmptyState();
+    showToast('Kết nối quá thời gian — kiểm tra LocalDevVPN rồi thử lại.', 4500);
+  }, 45000);
 }
 function clearScanTimeout() { clearTimeout(scanTimeoutId); scanTimeoutId = null; }
 
@@ -809,16 +818,37 @@ function triggerFilePicker() {
   if (input) input.click();
 }
 
-window.onNativeScanMode = function(isAutoScan, count) {
+window.onNativeScanMode = function(isAutoScan, count, source) {
   clearScanTimeout();
   if (count > 0) {
     setDemoBanner(false);
-    updateScanStatus(`Đã phân tích ${count} log thật từ máy.`, false);
-    showToast(`✓ Đọc được ${count} file log từ máy`, 3000);
+    const sourceLabel = source === 'pairing' ? 'qua pairing'
+      : (source === 'share' ? 'từ Share Sheet' : (source === 'file' ? 'từ tệp' : 'từ máy'));
+    updateScanStatus(`Đã phân tích ${count} log thật ${sourceLabel}.`, false);
+    showToast(`✓ Đọc được ${count} file log ${sourceLabel}`, 3000);
   } else {
     showEmptyState();
-    showToast('Không đọc được log hệ thống — iOS sandbox chặn. Nạp thủ công.', 4500);
+    if (source === 'pairing') {
+      showToast('Không tìm thấy crash report qua pairing.', 4000);
+    } else {
+      showToast('iOS sandbox chặn đọc trực tiếp — hãy dùng Chia sẻ hoặc pairing.', 4500);
+    }
   }
+};
+
+function updatePairingButton(configured) {
+  const label = document.getElementById('pairingButtonLabel');
+  if (label) label.innerText = configured
+    ? 'Thay Remote Pairing file'
+    : 'Nhập Remote Pairing file';
+}
+
+window.onNativePairingStatus = function(status) {
+  clearScanTimeout();
+  updatePairingButton(!!status.configured);
+  if (status.message) updateScanStatus(status.message, false);
+  showToast(status.error ? `Pairing: ${status.message}` : `✓ ${status.message}`,
+    status.error ? 6000 : 4000);
 };
 
 

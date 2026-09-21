@@ -3,3 +3,5 @@ DerivedData/
 *.xcodeproj
 *.ipa
 .DS_Store
+PairingBridge/target/
+PairingBridge/PanicPairingFFI.xcframework/

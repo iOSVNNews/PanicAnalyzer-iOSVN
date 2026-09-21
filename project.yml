@@ -18,8 +18,9 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: PanicAnalyzer
-        CFBundleShortVersionString: 2.5.0
-        CFBundleVersion: 2.5.0
+        CFBundleShortVersionString: 2.6.0
+        CFBundleVersion: 2.6.0
+        NSLocalNetworkUsageDescription: Kết nối tới LocalDevVPN trên chính thiết bị để đọc crash report bằng Remote Pairing.
         UILaunchScreen: {}
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
@@ -49,6 +50,7 @@ targets:
         CODE_SIGNING_REQUIRED: 'NO'
         CODE_SIGNING_ALLOWED: 'NO'
         CODE_SIGN_IDENTITY: ''
+        OTHER_LDFLAGS: $(inherited) -lc++
     entitlements:
       path: PanicAnalyzer.entitlements
       properties:
@@ -57,6 +59,8 @@ targets:
     dependencies:
     - target: PanicAnalyzerShare
       embed: true
+    - framework: PairingBridge/PanicPairingFFI.xcframework
+      embed: false
   PanicAnalyzerShare:
     type: app-extension
     platform: iOS
@@ -72,6 +76,7 @@ targets:
           NSExtensionAttributes:
             NSExtensionActivationRule:
               NSExtensionActivationSupportsFileWithMaxCount: 20
+              NSExtensionActivationSupportsText: true
     entitlements:
       path: ShareExtension/ShareExtension.entitlements
       properties:

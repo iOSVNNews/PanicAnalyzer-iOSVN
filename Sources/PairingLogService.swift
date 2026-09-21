@@ -1,0 +1,225 @@
+//  PairingLogService.swift
+//  Read-only access to Apple's CrashReporter AFC view over LocalDevVPN + RSD.
+
+import Foundation
+import PanicPairingFFI
+
+final class PairingLogService {
+
+    static let shared = PairingLogService()
+
+    private let deviceIP = "10.7.0.1"
+    private let rsdPort: UInt16 = 49152
+    private let maxFiles = 100
+    private let maxFileBytes = 12 * 1024 * 1024
+    private let maxTotalBytes = 24 * 1024 * 1024
+    private let maxEntries = 1_500
+
+    enum PairingError: LocalizedError {
+        case missingFile
+        case invalidFile(String)
+        case bridge(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingFile:
+                return "Chưa có Remote Pairing file. Hãy nhập rp_pairing_file.plist trước."
+            case .invalidFile(let detail):
+                return "Remote Pairing file không hợp lệ: \(detail)"
+            case .bridge(let detail):
+                return detail
+            }
+        }
+    }
+
+    private var pairingDirectory: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("Pairing", isDirectory: true)
+    }
+
+    private var pairingFileURL: URL? {
+        pairingDirectory?.appendingPathComponent("rp_pairing_file.plist")
+    }
+
+    var isConfigured: Bool {
+        guard let url = pairingFileURL else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Copies only the credential bytes into Application Support. The file is
+    /// excluded from backup and protected while the device is locked.
+    func importPairingFile(from source: URL) throws {
+        let scoped = source.startAccessingSecurityScopedResource()
+        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+
+        let data = try Data(contentsOf: source, options: .mappedIfSafe)
+        guard data.count <= 1024 * 1024 else {
+            throw PairingError.invalidFile("file lớn hơn 1 MB")
+        }
+        try validatePlist(data)
+
+        guard let directory = pairingDirectory, let destination = pairingFileURL else {
+            throw PairingError.invalidFile("không mở được Application Support")
+        }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        let staging = directory.appendingPathComponent(".pairing-import-\(UUID().uuidString).plist")
+        try data.write(to: staging, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        do {
+            try staging.path.withCString { path in
+                try check(pa_pairing_validate(path))
+            }
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
+            } else {
+                try FileManager.default.moveItem(at: staging, to: destination)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: staging)
+            throw error
+        }
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: destination.path
+        )
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDestination = destination
+        try mutableDestination.setResourceValues(values)
+
+    }
+
+    func removePairingFile() throws {
+        guard let url = pairingFileURL else { return }
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
+    /// The remote service exposes CrashReporter as a virtual AFC root. It does
+    /// not grant arbitrary access to /var or even all of Library/Logs.
+    func scanLogs() throws -> [[String: String]] {
+        guard let pairingURL = pairingFileURL,
+              FileManager.default.fileExists(atPath: pairingURL.path) else {
+            throw PairingError.missingFile
+        }
+
+        var session: OpaquePointer?
+        try pairingURL.path.withCString { pairingPath in
+            try deviceIP.withCString { ip in
+                try check(pa_session_connect(pairingPath, ip, rsdPort, &session))
+            }
+        }
+        guard let session else {
+            throw PairingError.bridge("RSD tunnel không trả về phiên làm việc hợp lệ.")
+        }
+        defer { pa_session_free(session) }
+
+        struct PendingDirectory {
+            let path: String
+            let depth: Int
+        }
+
+        var pending = [PendingDirectory(path: "", depth: 0)]
+        var visited = Set<String>()
+        var results: [[String: String]] = []
+        var totalBytes = 0
+        var entryCount = 0
+
+        while !pending.isEmpty,
+              results.count < maxFiles,
+              totalBytes < maxTotalBytes,
+              entryCount < maxEntries {
+            let directory = pending.removeFirst()
+            guard visited.insert(directory.path).inserted else { continue }
+
+            let entries: [String]
+            do {
+                entries = try list(session: session, directory: directory.path)
+            } catch {
+                if directory.depth == 0 { throw error }
+                continue
+            }
+            entryCount += entries.count
+
+            for entry in entries {
+                guard entry != ".", entry != "..", !entry.contains("/") else { continue }
+                let path = directory.path.isEmpty ? entry : "\(directory.path)/\(entry)"
+                if isLogFile(entry) {
+                    guard results.count < maxFiles, totalBytes < maxTotalBytes else { break }
+                    guard let data = try? pull(session: session, path: path),
+                          !data.isEmpty,
+                          data.count <= maxFileBytes,
+                          totalBytes + data.count <= maxTotalBytes else { continue }
+                    totalBytes += data.count
+                    results.append([
+                        "name": path,
+                        "content": String(decoding: data, as: UTF8.self)
+                    ])
+                } else if directory.depth < 3 {
+                    pending.append(PendingDirectory(path: path, depth: directory.depth + 1))
+                }
+            }
+        }
+        return results
+    }
+
+    private func validatePlist(_ data: Data) throws {
+        let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        guard let dictionary = plist as? [String: Any],
+              let publicKey = dictionary["public_key"] as? Data, publicKey.count == 32,
+              let privateKey = dictionary["private_key"] as? Data, privateKey.count == 32,
+              let identifier = dictionary["identifier"] as? String, !identifier.isEmpty else {
+            throw PairingError.invalidFile(
+                "cần public_key/private_key 32 byte và identifier (đây không phải pairing record kiểu cũ)"
+            )
+        }
+    }
+
+    private func list(session: OpaquePointer, directory: String) throws -> [String] {
+        var entries: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+        var count = 0
+        let error: UnsafeMutablePointer<CChar>?
+        if directory.isEmpty {
+            error = pa_session_list(session, nil, &entries, &count)
+        } else {
+            error = ("/" + directory).withCString {
+                pa_session_list(session, $0, &entries, &count)
+            }
+        }
+        try check(error)
+        guard let entries else { return [] }
+        defer { pa_string_array_free(entries, count) }
+        return (0..<count).compactMap { index in
+            entries[index].flatMap { String(validatingUTF8: $0) }
+        }
+    }
+
+    private func pull(session: OpaquePointer, path: String) throws -> Data {
+        var bytes: UnsafeMutablePointer<UInt8>?
+        var length = 0
+        try path.withCString {
+            try check(pa_session_pull(session, $0, &bytes, &length))
+        }
+        guard let bytes, length > 0 else { return Data() }
+        defer { pa_bytes_free(bytes, length) }
+        return Data(bytes: bytes, count: length)
+    }
+
+    private func check(_ error: UnsafeMutablePointer<CChar>?) throws {
+        guard let error else { return }
+        let message = String(validatingUTF8: error) ?? "Lỗi pairing không xác định"
+        pa_error_free(error)
+        throw PairingError.bridge(message)
+    }
+
+    private func isLogFile(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.hasSuffix(".ips") || lower.hasSuffix(".crash")
+            || lower.hasSuffix(".panic") || lower.hasSuffix(".synced")
+            || lower.contains("panic-full") || lower.contains("watchdog")
+    }
+}

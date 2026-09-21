@@ -27,6 +27,11 @@ jobs:
       - name: Cài XcodeGen
         run: brew install xcodegen
 
+      - name: Dựng cầu nối Remote Pairing
+        run: |
+          rustup target add aarch64-apple-ios
+          bash PairingBridge/build-xcframework.sh
+
       - name: Tạo project Xcode
         run: |
           set +e
@@ -118,6 +123,8 @@ jobs:
 
           - Phiên bản: $APP_VERSION
           - Bộ luật chẩn đoán: $RULES lỗi
+          - Nhận log nhanh qua Share Sheet
+          - PoC đọc CrashReporter qua Remote Pairing + LocalDevVPN
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

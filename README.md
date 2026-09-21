@@ -10,7 +10,7 @@ Dành cho kỹ thuật viên sửa iPhone và người dùng muốn biết máy 
 **[Tải PanicAnalyzer-unsigned.ipa](../../releases/latest/download/PanicAnalyzer-unsigned.ipa)**
 
 File chưa ký — ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) rồi cài
-như bình thường. Không cần jailbreak.
+như bình thường. Không cần jailbreak để nhập log bằng Share Sheet.
 
 ## Chức năng
 
@@ -35,6 +35,14 @@ chỉ I2C ở đời máy khác lại là con IC khác — app không đoán b�
 **Xuất báo cáo đã lọc.** Báo cáo bỏ số sê-ri, UDID và thông tin cá nhân trước khi
 chia sẻ.
 
+**Nhận log nhanh từ Share Sheet.** Trong màn hình Dữ liệu phân tích của iOS, chọn
+một hoặc nhiều log rồi dùng **Chia sẻ → PanicAnalyzer**. Share Extension chuyển
+log thẳng vào app, không cần mở trình chọn Tệp.
+
+**PoC Remote Pairing.** Có thể nhập `rp_pairing_file.plist`, bật LocalDevVPN rồi
+quét dịch vụ CrashReportCopyMobile qua RSD. Luồng này dành cho iOS 17 trở lên,
+bao gồm mục tiêu iOS 27, và không yêu cầu jailbreak.
+
 **Tự cập nhật bộ luật.** Mỗi lần mở, app tải bộ luật mới nhất từ kho mã — không
 cần cài lại ứng dụng. Mất mạng thì dùng bản đã tải trước đó.
 
@@ -50,16 +58,40 @@ Chạy từ **iOS 15.0 trở lên**. Việc đọc log *tự động* phụ thu�
 
 | Cách cài | Phiên bản iOS | Tự đọc log |
 |---|---|---|
-| `.ipa` ký chứng chỉ thường | 15.0 trở lên, kể cả iOS 26 | Không — nạp thủ công |
+| `.ipa` ký chứng chỉ thường | 15.0 trở lên | Có — qua Share Sheet |
+| `.ipa` + Remote Pairing + LocalDevVPN | 17.0 trở lên, mục tiêu iOS 27 | PoC quét CrashReporter |
 | `.tipa` qua TrollStore | 15.0 – 16.6.1, 16.7 RC, 17.0 | Có |
 | Máy đã jailbreak | tuỳ công cụ | Có |
 
 ## Cách nạp log
 
-**Cài đặt → Quyền riêng tư & Bảo mật → Phân tích & Cải thiện → Dữ liệu phân tích**
-→ chọn file `panic-full-…` → Chia sẻ → PanicAnalyzer.
+Nhanh nhất: **Cài đặt → Quyền riêng tư & Bảo mật → Phân tích & Cải thiện → Dữ
+liệu phân tích** → chọn file `panic-full-…` → **Chia sẻ → PanicAnalyzer**. Share
+Extension tự lưu log và đóng; mở PanicAnalyzer để xem kết quả.
 
 Hoặc dùng nút **Chọn file .ips / .crash** trong app.
+
+### Quét bằng Remote Pairing
+
+1. Tạo/xuất Remote Pairing record dạng `rp_pairing_file.plist` cho chính thiết
+   bị. Đây là plist có `public_key`, `private_key` (mỗi khóa 32 byte) và
+   `identifier`; pairing record kiểu MobileDevice cũ không dùng được.
+2. Trong PanicAnalyzer, bấm **Nhập Remote Pairing file**.
+3. Bật LocalDevVPN/StosVPN với endpoint mặc định `10.7.0.1:49152`.
+4. Bấm **Tự động quét Log hệ thống**.
+
+Pairing file là thông tin xác thực nhạy cảm. App lưu file trong Application
+Support với file protection, loại khỏi bản sao lưu và không gửi nội dung ra
+ngoài. Muốn hủy quyền, xóa app hoặc thay pairing record.
+
+### Phạm vi `/var`
+
+Remote Pairing trong bản PoC chỉ kết nối dịch vụ
+`com.apple.crashreportcopymobile.shim.remote`. Dịch vụ này xuất một cây AFC ảo
+tương ứng với CrashReporter, thường là
+`/var/mobile/Library/Logs/CrashReporter/` và các thư mục con như `Retired`.
+Nó **không** cấp quyền duyệt toàn bộ `/var`, không đọc tùy ý mọi tệp trong
+`/var/mobile/Library/Logs/`, và không phải Filza chạy trong sandbox.
 
 ## Bộ luật
 
@@ -78,13 +110,17 @@ kiểm chứng được ghi rõ trong trường `source` và để độ tin c�
 
 ## Tự dựng
 
-Cần macOS và Xcode 16 trở lên:
+Cần macOS, Xcode 16 trở lên, XcodeGen và Rust:
 
 ```bash
 brew install xcodegen
+rustup target add aarch64-apple-ios
+bash PairingBridge/build-xcframework.sh
 xcodegen generate
 open PanicAnalyzer.xcodeproj
 ```
+
+Bridge ghim thư viện MIT `jkcoxson/idevice`; xem [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Giấy phép
 

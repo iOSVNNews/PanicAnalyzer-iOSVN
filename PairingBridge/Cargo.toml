@@ -1,0 +1,23 @@
+[package]
+name = "panic_pairing_ffi"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Small C bridge for read-only iOS crash report access over Remote Pairing"
+
+[lib]
+name = "panic_pairing_ffi"
+crate-type = ["staticlib"]
+
+[dependencies]
+libc = "0.2"
+idevice-ffi = { git = "https://github.com/jkcoxson/idevice.git", rev = "d32c8189c51c2789496b0768039419c3705498c3", package = "idevice-ffi", default-features = false, features = [
+  "aws-lc",
+  "crashreportcopymobile",
+  "tunnel_tcp_stack",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "symbols"
