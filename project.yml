@@ -19,7 +19,7 @@ targets:
       properties:
         CFBundleDisplayName: PanicAnalyzer
         CFBundleShortVersionString: 2.6.0
-        CFBundleVersion: 2.6.0
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSLocalNetworkUsageDescription: Kết nối tới LocalDevVPN trên chính thiết bị để đọc crash report bằng Remote Pairing.
         UILaunchScreen: {}
         UIFileSharingEnabled: true
@@ -46,6 +46,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.iosvn.panicanalyzer
+        CURRENT_PROJECT_VERSION: 1
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGNING_REQUIRED: 'NO'
         CODE_SIGNING_ALLOWED: 'NO'

@@ -55,6 +55,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
             clean build > build.log 2>&1
@@ -75,7 +76,13 @@ jobs:
           zip -qry PanicAnalyzer-unsigned.ipa Payload
           ls -lh PanicAnalyzer-unsigned.ipa
           VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist")
+          if [ "$BUILD" != "${GITHUB_RUN_NUMBER}" ]; then
+            echo "::error::CFBundleVersion=$BUILD, expected ${GITHUB_RUN_NUMBER}"
+            exit 1
+          fi
           echo "APP_VERSION=$VER" >> $GITHUB_ENV
+          echo "APP_BUILD=$BUILD" >> $GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
         with:
