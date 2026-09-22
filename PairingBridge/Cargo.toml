@@ -11,6 +11,8 @@ crate-type = ["staticlib"]
 
 [dependencies]
 libc = "0.2"
+tokio = { version = "1", features = ["time"] }
+idevice = { git = "https://github.com/jkcoxson/idevice.git", rev = "d32c8189c51c2789496b0768039419c3705498c3", default-features = false, features = ["afc", "aws-lc"] }
 idevice-ffi = { git = "https://github.com/jkcoxson/idevice.git", rev = "d32c8189c51c2789496b0768039419c3705498c3", package = "idevice-ffi", default-features = false, features = [
   "aws-lc",
   "crashreportcopymobile",

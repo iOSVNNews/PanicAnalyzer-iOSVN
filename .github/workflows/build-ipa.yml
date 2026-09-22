@@ -30,6 +30,7 @@ jobs:
       - name: Dựng cầu nối Remote Pairing
         run: |
           rustup target add aarch64-apple-ios
+          cargo test --manifest-path PairingBridge/Cargo.toml --lib
           bash PairingBridge/build-xcframework.sh
 
       - name: Tạo project Xcode
@@ -124,7 +125,7 @@ jobs:
           - Phiên bản: $APP_VERSION
           - Bộ luật chẩn đoán: $RULES lỗi
           - Nhận log nhanh qua Share Sheet
-          - PoC đọc CrashReporter qua Remote Pairing + LocalDevVPN
+          - iOS 27 tự ghép đôi và đọc CrashReporter qua LocalDevVPN
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

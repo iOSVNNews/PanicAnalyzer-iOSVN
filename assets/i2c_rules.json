@@ -1,41 +1,41 @@
 {
   "_meta": {
-    "note": "Äá»a chá» I2C KHÃNG ÄÆ°á»£c map tuyá»t Äá»i thÃ nh linh kiá»n. CÃ¹ng má»t Äá»a chá» cÃ³ Ã½ nghÄ©a khÃ¡c nhau giá»¯a cÃ¡c Äá»i mÃ¡y. Má»i káº¿t quáº£ d sÆ°á»i $ÄÃ¢y lÃ  NGHI NGá». Chá» nÃ¢ng Äá» tin cáº­y lÃªn Cao khi cÃ³ má»¥c trÃ¹ng trong 'models' cho ÄÃºng model Äang phÃ¢n tÃ­ch.",
-    "defaultConfidence": "Tháº¥p",
-    "genericConfidence": "Trung bÃ¬nh"
+    "note": "Địa chỉ I2C KHÔNG được map tuyệt đối thành linh kiện. Cùng một địa chỉ có ý nghĩa khác nhau giữa các đời máy. Mọi kết quả dưới đây là NGHI NGỜ. Chỉ nâng độ tin cậy lên Cao khi có mục trùng trong 'models' cho đúng model đang phân tích.",
+    "defaultConfidence": "Thấp",
+    "genericConfidence": "Trung bình"
   },
   "buses": {
     "i2c0": {
       "name": "I2C Bus 0 (Power & Sensors)",
       "addresses": {
         "0x48": {
-          "component": "Cáº£m biáº¿n Barometer / Nhiá»t Äá» (Prs0/Thermal)",
-          "advice": "Kiá»m tra cá»¥m cÃ¡p sáº¡c, cÃ¡p phÃ­m nguá»n hoáº·c IC cáº£m biáº¿n Ã¡p suáº¥t",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Cảm biến Barometer / Nhiệt độ (Prs0/Thermal)",
+          "advice": "Kiểm tra cụm cáp sạc, cáp phím nguồn hoặc IC cảm biến áp suất",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x38": {
-          "component": "Cáº£m biáº¿n Tiá»m cáº­n & Ãnh sÃ¡ng (ALS/Proximity)",
-          "advice": "Kiá»m tra cá»¥m cÃ¡p loa trong/FaceID",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Cảm biến Tiệm cận & Ánh sáng (ALS/Proximity)",
+          "advice": "Kiểm tra cụm cáp loa trong/FaceID",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x10": {
-          "component": "IC Quáº£n lÃ½ sáº¡c (Tristar / Hydra / Tigris)",
-          "advice": "Kiá»m tra cÃ¡p sáº¡c, IC sáº¡c hoáº·c ÄÆ°á»ng VBUS USB",
-          "confidence": "Trung bÃ¬nh",
+          "component": "IC Quản lý sạc (Tristar / Hydra / Tigris)",
+          "advice": "Kiểm tra cáp sạc, IC sạc hoặc đường VBUS USB",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x34": {
-          "component": "IC Nguá»n phá»¥ (Sub-PMIC)",
-          "advice": "Äo cháº¡m cÃ¡c tá»¥ lá»c xung quanh IC nguá»n phá»¥",
-          "confidence": "Trung bÃ¬nh",
+          "component": "IC Nguồn phụ (Sub-PMIC)",
+          "advice": "Đo chạm các tụ lọc xung quanh IC nguồn phụ",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x6b": {
-          "component": "IC Sáº¡c nhanh / BQ Charger",
-          "advice": "Kiá»m tra máº¡ch sáº¡c vÃ  cuá»n cáº£m sáº¡c",
-          "confidence": "Trung bÃ¬nh",
+          "component": "IC Sạc nhanh / BQ Charger",
+          "advice": "Kiểm tra mạch sạc và cuộn cảm sạc",
+          "confidence": "Trung bình",
           "models": {}
         }
       }
@@ -44,27 +44,27 @@
       "name": "I2C Bus 1 (Display & FaceID)",
       "addresses": {
         "0x20": {
-          "component": "IC Äiá»u khiá»n MÃ n hÃ¬nh & Cáº£m á»©ng",
-          "advice": "Kiá»m tra socket mÃ n hÃ¬nh, thá»­ thay mÃ n hÃ¬nh khÃ¡c",
-          "confidence": "Trung bÃ¬nh",
+          "component": "IC Điều khiển Màn hình & Cảm ứng",
+          "advice": "Kiểm tra socket màn hình, thử thay màn hình khác",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x50": {
-          "component": "EEPROM MÃ n hÃ¬nh (True Tone)",
-          "advice": "Kiá»m tra máº¡ch náº¡p True Tone hoáº·c cÃ¡p mÃ n hÃ¬nh",
-          "confidence": "Trung bÃ¬nh",
+          "component": "EEPROM Màn hình (True Tone)",
+          "advice": "Kiểm tra mạch nạp True Tone hoặc cáp màn hình",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x30": {
-          "component": "Cá»¥m FaceID TrueDepth (Dot Projector / Flood)",
-          "advice": "Kiá»m tra cÃ¡p Face ID, cÃ¡p cáº£m biáº¿n loa trÃªn",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Cụm FaceID TrueDepth (Dot Projector / Flood)",
+          "advice": "Kiểm tra cáp Face ID, cáp cảm biến loa trên",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x70": {
-          "component": "Bá» má» rá»ng I2C Multiplexer",
-          "advice": "Äo Ã¡p 1.8V cáº¥p cho chip chuyá»n máº¡ch I2C",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Bộ mở rộng I2C Multiplexer",
+          "advice": "Đo áp 1.8V cấp cho chip chuyển mạch I2C",
+          "confidence": "Trung bình",
           "models": {}
         }
       }
@@ -73,21 +73,21 @@
       "name": "I2C Bus 2 (Audio & Haptics)",
       "addresses": {
         "0x40": {
-          "component": "IC Ãm thanh (Audio Codec / Speaker Amp)",
-          "advice": "Kiá»m tra IC chuÃ´ng, IC Ã¢m thanh chÃ­nh",
-          "confidence": "Trung bÃ¬nh",
+          "component": "IC Âm thanh (Audio Codec / Speaker Amp)",
+          "advice": "Kiểm tra IC chuông, IC âm thanh chính",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x68": {
-          "component": "Cáº£m biáº¿n Con quay há»i chuyá»n (IMU Gyro/Accel)",
-          "advice": "Kiá»m tra IC la bÃ n/gia tá»c",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Cảm biến Con quay hồi chuyển (IMU Gyro/Accel)",
+          "advice": "Kiểm tra IC la bàn/gia tốc",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x76": {
-          "component": "Cáº£m biáº¿n Ãp suáº¥t cao cáº¥p",
-          "advice": "Kiá»m tra ÄÆ°á»ng Ã¡p cáº¥p cho sensor",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Cảm biến Áp suất cao cấp",
+          "advice": "Kiểm tra đường áp cấp cho sensor",
+          "confidence": "Trung bình",
           "models": {}
         }
       }
@@ -96,57 +96,24 @@
       "name": "I2C Bus 3 (Cameras & Sensors)",
       "addresses": {
         "0x18": {
-          "component": "Camera sau chÃ­nh (Wide Camera)",
-          "advice": "Kiá»m tra socket camera sau, thay thá»­ cá»¥m camera",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Camera sau chính (Wide Camera)",
+          "advice": "Kiểm tra socket camera sau, thay thử cụm camera",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x1a": {
-          "component": "Camera trÆ°á»c (Front Selfie Camera)",
-          "advice": "Kiá»m tra socket camera trÆ°á»c",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Camera trước (Front Selfie Camera)",
+          "advice": "Kiểm tra socket camera trước",
+          "confidence": "Trung bình",
           "models": {}
         },
         "0x28": {
-          "component": "Cáº£m biáº¿n LIDAR Scanner (ban Pro)",
-          "advice": "Kiá»m tra module LIDAR vÃ  cÃ¡p ná»i",
-          "confidence": "Trung bÃ¬nh",
+          "component": "Cảm biến LIDAR Scanner (bản Pro)",
+          "advice": "Kiểm tra module LIDAR và cáp nối",
+          "confidence": "Trung bình",
           "models": {}
         }
       }
     }
-  },
-  "device_names": {
-    "ad5860": {
-      "component": "Taptic Engine / IC Äiá»u khiá»n ráº¡ng (Sakonnet AD5860)",
-      "advice": "Kiá»m tra theo thá»© tá»±: â  Flex chÃ¢n sáº¡c Lightning â¡ Taptic Engine â¢ ÄÆ°á»ng I2C0 trÃªn mainboard. TrÃªn dÃ²ng XS/XS Max/XR, AD5860 lÃ  IC Sakonnet Äiá»u khiá»n haptic, Äi theo dÃ¢y flex chÃ¢n sáº¡c.",
-      "confidence": "Cao",
-      "priority": "Flex chÃ¢n sáº¡c â Taptic Engine â ÄÆ°á»ng I2C0/mainboard",
-      "models": {
-        "iPhone11,2": "XS â flex chÃ¢n sáº¡c hoáº·c Taptic Engine",
-        "iPhone11,4": "XS Max â flex chÃ¢n sáº¡c hoáº·c Taptic Engine",
-        "iPhone11,6": "XS Max â flex chÃ¢n sáº¡c hoáº·c Taptic Engine",
-        "iPhone11,8": "XR â flex chÃ¢n sáº¡c hoáº·c Taptic Engine",
-        "iPhone12,1": "iPhone 11 â flex chÃ¢n sáº¡c hoáº·c Taptic Engine",
-        "iPhone12,3": "iPhone 11 Pro â flex chÃ¢n sáº¡c hoáº·c Taptic Engine",
-        "iPhone12,5": "iPhone 11 Pro Max â flex chÃ¢n sáº¡c hoáº·c Taptic Engine"
-      }
-    },
-    "roswell": {
-      "component": "IC Äiá»u khiá»n cáº£m á»©ng (Touch Controller â Roswell)",
-      "advice": "Kiá»m tra cÃ¡p cáº£m á»©ng, socket mÃ n hÃ¬nh. Thá»­ thay mpè[0ëÚ0èXÈ1$xnàÈøn¨ZH¸nêËÛÛY[ÙHØ[È[Ù[ÈßBK]Y[Ë\ÜXZÙ\]ÜÂÛÛ\Û[ØH°êÈØHZHÚH
-ÜÜXZÙ\HYXÙHÚxnàÛHHðè\ØH°êÛØÚÙ]ØHÛÈøné[Hðè\XÙRQÛÛY[ÙHØ[È[Ù[ÈßBK]Y[Ë\ÜXZÙ\XÝÛHÂÛÛ\Û[ØH1¬8næÚH
-ÝÛHÜXZÙ\HYXÙHÚxnàÛHHØH1¬8næÚH°è^Ú0èøn¨XËÛÛY[ÙHØ[È[Ù[ÈßBKZXÌHÂÛÛ\Û[ZXÜÈÚ0ë[
-[X\HZXÜÜÛJHYXÙHÚxnàÛHHZXÜÈ°è^Ú0èøn¨XÈYÚ[ËÛÛY[ÙHØ[È[Ù[ÈßBKZXÌÂÛÛ\Û[ZXÜÈ8néH
-ÙXÛÛ\HZXÜÜÛJHYXÙHÚxnàÛHHZXÜÈ8néK1¬8nç[È¸n¬[H8nçÈxn­ÝØ]Høn­ØÈøn¨[°êÛÛY[ÙHØ[È[Ù[ÈßBKÌÂÛÛ\Û[øn¨ÛHxn¯Û0è\Ýxn©]
-\ÛY]\8 %Ì
-HYXÙHøn¨ÛHxn¯Û0è\Ý8n©]1¬8nç[È¸n¬[HÛÈøné[H^Ú0èøn¨XËÚxnàÛHH^øn¨XÈ±¬8næØËÛÛY[ÙHØ[È[Ù[ÈßBK[ÌÂÛÛ\Û[øn¨ÛHxn¯Û0à[ðè[È	xnáÛHøn«[
-SËÔÞ[Z]H8 %[Ì
-HYXÙHÚxnàÛHHøné[Høn¨ÛHxn¯Ûøn¨[ØH°êðè\XÙRQÛÛY[ÙHØ[È[Ù[ÈßBKÞ\ÌÂÛÛ\Û[ÛÛ]X^H8näÚHÚ^xnàÛ
-Þ\ÜØÛÜH8 %Þ\Ì
-HYXÙHÚxnàÛHHPÈSUH
-Þ\ËÐXØÙ[øn¯Ý8nèÜ
-K^HPÈøn­ØÈXZ[Ø\¸n¯ÝH8nçÚKÛÛY[ÙHØ[È[Ù[ÈßBKXØÙ[ÂÛÛ\Û[øn¨ÛHxn¯ÛÚXH8näXÈ
-XØÙ[\ÛY]\8 %XØÙ[
-HYXÙHÚxnàÛHHPÈSUKÛÛY[ÙHØ[È[Ù[ÈßBKÜÂÛÛ\Û[øn¨ÛHxn¯ÛxnáÝ1$xnæH[
-]\H\X[8 %ÜHYXÙHÚxnàÛHHøn¯Ý»àdZH[ÛÛXÝÜ[ÛÛY[ÙH[È°ë[Ù[ÈßBK\XÜÈÂÛÛ\Û[8náÈ8nä[È\XÈÈ\XÈ[Ú[HYXÙHÚxnàÛHH\XÈ[Ú[H°è^øn¯Ý¸näZKÛÛY[ÙHØ[È[Ù[ÈßBBBB
+  }
+}

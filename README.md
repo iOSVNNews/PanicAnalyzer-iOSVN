@@ -39,9 +39,10 @@ chia sẻ.
 một hoặc nhiều log rồi dùng **Chia sẻ → PanicAnalyzer**. Share Extension chuyển
 log thẳng vào app, không cần mở trình chọn Tệp.
 
-**PoC Remote Pairing.** Có thể nhập `rp_pairing_file.plist`, bật LocalDevVPN rồi
-quét dịch vụ CrashReportCopyMobile qua RSD. Luồng này dành cho iOS 17 trở lên,
-bao gồm mục tiêu iOS 27, và không yêu cầu jailbreak.
+**Tự ghép đôi trên iOS 27.** Khi LocalDevVPN đang bật, app tự tạo khóa Remote
+Pairing ngay trên thiết bị, yêu cầu iOS xác nhận, lưu pairing record được bảo vệ
+và quét CrashReportCopyMobile qua RSD. Không cần tạo hoặc chép pairing file từ
+máy tính, không cần jailbreak.
 
 **Tự cập nhật bộ luật.** Mỗi lần mở, app tải bộ luật mới nhất từ kho mã — không
 cần cài lại ứng dụng. Mất mạng thì dùng bản đã tải trước đó.
@@ -59,7 +60,7 @@ Chạy từ **iOS 15.0 trở lên**. Việc đọc log *tự động* phụ thu�
 | Cách cài | Phiên bản iOS | Tự đọc log |
 |---|---|---|
 | `.ipa` ký chứng chỉ thường | 15.0 trở lên | Có — qua Share Sheet |
-| `.ipa` + Remote Pairing + LocalDevVPN | 17.0 trở lên, mục tiêu iOS 27 | PoC quét CrashReporter |
+| `.ipa` + LocalDevVPN | iOS 27 trở lên | Tự ghép đôi và quét CrashReporter |
 | `.tipa` qua TrollStore | 15.0 – 16.6.1, 16.7 RC, 17.0 | Có |
 | Máy đã jailbreak | tuỳ công cụ | Có |
 
@@ -71,22 +72,24 @@ Extension tự lưu log và đóng; mở PanicAnalyzer để xem kết quả.
 
 Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 
-### Quét bằng Remote Pairing
+### Quét tự động qua LocalDevVPN trên iOS 27
 
-1. Tạo/xuất Remote Pairing record dạng `rp_pairing_file.plist` cho chính thiết
-   bị. Đây là plist có `public_key`, `private_key` (mỗi khóa 32 byte) và
-   `identifier`; pairing record kiểu MobileDevice cũ không dùng được.
-2. Trong PanicAnalyzer, bấm **Nhập Remote Pairing file**.
-3. Bật LocalDevVPN/StosVPN với endpoint mặc định `10.7.0.1:49152`.
-4. Bấm **Tự động quét Log hệ thống**.
+1. Bật LocalDevVPN/StosVPN với endpoint mặc định `10.7.0.1:49152`.
+2. Mở PanicAnalyzer. App tự tạo Remote Pairing record trên thiết bị và bắt đầu
+   ghép đôi. Chấp nhận yêu cầu xác nhận nếu iOS hiển thị.
+3. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
+   lần sau chỉ cần bật LocalDevVPN; không phải ghép đôi lại.
 
-Pairing file là thông tin xác thực nhạy cảm. App lưu file trong Application
-Support với file protection, loại khỏi bản sao lưu và không gửi nội dung ra
-ngoài. Muốn hủy quyền, xóa app hoặc thay pairing record.
+Nếu record hết hiệu lực, bấm **Ghép đôi lại thiết bị này**. Việc nhập file thủ
+công chỉ còn là đường tương thích cho hệ thống cũ, không phải quy trình iOS 27.
+
+Pairing record là thông tin xác thực nhạy cảm. App tạo và lưu nó trong
+Application Support với file protection, loại khỏi bản sao lưu và không gửi nội
+dung ra ngoài. Muốn hủy quyền, xóa app hoặc bấm ghép đôi lại để thay record.
 
 ### Phạm vi `/var`
 
-Remote Pairing trong bản PoC chỉ kết nối dịch vụ
+Remote Pairing chỉ kết nối dịch vụ
 `com.apple.crashreportcopymobile.shim.remote`. Dịch vụ này xuất một cây AFC ảo
 tương ứng với CrashReporter, thường là
 `/var/mobile/Library/Logs/CrashReporter/` và các thư mục con như `Retired`.

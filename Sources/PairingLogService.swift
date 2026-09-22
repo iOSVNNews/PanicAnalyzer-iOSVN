@@ -14,6 +14,7 @@ final class PairingLogService {
     private let maxFileBytes = 12 * 1024 * 1024
     private let maxTotalBytes = 24 * 1024 * 1024
     private let maxEntries = 1_500
+    private let operationLock = NSLock()
 
     enum PairingError: LocalizedError {
         case missingFile
@@ -23,7 +24,7 @@ final class PairingLogService {
         var errorDescription: String? {
             switch self {
             case .missingFile:
-                return "Chưa có Remote Pairing file. Hãy nhập rp_pairing_file.plist trước."
+                return "Thiết bị này chưa hỗ trợ tự ghép đôi. Hãy dùng Share Sheet hoặc nhập pairing file."
             case .invalidFile(let detail):
                 return "Remote Pairing file không hợp lệ: \(detail)"
             case .bridge(let detail):
@@ -39,6 +40,15 @@ final class PairingLogService {
 
     private var pairingFileURL: URL? {
         pairingDirectory?.appendingPathComponent("rp_pairing_file.plist")
+    }
+
+    private var workingPairingFileURL: URL? {
+        pairingDirectory?.appendingPathComponent(".rp_pairing_working.plist")
+    }
+
+    /// iOS 27 can complete Remote Pairing on-device through LocalDevVPN.
+    var supportsOnDevicePairing: Bool {
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
     }
 
     var isConfigured: Bool {
@@ -93,30 +103,44 @@ final class PairingLogService {
     }
 
     func removePairingFile() throws {
-        guard let url = pairingFileURL else { return }
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
+        for url in [pairingFileURL, workingPairingFileURL].compactMap({ $0 }) {
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
         }
     }
 
     /// The remote service exposes CrashReporter as a virtual AFC root. It does
     /// not grant arbitrary access to /var or even all of Library/Logs.
     func scanLogs() throws -> [[String: String]] {
-        guard let pairingURL = pairingFileURL,
-              FileManager.default.fileExists(atPath: pairingURL.path) else {
-            throw PairingError.missingFile
-        }
+        operationLock.lock()
+        defer { operationLock.unlock() }
+
+        guard isConfigured || supportsOnDevicePairing else { throw PairingError.missingFile }
+        let pairingURL = try prepareWorkingPairingFile()
+        defer { try? FileManager.default.removeItem(at: pairingURL) }
 
         var session: OpaquePointer?
-        try pairingURL.path.withCString { pairingPath in
-            try deviceIP.withCString { ip in
-                try check(pa_session_connect(pairingPath, ip, rsdPort, &session))
+        do {
+            try pairingURL.path.withCString { pairingPath in
+                try deviceIP.withCString { ip in
+                    try check(pa_session_connect(pairingPath, ip, rsdPort, &session))
+                }
             }
+        } catch {
+            // Pair-setup may have completed even if opening CrashReporter then
+            // failed. Preserve only a record the native bridge can parse.
+            if FileManager.default.fileExists(atPath: pairingURL.path),
+               nativePairingFileIsValid(pairingURL) {
+                try? promoteWorkingPairingFile(pairingURL)
+            }
+            throw error
         }
         guard let session else {
             throw PairingError.bridge("RSD tunnel không trả về phiên làm việc hợp lệ.")
         }
         defer { pa_session_free(session) }
+        try promoteWorkingPairingFile(pairingURL)
 
         struct PendingDirectory {
             let path: String
@@ -165,6 +189,54 @@ final class PairingLogService {
             }
         }
         return results
+    }
+
+    /// Uses a staging file so an interrupted first pairing never replaces the
+    /// last working credential. The Rust bridge creates the record itself when
+    /// the staging path does not exist.
+    private func prepareWorkingPairingFile() throws -> URL {
+        guard let directory = pairingDirectory,
+              let destination = pairingFileURL,
+              let working = workingPairingFileURL else {
+            throw PairingError.invalidFile("không mở được Application Support")
+        }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        try? FileManager.default.removeItem(at: working)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.copyItem(at: destination, to: working)
+        }
+        return working
+    }
+
+    private func promoteWorkingPairingFile(_ working: URL) throws {
+        guard let destination = pairingFileURL,
+              FileManager.default.fileExists(atPath: working.path) else {
+            throw PairingError.invalidFile("pairing record chưa được tạo")
+        }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            _ = try FileManager.default.replaceItemAt(destination, withItemAt: working)
+        } else {
+            try FileManager.default.moveItem(at: working, to: destination)
+        }
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: destination.path
+        )
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDestination = destination
+        try mutableDestination.setResourceValues(values)
+    }
+
+    private func nativePairingFileIsValid(_ url: URL) -> Bool {
+        let error = url.path.withCString { pa_pairing_validate($0) }
+        guard let error else { return true }
+        pa_error_free(error)
+        return false
     }
 
     private func validatePlist(_ data: Data) throws {

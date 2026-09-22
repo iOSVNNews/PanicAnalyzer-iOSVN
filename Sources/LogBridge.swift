@@ -278,6 +278,7 @@ final class LogBridge: NSObject {
         parts.append("window.__ADMIN_TELEGRAM__ = \"\(Self.adminTelegram)\";")
         parts.append("window.__CAN_READ_LOGS__ = \(canReadSystemLogs ? "true" : "false");")
         parts.append("window.__PAIRING_CONFIGURED__ = \(PairingLogService.shared.isConfigured ? "true" : "false");")
+        parts.append("window.__AUTO_PAIRING__ = \(PairingLogService.shared.supportsOnDevicePairing ? "true" : "false");")
         parts.append("window.__IOS_VERSION__ = \"\(iosVersion)\";")
         parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
         parts.append("window.__NATIVE_BRIDGE_READY__ = true;")
@@ -313,17 +314,26 @@ final class LogBridge: NSObject {
                 return
             }
 
-            guard PairingLogService.shared.isConfigured else {
+            guard PairingLogService.shared.isConfigured
+                    || PairingLogService.shared.supportsOnDevicePairing else {
                 self.deliver([], autoScan: true, source: "sandbox")
                 return
             }
+            let wasConfigured = PairingLogService.shared.isConfigured
             do {
                 let pairedLogs = try PairingLogService.shared.scanLogs()
+                if !wasConfigured && PairingLogService.shared.isConfigured {
+                    self.notifyPairingStatus(
+                        configured: true,
+                        message: "Đã tự ghép đôi và lưu pairing record trên thiết bị.",
+                        isError: false
+                    )
+                }
                 self.deliver(pairedLogs, autoScan: true, source: "pairing")
             } catch {
                 self.deliver([], autoScan: true, source: "pairing")
                 self.notifyPairingStatus(
-                    configured: true,
+                    configured: PairingLogService.shared.isConfigured,
                     message: error.localizedDescription,
                     isError: true
                 )
@@ -417,6 +427,26 @@ final class LogBridge: NSObject {
         }
     }
 
+    private func pairThisDevice() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try PairingLogService.shared.removePairingFile()
+                self.notifyPairingStatus(
+                    configured: false,
+                    message: "Đang ghép đôi trên thiết bị; hãy bật LocalDevVPN và chấp nhận yêu cầu của iOS.",
+                    isError: false
+                )
+                self.scanLogs()
+            } catch {
+                self.notifyPairingStatus(
+                    configured: PairingLogService.shared.isConfigured,
+                    message: error.localizedDescription,
+                    isError: true
+                )
+            }
+        }
+    }
+
     // MARK: - Chia sẻ báo cáo
 
     func share(_ text: String) {
@@ -485,6 +515,7 @@ extension LogBridge: WKScriptMessageHandler {
         case "autoScanLogs": scanLogs()
         case "pickFiles":    presentPicker()
         case "importPairing": presentPairingPicker()
+        case "pairDevice":    pairThisDevice()
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
         case "refreshRules": refreshRules()

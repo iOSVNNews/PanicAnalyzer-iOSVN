@@ -23,10 +23,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   updatePairingButton(!!window.__PAIRING_CONFIGURED__);
 
   const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge);
-  if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__)) {
+  if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__ || window.__AUTO_PAIRING__)) {
     updateScanStatus(window.__PAIRING_CONFIGURED__
       ? "Đang kết nối CrashReporter qua pairing..."
-      : "Đang đọc log hệ thống...", true);
+      : (window.__AUTO_PAIRING__
+        ? "Đang tự ghép đôi qua LocalDevVPN..."
+        : "Đang đọc log hệ thống..."), true);
     armScanTimeout();
     try {
       window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
@@ -118,7 +120,9 @@ function triggerAutoScan() {
 
 function triggerPairingImport() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'importPairing' });
+    updateScanStatus('Đang ghép đôi trên thiết bị qua LocalDevVPN...', true);
+    armScanTimeout();
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'pairDevice' });
     return;
   }
   showToast('Tính năng pairing chỉ có trong ứng dụng iOS.', 3500);
@@ -798,7 +802,7 @@ function exportSanitizedReport() {
 // ---------------------------------------------------------------------------
 let scanTimeoutId = null;
 const SANDBOX_HINT = 'Chưa có log. Cách nhanh nhất: mở log trong Dữ liệu phân tích, bấm Chia sẻ '
-  + '\u2192 PanicAnalyzer. Có thể nhập Remote Pairing file và bật LocalDevVPN để quét CrashReporter.';
+  + '\u2192 PanicAnalyzer. Trên iOS 27, bật LocalDevVPN để app tự ghép đôi và quét CrashReporter.';
 
 function armScanTimeout() {
   clearTimeout(scanTimeoutId);
@@ -839,8 +843,8 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
 function updatePairingButton(configured) {
   const label = document.getElementById('pairingButtonLabel');
   if (label) label.innerText = configured
-    ? 'Thay Remote Pairing file'
-    : 'Nhập Remote Pairing file';
+    ? 'Ghép đôi lại thiết bị này'
+    : 'Ghép đôi thiết bị này';
 }
 
 window.onNativePairingStatus = function(status) {
