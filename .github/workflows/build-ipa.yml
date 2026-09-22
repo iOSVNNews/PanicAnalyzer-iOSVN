@@ -45,6 +45,24 @@ jobs:
             exit 1
           fi
 
+      - name: Chuẩn bị thông tin phiên bản
+        run: |
+          APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Info.plist)
+          RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
+          cat > assets/app_version.json <<EOF
+          {
+            "version": "$APP_VERSION",
+            "build": "${GITHUB_RUN_NUMBER}",
+            "commit": "${GITHUB_SHA::7}",
+            "rules": $RULES,
+            "url": "https://github.com/${GITHUB_REPOSITORY}/releases/latest",
+            "notes": "Bộ luật $RULES lỗi"
+          }
+          EOF
+          cat assets/app_version.json
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+          echo "APP_BUILD=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+
       - name: Build (không ký)
         run: |
           set +e
@@ -77,12 +95,10 @@ jobs:
           ls -lh PanicAnalyzer-unsigned.ipa
           VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
           BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist")
-          if [ "$BUILD" != "${GITHUB_RUN_NUMBER}" ]; then
-            echo "::error::CFBundleVersion=$BUILD, expected ${GITHUB_RUN_NUMBER}"
+          if [ "$VER" != "$APP_VERSION" ] || [ "$BUILD" != "$APP_BUILD" ]; then
+            echo "::error::IPA metadata is $VER ($BUILD), expected $APP_VERSION ($APP_BUILD)"
             exit 1
           fi
-          echo "APP_VERSION=$VER" >> $GITHUB_ENV
-          echo "APP_BUILD=$BUILD" >> $GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
         with:
@@ -91,17 +107,6 @@ jobs:
 
       - name: Ghi phiên bản cho tính năng tự kiểm tra cập nhật
         run: |
-          RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
-          cat > assets/app_version.json <<EOF
-          {
-            "version": "$APP_VERSION",
-            "build": "${GITHUB_RUN_NUMBER}",
-            "commit": "${GITHUB_SHA::7}",
-            "rules": $RULES,
-            "url": "https://github.com/${GITHUB_REPOSITORY}/releases/latest",
-            "notes": "Bộ luật $RULES lỗi"
-          }
-          EOF
           cat assets/app_version.json
           if [ -z "$(git status --porcelain assets/app_version.json)" ]; then
             echo "phien ban khong doi"
