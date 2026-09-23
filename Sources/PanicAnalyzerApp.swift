@@ -21,6 +21,8 @@ struct PanicAnalyzerApp: App {
             // Share Extension ghi file vào App Group -> nuốt khi app quay lại
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 LogBridge.shared.drainSharedInbox()
+                // Pairing file iLoader / Files / Finder đặt vào Documents của app
+                LogBridge.shared.importPairingFromDocuments(atLaunch: false)
             }
             // Tải bộ luật mới nhất, mỗi lần mở app một lần
             if !didRefreshRules {

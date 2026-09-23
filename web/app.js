@@ -35,6 +35,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateDetectedModel();
   applyJailbreakMode();
   updatePairingButton(!!window.__PAIRING_CONFIGURED__);
+  // Pairing file iLoader/Files đặt vào Documents đã được nhập lúc mở app
+  if (window.__PAIRING_NOTICE__ && window.__PAIRING_NOTICE__.message) {
+    const n = window.__PAIRING_NOTICE__;
+    showToast(n.error ? `Pairing: ${n.message}` : `✓ ${n.message}`, n.error ? 6000 : 4500);
+  }
 
   const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge);
   if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__ || window.__AUTO_PAIRING__)) {

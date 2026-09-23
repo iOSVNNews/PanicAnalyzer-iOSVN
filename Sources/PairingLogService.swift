@@ -86,20 +86,62 @@ final class PairingLogService {
         hasRemotePairingRecord || hasLockdownRecord
     }
 
+    /// What an import stored. iLoader (iOS 17.4+) exports ONE plist holding both
+    /// the lockdown record (HostID, certificates…) and the RPPairing keys
+    /// (public_key, private_key, identifier), so both halves are kept.
+    struct ImportResult {
+        var remote = false
+        var lockdown = false
+
+        var summary: String {
+            switch (remote, lockdown) {
+            case (true, true):
+                return Loc.s("lockdown + Remote Pairing", "lockdown + Remote Pairing", "lockdown + Remote Pairing")
+            case (false, true):
+                return Loc.s("lockdown", "lockdown", "lockdown")
+            default:
+                return Loc.s("Remote Pairing", "Remote Pairing", "Remote Pairing")
+            }
+        }
+    }
+
+    private static let remoteKeys: Set<String> = ["public_key", "private_key", "identifier", "alt_irk"]
+    private static let lockdownMarkers = ["HostID", "HostCertificate", "DeviceCertificate", "RootCertificate", "HostPrivateKey"]
+
+    /// Cheap content check used to route files that arrive through the Share
+    /// Sheet, "Open in…" or the app's Documents folder.
+    static func looksLikePairingFile(_ data: Data) -> Bool {
+        guard data.count <= 1024 * 1024,
+              let dict = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil))
+                as? [String: Any] else { return false }
+        return dict["public_key"] is Data || lockdownMarkers.filter { dict[$0] != nil }.count >= 2
+    }
+
     /// Copies only the credential bytes into Application Support. The file is
     /// excluded from backup and protected while the device is locked.
-    func importPairingFile(from source: URL) throws {
-        operationLock.lock()
-        defer { operationLock.unlock() }
+    @discardableResult
+    func importPairingFile(from source: URL) throws -> ImportResult {
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-
         let data = try Data(contentsOf: source, options: .mappedIfSafe)
+        return try importPairingData(data)
+    }
+
+    @discardableResult
+    func importPairingData(_ data: Data) throws -> ImportResult {
+        operationLock.lock()
+        defer { operationLock.unlock() }
+
         guard data.count <= 1024 * 1024 else {
             throw PairingError.invalidFile(Loc.s("file lớn hơn 1 MB", "file is larger than 1 MB", "文件大于 1 MB"))
         }
+        guard let root = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil))
+                as? [String: Any] else {
+            throw PairingError.invalidFile(Loc.s("không phải file plist", "not a plist file", "不是 plist 文件"))
+        }
         guard let directory = pairingDirectory,
-              let destination = isRemotePairingPlist(data) ? pairingFileURL : lockdownRecordURL else {
+              let remoteURL = pairingFileURL,
+              let lockdownURL = lockdownRecordURL else {
             throw PairingError.invalidFile(Loc.s("không mở được Application Support", "cannot open Application Support", "无法打开 Application Support"))
         }
         try FileManager.default.createDirectory(
@@ -107,27 +149,60 @@ final class PairingLogService {
             withIntermediateDirectories: true,
             attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
         )
-        let staging = directory.appendingPathComponent(".pairing-import-\(UUID().uuidString).plist")
-        try data.write(to: staging, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        do {
-            try staging.path.withCString { path in
-                if destination == pairingFileURL {
-                    try check(pa_pairing_validate(path))
-                } else {
-                    do {
-                        try check(pa_lockdown_validate(path))
-                    } catch {
-                        throw PairingError.invalidFile(
-                            Loc.s("không phải Remote Pairing record (public_key/private_key/identifier) "
-                                    + "cũng không phải lockdown pairing file (HostID, certificates…)",
-                                  "neither a Remote Pairing record (public_key/private_key/identifier) "
-                                    + "nor a lockdown pairing file (HostID, certificates…)",
-                                  "既不是 Remote Pairing 记录（public_key/private_key/identifier），"
-                                    + "也不是 lockdown 配对文件（HostID、证书…）")
-                        )
-                    }
-                }
+
+        var result = ImportResult()
+        var problems: [String] = []
+
+        // Half 1: RPPairing keys.
+        if Self.isRemotePairingDictionary(root) {
+            let remote = root.filter { Self.remoteKeys.contains($0.key) }
+            do {
+                try install(remote, to: remoteURL, in: directory, validate: pa_pairing_validate)
+                result.remote = true
+            } catch {
+                problems.append("Remote Pairing: \(error.localizedDescription)")
             }
+        }
+
+        // Half 2: the classic lockdown record (everything else).
+        if Self.lockdownMarkers.contains(where: { root[$0] != nil }) {
+            var lockdown = root.filter { !Self.remoteKeys.contains($0.key) }
+            // idevice requires WiFiMACAddress; some exporters omit it and the
+            // CoreDeviceProxy route never uses it.
+            if lockdown["WiFiMACAddress"] == nil { lockdown["WiFiMACAddress"] = "00:00:00:00:00:00" }
+            do {
+                try install(lockdown, to: lockdownURL, in: directory, validate: pa_lockdown_validate)
+                result.lockdown = true
+            } catch {
+                problems.append("lockdown: \(error.localizedDescription)")
+            }
+        }
+
+        guard result.remote || result.lockdown else {
+            let detail = problems.isEmpty
+                ? Loc.s("không phải Remote Pairing record (public_key/private_key/identifier) "
+                            + "cũng không phải lockdown pairing file (HostID, certificates…)",
+                        "neither a Remote Pairing record (public_key/private_key/identifier) "
+                            + "nor a lockdown pairing file (HostID, certificates…)",
+                        "既不是 Remote Pairing 记录（public_key/private_key/identifier），"
+                            + "也不是 lockdown 配对文件（HostID、证书…）")
+                : problems.joined(separator: "; ")
+            throw PairingError.invalidFile(detail)
+        }
+        // A freshly imported record may target a restarted remotepairingd.
+        if result.remote { LocalVPNConnection.forgetWorkingPort() }
+        return result
+    }
+
+    /// Writes one half as XML, lets the Rust bridge parse it, then swaps it in.
+    /// The previous record is only replaced when the new one is valid.
+    private func install(_ dictionary: [String: Any], to destination: URL, in directory: URL,
+                         validate: (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?) throws {
+        let bytes = try PropertyListSerialization.data(fromPropertyList: dictionary, format: .xml, options: 0)
+        let staging = directory.appendingPathComponent(".pairing-import-\(UUID().uuidString).plist")
+        try bytes.write(to: staging, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        do {
+            try staging.path.withCString { try check(validate($0)) }
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
             } else {
@@ -137,15 +212,60 @@ final class PairingLogService {
             try? FileManager.default.removeItem(at: staging)
             throw error
         }
-        try FileManager.default.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: destination.path
-        )
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        var mutableDestination = destination
-        try mutableDestination.setResourceValues(values)
+        try protect(destination)
+    }
 
+    private static func isRemotePairingDictionary(_ dictionary: [String: Any]) -> Bool {
+        guard let publicKey = dictionary["public_key"] as? Data, publicKey.count == 32,
+              let privateKey = dictionary["private_key"] as? Data, privateKey.count == 32,
+              let identifier = dictionary["identifier"] as? String, !identifier.isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    /// Pairing files dropped into the app's Documents folder: by iLoader's
+    /// "Place" button (it writes Documents/pairingFile.plist once PanicAnalyzer
+    /// is on its list), by the Files app, or by Finder file sharing. They are
+    /// imported and then deleted, because Documents is visible to the user and
+    /// to any computer the phone trusts.
+    func importFromDocuments() -> (result: ImportResult?, error: String?, file: String?) {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return (nil, nil, nil) }
+        var candidates: [URL] = []
+        for sub in ["", "pairing file", "Pairing", "SideStore/Documents"] {
+            let dir = sub.isEmpty ? docs : docs.appendingPathComponent(sub, isDirectory: true)
+            guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { continue }
+            for name in names {
+                let lower = name.lowercased()
+                guard lower.hasSuffix(".plist") || lower.hasSuffix(".mobiledevicepairing")
+                        || lower.hasSuffix(".pairing") else { continue }
+                candidates.append(dir.appendingPathComponent(name))
+            }
+        }
+        let failedKey = "pairingDocumentsFailed"
+        var failed = Set(UserDefaults.standard.stringArray(forKey: failedKey) ?? [])
+        defer { UserDefaults.standard.set(Array(failed), forKey: failedKey) }
+
+        for url in candidates {
+            guard let attrs = try? fm.attributesOfItem(atPath: url.path),
+                  let size = attrs[.size] as? Int, size > 0, size <= 1024 * 1024,
+                  let data = try? Data(contentsOf: url),
+                  Self.looksLikePairingFile(data) else { continue }
+            let stamp = "\(url.lastPathComponent)|\(size)|\((attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+            do {
+                let result = try importPairingData(data)
+                try? fm.removeItem(at: url)
+                failed.remove(stamp)
+                return (result, nil, url.lastPathComponent)
+            } catch {
+                // Report a broken file once, not on every launch.
+                if failed.insert(stamp).inserted {
+                    return (nil, error.localizedDescription, url.lastPathComponent)
+                }
+            }
+        }
+        return (nil, nil, nil)
     }
 
     private var activeHost: PairableHostService?
@@ -212,25 +332,37 @@ final class PairingLogService {
         let deviceIP = LocalVPNConnection.deviceAddress
 
         var session: OpaquePointer?
-        var remoteError: Error?
-        if hasRemotePairingRecord {
+        var failures: [String] = []
+
+        // 1. A stored/imported lockdown record (iLoader, computer, or minted
+        //    earlier) over CoreDeviceProxy: the route that works on-device,
+        //    because it needs no inbound tunnel listener.
+        if hasLockdownRecord, let recordURL = lockdownRecordURL {
+            do {
+                session = try connectLockdown(recordURL: recordURL, deviceIP: deviceIP)
+            } catch {
+                failures.append("CoreDeviceProxy: " + error.localizedDescription)
+            }
+        }
+        // 2. RPPairing tunnel (record from Settings > Developer on iOS 27, or the
+        //    Remote Pairing half of an iLoader file).
+        if session == nil, hasRemotePairingRecord {
             do {
                 session = try openRemotePairingSession(deviceIP: deviceIP)
             } catch {
-                remoteError = error
-                // The VPN itself is down: the lockdown route needs it as well.
+                // The VPN itself is down: the other routes need it as well.
                 if let vpn = error as? LocalVPNConnection.ConnectionError, !vpn.refused { throw error }
+                failures.append("Remote Pairing: " + error.localizedDescription)
             }
         }
+        // 3. Ask lockdownd for a new record (iOS shows "Tin cậy máy tính này?").
         if session == nil {
             do {
-                session = try openLockdownSession(deviceIP: deviceIP)
+                session = try openLockdownSession(deviceIP: deviceIP, reuseStored: false)
             } catch {
-                guard let remoteError else { throw error }
-                throw PairingError.bridge(remoteError.localizedDescription
-                    + "\n\n" + Loc.s("Đường dự phòng CoreDeviceProxy cũng lỗi: ",
-                                     "The CoreDeviceProxy fallback also failed: ",
-                                     "CoreDeviceProxy 备用通道也失败：") + error.localizedDescription)
+                guard !failures.isEmpty else { throw error }
+                failures.append(Loc.s("Tạo record mới: ", "New record: ", "新建记录：") + error.localizedDescription)
+                throw PairingError.bridge(failures.joined(separator: "\n\n"))
             }
         }
         guard let session else {
@@ -328,12 +460,12 @@ final class PairingLogService {
     /// session on 62078. Needs no inbound tunnel listener, which on-device
     /// RPPairing lacks. Uses the stored/imported classic record, otherwise asks
     /// lockdownd for one (iOS shows "Tin cậy máy tính này?").
-    private func openLockdownSession(deviceIP: String) throws -> OpaquePointer {
+    private func openLockdownSession(deviceIP: String, reuseStored: Bool = true) throws -> OpaquePointer {
         guard let directory = pairingDirectory, let recordURL = lockdownRecordURL else {
             throw PairingError.invalidFile(Loc.s("không mở được Application Support", "cannot open Application Support", "无法打开 Application Support"))
         }
         var lastError: Error?
-        if hasLockdownRecord {
+        if reuseStored, hasLockdownRecord {
             do {
                 return try connectLockdown(recordURL: recordURL, deviceIP: deviceIP)
             } catch {
@@ -471,17 +603,6 @@ final class PairingLogService {
         guard let error else { return true }
         pa_error_free(error)
         return false
-    }
-
-    private func isRemotePairingPlist(_ data: Data) -> Bool {
-        guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-              let dictionary = plist as? [String: Any],
-              let publicKey = dictionary["public_key"] as? Data, publicKey.count == 32,
-              let privateKey = dictionary["private_key"] as? Data, privateKey.count == 32,
-              let identifier = dictionary["identifier"] as? String, !identifier.isEmpty else {
-            return false
-        }
-        return true
     }
 
     private func list(session: OpaquePointer, directory: String) throws -> [String] {

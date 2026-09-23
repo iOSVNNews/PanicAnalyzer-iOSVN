@@ -121,11 +121,29 @@ Trên máy JB hoặc cài bằng TrollStore (.tipa), app đọc thẳng log từ
 4. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
    lần sau chỉ cần bật LocalDevVPN; không phải ghép đôi lại.
 
-**Hai đường kết nối.** Sau khi ghép đôi, app thử tunnel RPPairing trước. Trên
-chính iPhone, tunnel này có thể bị iOS đóng ngay sau TLS (listener chỉ mở trên
-Wi-Fi — SideInstaller đã ghi nhận). Khi đó app tự chuyển sang **CoreDeviceProxy**
-qua lockdownd cổng `62078` (cách StikDebug dùng) và xin lockdownd tạo pair record
-— iOS có thể hỏi **Tin cậy máy tính này?**, hãy chọn Tin cậy.
+**Thứ tự kết nối.** Có lockdown pair record (nhập từ iLoader/máy tính hoặc đã
+tạo trước đó) thì app dùng **CoreDeviceProxy** qua lockdownd cổng `62078` trước
+(cách StikDebug dùng) — đường này chạy được ngay trên chính iPhone. Không được
+mới thử tunnel RPPairing: trên chính máy, tunnel này có thể bị iOS đóng ngay sau
+TLS (listener chỉ mở trên Wi-Fi — SideInstaller đã ghi nhận). Cuối cùng app xin
+lockdownd tạo pair record mới — iOS có thể hỏi **Tin cậy máy tính này?**, hãy
+chọn Tin cậy.
+
+### Dùng pairing file từ iLoader
+
+iLoader (iOS 17.4+) xuất **một** file gộp cả lockdown record và khoá Remote
+Pairing; app tách và lưu cả hai. Ba cách đưa file vào app:
+
+1. **iLoader → Export** lưu `pairingFile.plist`, chuyển sang iPhone (AirDrop,
+   iCloud Drive…), rồi trong app vào **Cài đặt → Nhập file pairing thủ công**.
+2. Chép file vào **Tệp → Trên iPhone → PanicAnalyzer** (hoặc kéo vào mục
+   Chia sẻ tệp của Finder/iTunes). Mở app là tự nhận; file được xoá khỏi
+   Documents sau khi nhập vì đó là thông tin xác thực.
+3. Trong Tệp, **Chia sẻ → PanicAnalyzer** hoặc **Mở bằng PanicAnalyzer**.
+
+Nút **Place** của iLoader chỉ hiện những app có trong danh sách viết sẵn của
+iLoader (so theo tên hiển thị). Khi iLoader thêm `PanicAnalyzer` →
+`pairingFile.plist`, nút Place ghi thẳng vào Documents và app tự nhận như cách 2.
 
 Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này** để ghép đôi lại. Record cũ chỉ
 bị thay khi ghép đôi mới thành công; lỗi mạng không xóa khóa cũ.

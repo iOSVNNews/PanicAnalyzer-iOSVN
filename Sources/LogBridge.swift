@@ -154,8 +154,14 @@ final class LogBridge: NSObject {
         else { return 0 }
         var results: [[String: String]] = []
         var totalBytes = 0
-        for n in names where isLogFile(n) {
+        for n in names where isLogFile(n) || isPairingName(n) {
             let f = inbox.appendingPathComponent(n)
+            if let data = try? Data(contentsOf: f), PairingLogService.looksLikePairingFile(data) {
+                // Pairing file shared from Files/AirDrop (the extension names it *.ips).
+                try? FileManager.default.removeItem(at: f)
+                importPairing(data: data, name: n)
+                continue
+            }
             if let data = try? Data(contentsOf: f),
                data.count <= 12 * 1024 * 1024,
                totalBytes + data.count <= 24 * 1024 * 1024 {
@@ -325,6 +331,7 @@ final class LogBridge: NSObject {
     // MARK: - Bơm dữ liệu vào trang trước khi app.js chạy
 
     func injectionScript() -> String {
+        importPairingFromDocuments(atLaunch: true)
         var parts = ["window.__DEVICE_MODEL__ = \"\(deviceIdentifier)\";"]
         if let json = databaseJSON() { parts.append("window.__NATIVE_DB__ = \(json);") }
         parts.append("window.__RULES_INFO__ = {\"source\":\"\(rulesSource)\",\"updatedAt\":\"\(rulesUpdatedAt)\",\"changed\":false};")
@@ -335,6 +342,12 @@ final class LogBridge: NSObject {
         parts.append("window.__IOS_VERSION__ = \"\(iosVersion)\";")
         parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
         parts.append("window.__APP_LANG__ = \"\(Loc.lang)\";")
+        if let notice = launchPairingNotice,
+           let data = try? JSONSerialization.data(withJSONObject: [notice.message]),
+           let array = String(data: data, encoding: .utf8) {
+            parts.append("window.__PAIRING_NOTICE__ = {message:\(array.dropFirst().dropLast()),error:\(notice.isError)};")
+            launchPairingNotice = nil
+        }
         parts.append("window.__NATIVE_BRIDGE_READY__ = true;")
         return parts.joined(separator: "\n")
     }
@@ -459,13 +472,20 @@ final class LogBridge: NSObject {
     }
 
     func importFiles(_ urls: [URL]) {
+        var routedPairing = false
         var results: [[String: String]] = []
         var totalBytes = 0
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
-                  data.count <= 12 * 1024 * 1024,
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { continue }
+            // "Mở bằng PanicAnalyzer" trên file pairing từ iLoader / máy tính.
+            if PairingLogService.looksLikePairingFile(data) {
+                importPairing(data: Data(data), name: url.lastPathComponent)
+                routedPairing = true
+                continue
+            }
+            guard data.count <= 12 * 1024 * 1024,
                   totalBytes + data.count <= 24 * 1024 * 1024 else { continue }
             totalBytes += data.count
             results.append([
@@ -473,21 +493,73 @@ final class LogBridge: NSObject {
                 "content": String(decoding: data, as: UTF8.self)
             ])
         }
-        deliver(results, autoScan: false, source: "file")
+        if !(results.isEmpty && routedPairing) { deliver(results, autoScan: false, source: "file") }
+    }
+
+    private func isPairingName(_ name: String) -> Bool {
+        let l = name.lowercased()
+        return l.hasSuffix(".plist") || l.hasSuffix(".mobiledevicepairing")
+    }
+
+    /// Nhập pairing file đã đọc sẵn (Share Sheet, "Mở bằng…").
+    private func importPairing(data: Data, name: String) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let result = try PairingLogService.shared.importPairingData(data)
+                self.reportPairingImport(result, file: name)
+            } catch {
+                self.notifyPairingStatus(configured: PairingLogService.shared.isConfigured,
+                                         message: error.localizedDescription, isError: true)
+            }
+        }
+    }
+
+    private func pairingImportMessage(_ result: PairingLogService.ImportResult, file: String?) -> String {
+        let name = file.map { " (\($0))" } ?? ""
+        return Loc.s("Đã nhận pairing file\(name): \(result.summary). Bật LocalDevVPN để quét log.",
+                     "Pairing file received\(name): \(result.summary). Turn on LocalDevVPN to scan logs.",
+                     "已接收配对文件\(name)：\(result.summary)。打开 LocalDevVPN 以扫描日志。")
+    }
+
+    private func reportPairingImport(_ result: PairingLogService.ImportResult, file: String?) {
+        notifyPairingStatus(configured: true, message: pairingImportMessage(result, file: file), isError: false)
+        scanLogs()
+    }
+
+    /// Thông báo lần nhập pairing từ Documents lúc khởi động (trang chưa tải xong).
+    private var launchPairingNotice: (message: String, isError: Bool)?
+
+    /// Nhận pairing file iLoader / Files / Finder đặt vào thư mục Documents của app.
+    /// `atLaunch`: chạy đồng bộ trước khi trang web tải để cờ ghép đôi đã đúng.
+    func importPairingFromDocuments(atLaunch: Bool) {
+        let work = {
+            let outcome = PairingLogService.shared.importFromDocuments()
+            if let result = outcome.result {
+                if atLaunch {
+                    self.launchPairingNotice = (self.pairingImportMessage(result, file: outcome.file), false)
+                } else {
+                    self.reportPairingImport(result, file: outcome.file)
+                }
+            } else if let error = outcome.error {
+                let message = Loc.s("Không nhận được \(outcome.file ?? "pairing file"): \(error)",
+                                    "Could not use \(outcome.file ?? "pairing file"): \(error)",
+                                    "无法使用 \(outcome.file ?? "配对文件")：\(error)")
+                if atLaunch {
+                    self.launchPairingNotice = (message, true)
+                } else {
+                    self.notifyPairingStatus(configured: PairingLogService.shared.isConfigured,
+                                             message: message, isError: true)
+                }
+            }
+        }
+        if atLaunch { work() } else { DispatchQueue.global(qos: .userInitiated).async(execute: work) }
     }
 
     private func importPairingFile(_ url: URL) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try PairingLogService.shared.importPairingFile(from: url)
-                self.notifyPairingStatus(
-                    configured: true,
-                    message: Loc.s("Đã nhập pairing file. Bật LocalDevVPN để quét log.",
-                                   "Pairing file imported. Turn on LocalDevVPN to scan logs.",
-                                   "配对文件已导入。打开 LocalDevVPN 以扫描日志。"),
-                    isError: false
-                )
-                self.scanLogs()
+                let result = try PairingLogService.shared.importPairingFile(from: url)
+                self.reportPairingImport(result, file: url.lastPathComponent)
             } catch {
                 let notPaired: Bool
                 if case PairingLogService.PairingError.notPaired = error { notPaired = true } else { notPaired = false }
