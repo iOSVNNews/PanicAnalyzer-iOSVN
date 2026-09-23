@@ -145,6 +145,7 @@ jobs:
           - Nhận log nhanh qua Share Sheet
           - iOS 27 tự ghép đôi và đọc CrashReporter qua LocalDevVPN
           - Cấu hình Device IP, chờ VPN sẵn sàng và giữ khóa ghép đôi khi mất kết nối
+          - Tự dò cổng RemotePairing qua Bonjour khi 49152 bị từ chối (NWError 61)
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

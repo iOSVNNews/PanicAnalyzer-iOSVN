@@ -120,16 +120,25 @@ final class PairingLogService {
 
         guard isConfigured || supportsOnDevicePairing else { throw PairingError.missingFile }
         let deviceIP = LocalVPNConnection.deviceAddress
-        try LocalVPNConnection.waitUntilReachable(address: deviceIP)
+        var port = try LocalVPNConnection.remotePairingPort(address: deviceIP)
         let pairingURL = try prepareWorkingPairingFile()
         defer { try? FileManager.default.removeItem(at: pairingURL) }
 
         var session: OpaquePointer?
         do {
-            try pairingURL.path.withCString { pairingPath in
-                try deviceIP.withCString { ip in
-                    try check(pa_session_connect(pairingPath, ip, LocalVPNConnection.defaultPort, &session))
-                }
+            do {
+                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
+            } catch let error as PairingError where Self.isRefusedBeforePairing(error) {
+                // remotepairingd moved between the probe and the real connection
+                // (daemon restart). Nothing was sent yet, so one retry on a freshly
+                // discovered port cannot repeat a consent prompt.
+                LocalVPNConnection.forgetWorkingPort()
+                guard LocalVPNConnection.portOverride == nil else { throw error }
+                port = try LocalVPNConnection.resolvePort(
+                    address: deviceIP, manualPort: nil, cachedPort: nil, excluding: [port]
+                )
+                LocalVPNConnection.rememberWorkingPort(port)
+                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
             }
         } catch {
             // Pair-setup may have completed even if opening CrashReporter then
@@ -193,6 +202,26 @@ final class PairingLogService {
             }
         }
         return results
+    }
+
+    private func connect(pairingURL: URL, deviceIP: String, port: UInt16,
+                         session: inout OpaquePointer?) throws {
+        var opened: OpaquePointer?
+        try pairingURL.path.withCString { pairingPath in
+            try deviceIP.withCString { ip in
+                try check(pa_session_connect(pairingPath, ip, port, &opened))
+            }
+        }
+        session = opened
+    }
+
+    /// The Rust bridge reports the initial TCP connect as "connect: …". A refusal
+    /// there happens before any pairing message is exchanged.
+    static func isRefusedBeforePairing(_ error: PairingError) -> Bool {
+        guard case .bridge(let message) = error else { return false }
+        let lower = message.lowercased()
+        return lower.contains("connect:")
+            && (lower.contains("connection refused") || lower.contains("os error 61"))
     }
 
     /// Uses a staging file so an interrupted first pairing never replaces the

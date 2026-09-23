@@ -76,7 +76,9 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 
 1. Bật LocalDevVPN/StosVPN. Trong PanicAnalyzer, mở **Cấu hình LocalDevVPN** và
    nhập đúng **Device IP** đang hiển thị trong VPN (không phải **Tunnel IP**).
-   Mặc định là `10.7.0.1`; có thể dán cả `10.7.0.1/32`. Cổng kết nối là `49152`.
+   Mặc định là `10.7.0.1`; có thể dán cả `10.7.0.1/32`. Ô cổng để trống: app tự
+   tìm cổng RemotePairing (dịch vụ `remotepairingd` không cố định ở `49152`, iOS có
+   thể đổi sang `49153`, `49154`… sau khi khởi động lại).
 2. Cho phép **Mạng cục bộ** nếu iOS hỏi. App chờ cổng VPN sẵn sàng (có giới hạn
    thời gian và thử lại một lần), rồi tạo Remote Pairing record và bắt đầu
    ghép đôi. Chấp nhận yêu cầu xác nhận nếu iOS hiển thị.
@@ -86,6 +88,11 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này**. App xác minh lại record đã lưu
 và thử ghép đôi khi record hết hiệu lực; lỗi mạng không xóa khóa cũ. Có thể nhập
 Remote Pairing file có sẵn qua **Cấu hình LocalDevVPN → Nhập pairing file**.
+
+Lỗi `Connection refused` (NWError 61) nghĩa là VPN đã chạy nhưng cổng đã lưu
+không còn mở. App tự dò lại cổng qua Bonjour `_remotepairing._tcp` (ưu tiên
+dịch vụ của chính máy), thử từng cổng rồi ghi nhớ cổng dùng được. Nếu vẫn không
+dò được, nhập cổng thủ công trong **Cấu hình LocalDevVPN**.
 
 Nếu vẫn không đến được địa chỉ hiển thị trong lỗi, kiểm tra Device IP, quyền
 Mạng cục bộ của PanicAnalyzer trong Cài đặt iOS rồi ngắt/kết nối lại LocalDevVPN.

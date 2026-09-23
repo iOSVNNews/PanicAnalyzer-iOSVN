@@ -438,7 +438,8 @@ final class LogBridge: NSObject {
         let alert = UIAlertController(
             title: "Cấu hình LocalDevVPN",
             message: "Bật LocalDevVPN rồi nhập địa chỉ ở mục Device IP, không phải Tunnel IP. "
-                + "Có thể dán cả /32. Nếu iOS hỏi quyền Mạng cục bộ, hãy chọn Cho phép.",
+                + "Có thể dán cả /32. Để trống ô cổng để app tự dò cổng RemotePairing qua Bonjour. "
+                + "Nếu iOS hỏi quyền Mạng cục bộ, hãy chọn Cho phép.",
             preferredStyle: .alert
         )
         alert.addTextField { field in
@@ -448,13 +449,23 @@ final class LogBridge: NSObject {
             field.autocorrectionType = .no
             field.accessibilityLabel = "Device IP của LocalDevVPN"
         }
+        alert.addTextField { field in
+            field.placeholder = "Cổng RemotePairing (trống = tự dò)"
+            field.text = LocalVPNConnection.portOverride.map { String($0) } ?? ""
+            field.keyboardType = .numberPad
+            field.autocorrectionType = .no
+            field.accessibilityLabel = "Cổng RemotePairing"
+        }
         alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
         alert.addAction(UIAlertAction(title: "Nhập pairing file", style: .default) { [weak self] _ in
             self?.presentPairingPicker()
         })
         alert.addAction(UIAlertAction(title: "Lưu và kết nối", style: .default) { [weak self, weak alert] _ in
             do {
-                try LocalVPNConnection.saveDeviceAddress(alert?.textFields?.first?.text ?? "")
+                let fields = alert?.textFields ?? []
+                try LocalVPNConnection.saveDeviceAddress(fields.first?.text ?? "")
+                try LocalVPNConnection.savePortOverride(fields.count > 1 ? fields[1].text ?? "" : "")
+                LocalVPNConnection.forgetWorkingPort()
                 self?.scanLogs()
             } catch {
                 self?.notifyPairingStatus(

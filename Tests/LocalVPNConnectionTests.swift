@@ -57,6 +57,97 @@ struct LocalVPNConnectionTests {
             expect(attempts == 2, "An offline VPN must not cause infinite retries")
         }
 
+        // A refused port is a definite answer: no blind retry on the same port.
+        attempts = 0
+        do {
+            try LocalVPNConnection.waitUntilReachable(address: "10.7.0.1") { _, _, _ in
+                attempts += 1
+                throw LocalVPNConnection.ConnectionError(message: "refused", refused: true)
+            }
+            preconditionFailure("A refused port must not proceed")
+        } catch {
+            expect(attempts == 1, "Refused port must not be retried")
+        }
+
+        for (input, expected) in [("", nil), ("  ", nil), ("49152", UInt16(49152)), (" 62078 ", UInt16(62078))] as [(String, UInt16?)] {
+            let actual = try LocalVPNConnection.normalizedPort(input)
+            expect(actual == expected, "Port parsing: \(input)")
+        }
+        for input in ["0", "65536", "-1", "49a", "49152.0", "+49152"] {
+            do {
+                _ = try LocalVPNConnection.normalizedPort(input)
+                preconditionFailure("Accepted invalid port: \(input)")
+            } catch is LocalVPNConnection.ConnectionError {}
+        }
+
+        // Stale 49152 (refused) -> Bonjour port is probed and used.
+        var probed: [UInt16] = []
+        var discoveries = 0
+        let found = try LocalVPNConnection.resolvePort(
+            address: "10.7.0.1", manualPort: nil, cachedPort: nil,
+            probe: { _, port, _ in
+                probed.append(port)
+                if port != 49155 { throw LocalVPNConnection.ConnectionError(message: "closed", refused: true) }
+            },
+            discover: { _ in discoveries += 1; return [49152, 50001, 49155] }
+        )
+        expect(found == 49155, "Must use the discovered port that accepts TCP")
+        expect(probed == [49152, 50001, 49155], "Must skip already-tried ports and probe candidates in order: \(probed)")
+        expect(discoveries == 1, "Discovery must run once")
+
+        // Working cached port: no discovery.
+        discoveries = 0
+        let cached = try LocalVPNConnection.resolvePort(
+            address: "10.7.0.1", manualPort: nil, cachedPort: 49160,
+            probe: { _, port, _ in expect(port == 49160, "Cached port first") },
+            discover: { _ in discoveries += 1; return [] }
+        )
+        expect(cached == 49160 && discoveries == 0, "Cached port must avoid Bonjour")
+
+        // VPN down (timeout, not refused): fail fast, no discovery.
+        discoveries = 0
+        do {
+            _ = try LocalVPNConnection.resolvePort(
+                address: "10.7.0.1", manualPort: nil, cachedPort: nil,
+                probe: { _, _, _ in throw LocalVPNConnection.ConnectionError(message: "timeout Device IP") },
+                discover: { _ in discoveries += 1; return [49153] }
+            )
+            preconditionFailure("Offline VPN must fail")
+        } catch {
+            expect(discoveries == 0, "Discovery cannot help an offline VPN")
+            expect(error.localizedDescription.contains("Device IP"), "Offline error keeps VPN instructions")
+        }
+
+        // Manual port is authoritative.
+        let manual = try LocalVPNConnection.resolvePort(
+            address: "10.7.0.1", manualPort: 50123, cachedPort: 49152,
+            probe: { _, port, _ in expect(port == 50123, "Manual port only") },
+            discover: { _ -> [UInt16] in preconditionFailure("Manual port must not trigger discovery") }
+        )
+        expect(manual == 50123, "Manual port returned")
+
+        // Refused everywhere: clear message naming the tried ports.
+        do {
+            _ = try LocalVPNConnection.resolvePort(
+                address: "10.7.0.1", manualPort: nil, cachedPort: nil,
+                probe: { _, _, _ in throw LocalVPNConnection.ConnectionError(message: "closed", refused: true) },
+                discover: { _ in [] }
+            )
+            preconditionFailure("No open port must fail")
+        } catch let error as LocalVPNConnection.ConnectionError {
+            expect(error.refused, "Keep refused classification")
+            expect(error.message.contains("49152") && error.message.contains("_remotepairing._tcp"),
+                   "Message must name tried port and service")
+        }
+
+        // Retry path excludes the port that just refused.
+        let retry = try LocalVPNConnection.resolvePort(
+            address: "10.7.0.1", manualPort: nil, cachedPort: nil, excluding: [49152],
+            probe: { _, port, _ in expect(port == 49153, "Excluded port must not be probed") },
+            discover: { _ in [49152, 49153] }
+        )
+        expect(retry == 49153, "Retry must pick a new port")
+
         let listener = try NWListener(using: .tcp, on: .any)
         let ready = DispatchSemaphore(value: 0)
         let listenerQueue = DispatchQueue(label: "vpn-test-listener")
@@ -92,14 +183,15 @@ struct LocalVPNConnectionTests {
         let refusedPort = UInt16(bigEndian: address.sin_port)
         let start = Date()
         do {
-            try LocalVPNConnection.probe(address: "127.0.0.1", port: refusedPort, timeout: 0.2)
+            try LocalVPNConnection.probe(address: "127.0.0.1", port: refusedPort, timeout: 3)
             preconditionFailure("A closed port must not count as connected")
         } catch {
             expect(error.localizedDescription.contains("127.0.0.1:\(refusedPort)"), "Error must identify failed endpoint")
-            expect(error.localizedDescription.contains("Device IP"), "Error must include recovery instructions")
-            expect(Date().timeIntervalSince(start) < 2, "TCP failure exceeded its deadline")
+            expect((error as? LocalVPNConnection.ConnectionError)?.refused == true,
+                   "A closed port must be classified as refused, not as VPN offline")
+            expect(Date().timeIntervalSince(start) < 2, "A refused port must fail immediately, not wait for the deadline")
         }
-        print("LocalVPNConnection: endpoint validation, retry, TCP readiness and failure tests passed")
+        print("LocalVPNConnection: endpoint validation, port discovery, retry, TCP readiness and failure tests passed")
     }
 
     static func main() {
