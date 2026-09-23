@@ -28,6 +28,7 @@ final class PairableHostService: NSObject {
 
     private let stateLock = NSLock()
     private var cancelled = false
+    private var publishError: String?
     private var netService: NetService?
 
     func cancel() {
@@ -99,8 +100,9 @@ final class PairableHostService: NSObject {
 
     private func publish(serviceID: String, port: UInt16, txt: [String: Data]) {
         unpublish()
-        let service = NetService(domain: "local.", type: Self.serviceType, name: serviceID, port: Int32(port))
+        let service = NetService(domain: "", type: Self.serviceType, name: serviceID, port: Int32(port))
         service.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        service.delegate = self
         service.publish()
         netService = service
     }
@@ -108,6 +110,12 @@ final class PairableHostService: NSObject {
     private func unpublish() {
         netService?.stop()
         netService = nil
+    }
+
+    private var currentPublishError: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return publishError
     }
 
     // MARK: - Sockets
@@ -148,6 +156,10 @@ final class PairableHostService: NSObject {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if isCancelled { throw HostError(message: "Đã huỷ ghép đôi.") }
+            if let publishError = currentPublishError {
+                throw HostError(message: "iOS không cho quảng bá PanicAnalyzer qua Bonjour (\(publishError)). "
+                    + "Bật Cài đặt > PanicAnalyzer > Mạng cục bộ rồi thử lại.")
+            }
             var descriptor = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
             let ready = poll(&descriptor, 1, 500)
             if ready < 0 && errno != EINTR { throw Self.posixError("poll") }
@@ -169,5 +181,13 @@ final class PairableHostService: NSObject {
         let message = String(validatingUTF8: error) ?? "Lỗi ghép đôi không xác định"
         pa_error_free(error)
         throw HostError(message: message)
+    }
+}
+
+extension PairableHostService: NetServiceDelegate {
+    func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
+        stateLock.lock()
+        publishError = "mã lỗi \(errorDict[NetService.errorCode]?.intValue ?? 0)"
+        stateLock.unlock()
     }
 }

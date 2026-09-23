@@ -448,6 +448,32 @@ final class LogBridge: NSObject {
             return
         }
         pairingInProgress = true
+        pushPairingCard(stage: "permission", pin: nil)
+        notifyPairingStatus(
+            configured: PairingLogService.shared.isConfigured,
+            message: "Đang xin quyền Mạng cục bộ… Hãy chọn Cho phép nếu iOS hỏi.",
+            isError: false
+        )
+        // Without Local Network permission iOS drops our Bonjour advertisement
+        // and Settings only lists other hosts (e.g. SideInstaller).
+        localNetwork.request { granted in
+            guard granted else {
+                self.finishPairingUI()
+                self.notifyPairingStatus(
+                    configured: PairingLogService.shared.isConfigured,
+                    message: "Chưa có quyền Mạng cục bộ nên PanicAnalyzer không hiện trong Cài đặt. "
+                        + "Vào Cài đặt > PanicAnalyzer > bật Mạng cục bộ rồi bấm Ghép đôi lại.",
+                    isError: true
+                )
+                return
+            }
+            self.startPairingHost()
+        }
+    }
+
+    private let localNetwork = LocalNetworkAuthorization()
+
+    private func startPairingHost() {
         PairingKeepAlive.shared.start()
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -456,14 +482,18 @@ final class LogBridge: NSObject {
                         self.notifyPairingStatus(
                             configured: PairingLogService.shared.isConfigured,
                             message: "Đang chờ ghép đôi: mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển, "
-                                + "chọn \(PairableHostService.hostName).",
+                                + "chọn \(PairableHostService.hostName) (không chọn SideInstaller hay máy khác).",
                             isError: false
                         )
-                        DispatchQueue.main.async { self.presentPairingInstructions(pin: nil) }
+                        DispatchQueue.main.async {
+                            self.pushPairingCard(stage: "advertising", pin: nil)
+                            self.presentPairingInstructions(pin: nil)
+                        }
                     },
                     onPin: { pin in
                         DispatchQueue.main.async {
                             PairingKeepAlive.shared.showPin(pin)
+                            self.pushPairingCard(stage: "pin", pin: pin)
                             self.presentPairingInstructions(pin: pin)
                         }
                         self.notifyPairingStatus(
@@ -501,13 +531,41 @@ final class LogBridge: NSObject {
         pairingInProgress = false
         PairingKeepAlive.shared.stop()
         pairingAlert?.dismiss(animated: true)
+        pushPairingCard(stage: "done", pin: nil)
+    }
+
+    /// Keeps the pairing steps and PIN on the main screen (alerts vanish when
+    /// the user switches to Settings).
+    private func pushPairingCard(stage: String, pin: String?) {
+        let pinJSON = pin.map { "\"\($0.filter(\.isNumber))\"" } ?? "null"
+        let js = """
+        (function(){ if (window.onNativePairingCard) window.onNativePairingCard({stage:"\(stage)",pin:\(pinJSON),host:"\(PairableHostService.hostName)"}); })();
+        """
+        DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
+    }
+
+    /// Opens Settings > Privacy & Security (Developer is near the bottom).
+    /// openSettingsURLString would open PanicAnalyzer's own page instead.
+    private func openPrivacySettings() {
+        let candidates = ["App-prefs:Privacy&path=DEVELOPER_MODE", "App-prefs:Privacy", "prefs:root=Privacy"]
+            .compactMap(URL.init(string:))
+        func attempt(_ index: Int) {
+            guard index < candidates.count else {
+                if let url = URL(string: "App-prefs:") { UIApplication.shared.open(url) }
+                return
+            }
+            UIApplication.shared.open(candidates[index], options: [:]) { opened in
+                if !opened { attempt(index + 1) }
+            }
+        }
+        attempt(0)
     }
 
     private func presentPairingInstructions(pin: String?) {
         let steps = "1. Bật LocalDevVPN và Chế độ nhà phát triển.\n"
-            + "2. Mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển.\n"
-            + "3. Chọn \"\(PairableHostService.hostName)\" để ghép đôi.\n"
-            + "4. Nhập mã PIN app gửi qua thông báo (mã cũng được sao chép sẵn)."
+            + "2. Mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển (cuộn xuống cuối).\n"
+            + "3. Chọn đúng \"\(PairableHostService.hostName)\" — không chọn SideInstaller hay máy khác.\n"
+            + "4. Nhập mã PIN hiện trên màn hình app và trong thông báo (đã sao chép sẵn)."
         let message = pin.map { "Mã PIN: \($0)\n\n" + steps } ?? steps
         if let alert = pairingAlert {
             alert.message = message
@@ -522,11 +580,9 @@ final class LogBridge: NSObject {
         alert.addAction(UIAlertAction(title: "Huỷ ghép đôi", style: .destructive) { _ in
             PairingLogService.shared.cancelPairing()
         })
-        alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { _ in
+        alert.addAction(UIAlertAction(title: "Mở Quyền riêng tư & Bảo mật", style: .default) { [weak self] _ in
             // Pairing keeps running in the background; the PIN arrives as a notification.
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
+            self?.openPrivacySettings()
         })
         pairingAlert = alert
         topViewController()?.present(alert, animated: true)
@@ -645,6 +701,8 @@ extension LogBridge: WKScriptMessageHandler {
         case "pickFiles":    presentPicker()
         case "importPairing": presentPairingPicker()
         case "pairDevice":    pairThisDevice()
+        case "openPrivacySettings": openPrivacySettings()
+        case "cancelPairing": PairingLogService.shared.cancelPairing()
         case "vpnSettings":   presentVPNSettings()
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")

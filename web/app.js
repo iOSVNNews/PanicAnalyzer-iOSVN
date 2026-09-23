@@ -128,6 +128,36 @@ function triggerPairingImport() {
   showToast('Tính năng pairing chỉ có trong ứng dụng iOS.', 3500);
 }
 
+function nativeAction(action) {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: action });
+  }
+}
+
+// Pairing steps + PIN stay visible on the main screen while the user is in Settings.
+window.onNativePairingCard = function(info) {
+  const card = document.getElementById('pairingCard');
+  if (!card) return;
+  if (info.stage === 'done') { card.hidden = true; return; }
+  card.hidden = false;
+  const title = document.getElementById('pairingCardTitle');
+  const pinBox = document.getElementById('pairingPin');
+  const host = document.getElementById('pairingHostName');
+  if (host && info.host) host.innerText = info.host;
+  if (info.stage === 'permission') {
+    title.innerText = 'Đang xin quyền Mạng cục bộ… chọn Cho phép';
+    pinBox.hidden = true;
+  } else if (info.stage === 'advertising') {
+    title.innerText = 'Đang chờ ghép đôi — làm theo các bước dưới';
+    pinBox.hidden = true;
+  } else if (info.stage === 'pin' && info.pin) {
+    title.innerText = 'Nhập mã này trong Cài đặt';
+    pinBox.innerText = info.pin.replace(/(\d{3})(\d{3})/, '$1 $2');
+    pinBox.hidden = false;
+  }
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
 function triggerVPNSettings() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'vpnSettings' });

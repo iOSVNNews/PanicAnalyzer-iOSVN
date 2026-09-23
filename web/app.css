@@ -755,3 +755,34 @@ body {
 .health-header { flex-wrap: wrap; gap: 6px 10px; }
 .device-model-badge { white-space: nowrap; font-size: 11px; }
 .health-title-wrap { flex: 1 1 auto; }
+
+/* ---- Thẻ ghép đôi iOS 27 ---- */
+.pairing-card {
+  border: 1px solid var(--brand-line);
+  background: var(--brand-dim);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pairing-card[hidden], .pairing-pin[hidden] { display: none; }
+.pairing-card-title { font-weight: 700; font-size: 15px; color: var(--text-primary); }
+.pairing-pin {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 6px;
+  text-align: center;
+  color: var(--brand-bright);
+  font-variant-numeric: tabular-nums;
+  padding: 6px 0;
+}
+.pairing-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pairing-steps b { color: var(--text-primary); }
+.pairing-card-actions { display: flex; flex-direction: column; gap: 8px; }
