@@ -128,6 +128,13 @@ function triggerPairingImport() {
   showToast('Tính năng pairing chỉ có trong ứng dụng iOS.', 3500);
 }
 
+function triggerVPNSettings() {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'vpnSettings' });
+    return;
+  }
+  showToast('Cấu hình LocalDevVPN chỉ có trong ứng dụng iOS.', 3500);
+}
 
 // Load JSON Databases
 async function loadDatabases() {
@@ -843,7 +850,7 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
 function updatePairingButton(configured) {
   const label = document.getElementById('pairingButtonLabel');
   if (label) label.innerText = configured
-    ? 'Ghép đôi lại thiết bị này'
+    ? 'Kết nối lại thiết bị này'
     : 'Ghép đôi thiết bị này';
 }
 

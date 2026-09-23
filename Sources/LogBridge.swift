@@ -331,7 +331,6 @@ final class LogBridge: NSObject {
                 }
                 self.deliver(pairedLogs, autoScan: true, source: "pairing")
             } catch {
-                self.deliver([], autoScan: true, source: "pairing")
                 self.notifyPairingStatus(
                     configured: PairingLogService.shared.isConfigured,
                     message: error.localizedDescription,
@@ -415,36 +414,57 @@ final class LogBridge: NSObject {
     }
 
     private func removePairingFile() {
-        do {
-            try PairingLogService.shared.removePairingFile()
-            notifyPairingStatus(
-                configured: false,
-                message: "Đã xoá Remote Pairing file khỏi ứng dụng.",
-                isError: false
-            )
-        } catch {
-            notifyPairingStatus(configured: true, message: error.localizedDescription, isError: true)
-        }
-    }
-
-    private func pairThisDevice() {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try PairingLogService.shared.removePairingFile()
                 self.notifyPairingStatus(
                     configured: false,
-                    message: "Đang ghép đôi trên thiết bị; hãy bật LocalDevVPN và chấp nhận yêu cầu của iOS.",
+                    message: "Đã xoá Remote Pairing file khỏi ứng dụng.",
                     isError: false
                 )
-                self.scanLogs()
             } catch {
-                self.notifyPairingStatus(
+                self.notifyPairingStatus(configured: true, message: error.localizedDescription, isError: true)
+            }
+        }
+    }
+
+    private func pairThisDevice() {
+        // The bridge verifies existing credentials and repairs stale ones. A
+        // disconnected VPN is never a reason to delete the last working record.
+        scanLogs()
+    }
+
+    private func presentVPNSettings() {
+        let alert = UIAlertController(
+            title: "Cấu hình LocalDevVPN",
+            message: "Bật LocalDevVPN rồi nhập địa chỉ ở mục Device IP, không phải Tunnel IP. "
+                + "Có thể dán cả /32. Nếu iOS hỏi quyền Mạng cục bộ, hãy chọn Cho phép.",
+            preferredStyle: .alert
+        )
+        alert.addTextField { field in
+            field.placeholder = LocalVPNConnection.defaultAddress
+            field.text = LocalVPNConnection.deviceAddress
+            field.keyboardType = .numbersAndPunctuation
+            field.autocorrectionType = .no
+            field.accessibilityLabel = "Device IP của LocalDevVPN"
+        }
+        alert.addAction(UIAlertAction(title: "Hủy", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Nhập pairing file", style: .default) { [weak self] _ in
+            self?.presentPairingPicker()
+        })
+        alert.addAction(UIAlertAction(title: "Lưu và kết nối", style: .default) { [weak self, weak alert] _ in
+            do {
+                try LocalVPNConnection.saveDeviceAddress(alert?.textFields?.first?.text ?? "")
+                self?.scanLogs()
+            } catch {
+                self?.notifyPairingStatus(
                     configured: PairingLogService.shared.isConfigured,
                     message: error.localizedDescription,
                     isError: true
                 )
             }
-        }
+        })
+        topViewController()?.present(alert, animated: true)
     }
 
     // MARK: - Chia sẻ báo cáo
@@ -516,6 +536,7 @@ extension LogBridge: WKScriptMessageHandler {
         case "pickFiles":    presentPicker()
         case "importPairing": presentPairingPicker()
         case "pairDevice":    pairThisDevice()
+        case "vpnSettings":   presentVPNSettings()
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
         case "refreshRules": refreshRules()

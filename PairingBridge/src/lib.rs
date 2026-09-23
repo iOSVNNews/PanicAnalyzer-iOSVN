@@ -155,7 +155,7 @@ pub unsafe extern "C" fn pa_session_connect(
         close_parts(null_mut(), handshake, adapter);
         return consume_idevice_error(
             tunnel_error,
-            "Không mở được RSD tunnel; hãy bật LocalDevVPN rồi thử lại",
+            "Không hoàn tất ghép đôi hoặc mở RSD tunnel. Kiểm tra LocalDevVPN còn kết nối, mở khóa iPhone và chấp nhận yêu cầu ghép đôi. Có thể nhập Remote Pairing file trong Cấu hình LocalDevVPN",
         );
     }
 

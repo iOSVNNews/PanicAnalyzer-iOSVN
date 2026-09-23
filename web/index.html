@@ -23,7 +23,7 @@
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
         </button>
-        <span class="version-badge">v2.6 Pro</span>
+        <span class="version-badge">v2.6.1 Pro</span>
       </div>
     </div>
   </header>
@@ -90,6 +90,14 @@
           <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
         <span id="pairingButtonLabel">Ghép đôi thiết bị này</span>
+      </button>
+
+      <button class="action-btn secondary" id="btnVPNSettings" onclick="triggerVPNSettings()">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M4 7h16M4 17h16"/>
+          <circle cx="8" cy="7" r="3"/><circle cx="16" cy="17" r="3"/>
+        </svg>
+        <span>Cấu hình LocalDevVPN</span>
       </button>
 
       <button class="action-btn secondary" id="btnSampleLogs" onclick="openSampleLogsModal()">

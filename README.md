@@ -74,18 +74,28 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 
 ### Quét tự động qua LocalDevVPN trên iOS 27
 
-1. Bật LocalDevVPN/StosVPN với endpoint mặc định `10.7.0.1:49152`.
-2. Mở PanicAnalyzer. App tự tạo Remote Pairing record trên thiết bị và bắt đầu
+1. Bật LocalDevVPN/StosVPN. Trong PanicAnalyzer, mở **Cấu hình LocalDevVPN** và
+   nhập đúng **Device IP** đang hiển thị trong VPN (không phải **Tunnel IP**).
+   Mặc định là `10.7.0.1`; có thể dán cả `10.7.0.1/32`. Cổng kết nối là `49152`.
+2. Cho phép **Mạng cục bộ** nếu iOS hỏi. App chờ cổng VPN sẵn sàng (có giới hạn
+   thời gian và thử lại một lần), rồi tạo Remote Pairing record và bắt đầu
    ghép đôi. Chấp nhận yêu cầu xác nhận nếu iOS hiển thị.
 3. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
    lần sau chỉ cần bật LocalDevVPN; không phải ghép đôi lại.
 
-Nếu record hết hiệu lực, bấm **Ghép đôi lại thiết bị này**. Việc nhập file thủ
-công chỉ còn là đường tương thích cho hệ thống cũ, không phải quy trình iOS 27.
+Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này**. App xác minh lại record đã lưu
+và thử ghép đôi khi record hết hiệu lực; lỗi mạng không xóa khóa cũ. Có thể nhập
+Remote Pairing file có sẵn qua **Cấu hình LocalDevVPN → Nhập pairing file**.
+
+Nếu vẫn không đến được địa chỉ hiển thị trong lỗi, kiểm tra Device IP, quyền
+Mạng cục bộ của PanicAnalyzer trong Cài đặt iOS rồi ngắt/kết nối lại LocalDevVPN.
+VPN hiện trạng thái bật chưa bảo đảm cổng ghép đôi đã truy cập được. App không
+tự thay đổi cấu hình của ứng dụng VPN khác. Sau khi cổng mở được, nếu ghép đôi
+vẫn thất bại, mở khóa iPhone và chấp nhận yêu cầu của iOS hoặc nhập record hợp lệ.
 
 Pairing record là thông tin xác thực nhạy cảm. App tạo và lưu nó trong
 Application Support với file protection, loại khỏi bản sao lưu và không gửi nội
-dung ra ngoài. Muốn hủy quyền, xóa app hoặc bấm ghép đôi lại để thay record.
+dung ra ngoài. Xóa app sẽ xóa bản sao record được lưu trong ứng dụng.
 
 ### Phạm vi `/var`
 

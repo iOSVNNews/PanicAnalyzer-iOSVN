@@ -27,6 +27,12 @@ jobs:
       - name: Cài XcodeGen
         run: brew install xcodegen
 
+      - name: Kiểm thử kết nối LocalDevVPN
+        run: |
+          swiftc Sources/LocalVPNConnection.swift Tests/LocalVPNConnectionTests.swift -o "$RUNNER_TEMP/vpn-tests"
+          "$RUNNER_TEMP/vpn-tests"
+          node --check web/app.js
+
       - name: Dựng cầu nối Remote Pairing
         run: |
           rustup target add aarch64-apple-ios
@@ -138,6 +144,7 @@ jobs:
           - Bộ luật chẩn đoán: $RULES lỗi
           - Nhận log nhanh qua Share Sheet
           - iOS 27 tự ghép đôi và đọc CrashReporter qua LocalDevVPN
+          - Cấu hình Device IP, chờ VPN sẵn sàng và giữ khóa ghép đôi khi mất kết nối
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

@@ -8,8 +8,6 @@ final class PairingLogService {
 
     static let shared = PairingLogService()
 
-    private let deviceIP = "10.7.0.1"
-    private let rsdPort: UInt16 = 49152
     private let maxFiles = 100
     private let maxFileBytes = 12 * 1024 * 1024
     private let maxTotalBytes = 24 * 1024 * 1024
@@ -59,6 +57,8 @@ final class PairingLogService {
     /// Copies only the credential bytes into Application Support. The file is
     /// excluded from backup and protected while the device is locked.
     func importPairingFile(from source: URL) throws {
+        operationLock.lock()
+        defer { operationLock.unlock() }
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
 
@@ -103,6 +103,8 @@ final class PairingLogService {
     }
 
     func removePairingFile() throws {
+        operationLock.lock()
+        defer { operationLock.unlock() }
         for url in [pairingFileURL, workingPairingFileURL].compactMap({ $0 }) {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
@@ -117,6 +119,8 @@ final class PairingLogService {
         defer { operationLock.unlock() }
 
         guard isConfigured || supportsOnDevicePairing else { throw PairingError.missingFile }
+        let deviceIP = LocalVPNConnection.deviceAddress
+        try LocalVPNConnection.waitUntilReachable(address: deviceIP)
         let pairingURL = try prepareWorkingPairingFile()
         defer { try? FileManager.default.removeItem(at: pairingURL) }
 
@@ -124,7 +128,7 @@ final class PairingLogService {
         do {
             try pairingURL.path.withCString { pairingPath in
                 try deviceIP.withCString { ip in
-                    try check(pa_session_connect(pairingPath, ip, rsdPort, &session))
+                    try check(pa_session_connect(pairingPath, ip, LocalVPNConnection.defaultPort, &session))
                 }
             }
         } catch {
