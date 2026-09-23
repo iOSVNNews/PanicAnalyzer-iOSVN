@@ -321,7 +321,8 @@ enum LocalVPNConnection {
             if case .failed = state { finish() }
         }
         browser.browseResultsChangedHandler = { results, _ in
-            let ordered = results.filter(isLoopback) + results.filter { !isLoopback($0) }
+            let all = Array(results)
+            let ordered = all.filter { isLoopback($0) } + all.filter { !isLoopback($0) }
             ordered.forEach(resolve)
         }
         browser.start(queue: queue)
