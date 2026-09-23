@@ -128,7 +128,7 @@ jobs:
           import plistlib, sys
           with open(sys.argv[1], 'rb') as source:
               entitlements = plistlib.load(source)
-          assert entitlements.get('com.apple.private.security.no-sandbox') is True
+          assert entitlements.get('platform-application') is True
           assert 'group.com.iosvn.panicanalyzer' in entitlements.get('com.apple.security.application-groups', [])
           PY
           mkdir -p "$RUNNER_TEMP/tipa/Payload"

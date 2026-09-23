@@ -6,7 +6,6 @@ import UIKit
 import Darwin
 import WebKit
 import UniformTypeIdentifiers
-import PhotosUI
 
 final class LogBridge: NSObject {
 
@@ -377,9 +376,9 @@ final class LogBridge: NSObject {
                     self.notifyPairingStatus(
                         configured: PairingLogService.shared.isConfigured,
                         message: Loc.s(
-                            "Bản JB/TrollStore chưa đọc được thư mục CrashReporter. Kiểm tra quyền no-sandbox của app và cài lại đúng file .deb/.tipa.",
-                            "The JB/TrollStore build cannot read CrashReporter. Check the app's no-sandbox entitlement and reinstall the .deb/.tipa package.",
-                            "JB/TrollStore 版本无法读取 CrashReporter。请检查应用的 no-sandbox 权限并重新安装 .deb/.tipa。"),
+                            "Bản JB/TrollStore chưa đọc được thư mục CrashReporter. Máy jailbreak cần cấp quyền cho app trong /Applications; TrollStore hãy bật đủ quyền rồi cài lại .tipa. Có thể dùng ghép đôi thay thế.",
+                            "The JB/TrollStore build cannot read CrashReporter yet. On a jailbreak the app in /Applications needs filesystem access; on TrollStore grant the entitlements and reinstall the .tipa. Pairing still works as a fallback.",
+                            "JB/TrollStore 版本暂时无法读取 CrashReporter。越狱设备需要为 /Applications 中的应用授予文件访问权限；TrollStore 请授予权限后重新安装 .tipa。也可改用配对。"),
                         isError: true
                     )
                 }
@@ -437,26 +436,6 @@ final class LogBridge: NSObject {
         picker.allowsMultipleSelection = true
         picker.delegate = self
         topViewController()?.present(picker, animated: true)
-    }
-
-    func presentPartsHistoryPicker() {
-        var configuration = PHPickerConfiguration()
-        configuration.filter = .images
-        configuration.selectionLimit = 1
-        let picker = PHPickerViewController(configuration: configuration)
-        picker.delegate = self
-        topViewController()?.present(picker, animated: true)
-    }
-
-    private func publishPartsHistory(_ lines: [String], error: String? = nil) {
-        let payload: [String: Any] = ["lines": lines, "error": error ?? ""]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let json = String(data: data, encoding: .utf8) else { return }
-        DispatchQueue.main.async {
-            self.webView?.evaluateJavaScript(
-                "if (window.onNativePartsHistory) window.onNativePartsHistory(\(json));"
-            )
-        }
     }
 
     func presentPairingPicker() {
@@ -835,7 +814,6 @@ extension LogBridge: WKScriptMessageHandler {
         switch action {
         case "autoScanLogs": scanLogs()
         case "pickFiles":    presentPicker()
-        case "pickPartsHistory": presentPartsHistoryPicker()
         case "importPairing": presentPairingPicker()
         case "pairDevice":    pairThisDevice()
         case "openPrivacySettings": openPrivacySettings()
@@ -846,34 +824,6 @@ extension LogBridge: WKScriptMessageHandler {
         case "refreshRules": refreshRules()
         case "openURL":      openExternal(body["url"] as? String ?? "")
         default: break
-        }
-    }
-}
-
-extension LogBridge: PHPickerViewControllerDelegate {
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        guard let provider = results.first?.itemProvider else { return }
-        guard provider.canLoadObject(ofClass: UIImage.self) else {
-            publishPartsHistory([], error: Loc.s("Ảnh không được hỗ trợ.", "Unsupported image.", "不支持的图片。"))
-            return
-        }
-        provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    if let error { throw error }
-                    guard let image = object as? UIImage else {
-                        throw NSError(domain: "PanicAnalyzer.PartsHistory", code: 2,
-                                      userInfo: [NSLocalizedDescriptionKey: Loc.s(
-                                        "Không đọc được ảnh đã chọn.",
-                                        "Could not read the selected image.",
-                                        "无法读取所选图片。")])
-                    }
-                    self?.publishPartsHistory(try PartsHistoryService.recognize(image))
-                } catch {
-                    self?.publishPartsHistory([], error: error.localizedDescription)
-                }
-            }
         }
     }
 }

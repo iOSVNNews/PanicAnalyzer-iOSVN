@@ -1,91 +1,76 @@
-// Read only explicit Parts & Service History labels. Panic symptoms alone do
-// not establish that a component was replaced.
+// Đọc dấu hiệu linh kiện đã thay/không chính hãng TỪ LOG RIÊNG CỦA THIẾT BỊ.
+// Không dùng ảnh/OCR. Triệu chứng panic đơn thuần KHÔNG chứng minh đã thay linh
+// kiện — chỉ nhận khi log ghi rõ nhãn xác thực linh kiện (genuine / unknown /
+// non-genuine / unauthorized…). Log CrashReporter không chứa đầy đủ "Lịch sử
+// linh kiện" của iOS, nên đây là dấu hiệu, cần đối chiếu Cài đặt để chắc chắn.
 const PartsHistory = (() => {
   const normalize = value => String(value || '').normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D')
     .toLowerCase().replace(/\s+/g, ' ').trim();
-  const section = /parts\s*(?:&|and)?\s*service\s*history|lich su linh kien va dich vu|部件与维修历史|部件和维修历史/;
+
   const parts = [
-    ['front_camera', /camera truoc|front camera|前置摄像头/],
-    ['rear_camera', /camera sau|rear camera|后置摄像头/],
-    ['logic_board', /bang mach logic|logic board|主板/],
-    ['battery', /\bpin\b|\bbattery\b|电池/],
-    ['display', /man hinh|\bdisplay\b|\bscreen\b|显示屏/],
+    ['front_camera', /camera truoc|front ?camera|frontcamera|前置摄像头/],
+    ['rear_camera', /camera sau|rear ?camera|back ?camera|后置摄像头/],
+    ['battery', /\bpin\b|\bbattery\b|batt(?:ery)?[_ -]?serial|gasgauge|电池/],
+    ['display', /man hinh|\bdisplay\b|\bscreen\b|\bpanel\b|lcd|oled|显示屏|屏幕/],
+    ['face_id', /face ?id|truedepth|faceid|原深感|面容/],
+    ['touch_id', /touch ?id|指纹|触控 id/],
+    ['logic_board', /bang mach logic|logic ?board|main ?board|主板/],
     ['camera', /\bcamera\b|摄像头/]
   ];
+
+  // Nhãn trạng thái xác thực linh kiện, sắp theo mức "đáng lưu ý" giảm dần.
   const statuses = [
-    ['unverified', /chua xac minh|\bunverified\b|未经验证|未验证/],
-    ['unknown', /khong xac dinh|\bunknown(?: part)?\b|未知/],
-    ['finish_repair', /hoan tat sua chua|finish repair|完成维修/],
-    ['used', /da qua su dung|\bused(?: part)?\b|二手/],
-    ['genuine', /chinh hang|\bgenuine(?: apple part)?\b|正品/]
+    ['nongenuine', /non[_ -]?genuine|not[_ -]?genuine|khong chinh hang|unauthorized|counterfeit|aftermarket|fake ?part|hang gia|副厂|非原装|非正品|未授权/],
+    ['unknown', /khong xac dinh|\bunknown[_ -]?part\b|unknownpart|未知部件|未知零件|未知配件/],
+    ['unverified', /chua xac minh|\bunverified\b|not[_ -]?verified|verification ?failed|未验证|未经验证|验证失败/],
+    ['serial_mismatch', /serial ?mismatch|mismatch(?:ed)? ?serial|khong khop serial|序列号不匹配/],
+    ['finish_repair', /hoan tat sua chua|finish ?repair|完成维修/],
+    ['used', /da qua su dung|\bused[_ -]?part\b|refurbished|二手|翻新/],
+    ['genuine', /genuine ?(?:apple ?)?part|chinh hang|正品|原装/]
   ];
-  const match = (text, choices) => choices.find(([, pattern]) => pattern.test(normalize(text)))?.[0] || null;
 
-  // Settings opens a separate detail page for an Unknown Part. Its title is
-  // above the component name, and the Parts & Service History heading is gone.
-  function fromUnknownPartDetail(rows) {
-    const title = /^(?:linh kien khong xac dinh|unknown part|未知部件|未知零件)$/;
-    const heading = rows.findIndex((line, index) =>
-      title.test(normalize(line)) || title.test(normalize(line + ' ' + (rows[index + 1] || ''))));
-    if (heading < 0) return null;
+  const match = (text, choices) => {
+    const n = normalize(text);
+    return choices.find(([, pattern]) => pattern.test(n))?.[0] || null;
+  };
 
-    const body = normalize(rows.slice(heading + 1, heading + 9).join(' '));
-    // The part must occur in Apple's verification explanation, not in an
-    // unrelated status-bar label or a link elsewhere in the screenshot.
-    const verification = /khong the xac dinh xem|unable to (?:verify|determine)|无法确定|无法验证/;
-    const appleContext = /apple|iphone|苹果/;
-    const part = verification.test(body) && appleContext.test(body)
-      ? match(body, parts) : null;
-    return { sectionFound: true, findings: part
-      ? [{ part, status: 'unknown', source: 'settings' }] : [] };
-  }
-
-  function fromSettings(lines) {
-    const rows = (Array.isArray(lines) ? lines : []).map(s => String(s).trim()).filter(Boolean);
-    const heading = rows.findIndex(line => section.test(normalize(line)));
-    if (heading < 0) return fromUnknownPartDetail(rows) || { sectionFound: false, findings: [] };
-    const findings = [];
-    for (let index = heading + 1; index < Math.min(rows.length, heading + 30); index++) {
-      const part = match(rows[index], parts);
-      if (!part) continue;
-      let status = match(rows[index], statuses);
-      if (!status) {
-        // iOS often puts the status immediately below the part label.
-        for (let next = index + 1; next < Math.min(rows.length, index + 3); next++) {
-          if (match(rows[next], parts)) break;
-          status = match(rows[next], statuses);
-          if (status) break;
-        }
-      }
-      if (status && !findings.some(finding => finding.part === part)) {
-        findings.push({ part, status, source: 'settings' });
-      }
-    }
-    return { sectionFound: true, findings };
-  }
+  // Tên file/daemon liên quan xác thực linh kiện — khi trùng, nới điều kiện.
+  const partAuthContext = /part.?(?:status|auth|history|verif)|component.?(?:status|history)|repair.?status|genuine|unknown ?part|non[_ -]?genuine|unauthorized|serial ?mismatch|chinh hang|khong xac dinh|linh.kien|mobilegestalt|osanalytics|batteryhealth|gasgauge|displayauth|camauth/i;
 
   function fromLogs(logs) {
     const findings = [];
+    const seen = new Set();
     for (const item of Array.isArray(logs) ? logs : []) {
       const name = String(item?.name || item?.fileName || '').slice(0, 120);
       const content = String(typeof item === 'string' ? item :
         (item?.content || item?.rawText || '')).slice(0, 2_000_000);
-      const historyFile = /parts?[_ -]?history|repair|components?[_ -]?history|linh.kien/i.test(name);
-      for (const line of content.split(/\r?\n/)) {
-        const part = match(line, parts);
-        const status = match(line, statuses);
-        const explicit = /part.?status|component.?status|repair.?status|unknown part|genuine|linh kien|chinh hang|khong xac dinh/i.test(normalize(line));
-        if (!part || !status || !(historyFile || explicit)) continue;
-        if (!findings.some(f => f.part === part && f.status === status && f.file === name)) {
-          findings.push({ part, status, source: 'log', file: name });
-        }
+      const fileIsPartAuth = partAuthContext.test(name);
+
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        // Ghép dòng hiện tại với dòng kế để bắt trường hợp part và trạng thái
+        // nằm ở hai dòng liền nhau (hay gặp trong log dạng key/value).
+        const windowText = lines[i] + ' ' + (lines[i + 1] || '');
+        const part = match(windowText, parts);
+        if (!part) continue;
+        const status = match(windowText, statuses);
+        if (!status) continue;
+        // Chỉ nhận khi có ngữ cảnh xác thực rõ ràng — tránh dương tính giả từ
+        // các dòng chỉ tình cờ chứa "battery" hay "display".
+        if (!fileIsPartAuth && !partAuthContext.test(windowText)) continue;
+        const key = part + '|' + status;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        findings.push({ part, status, source: 'log', file: name });
         if (findings.length >= 20) return findings;
       }
     }
     return findings;
   }
 
+  // Gợi ý về cáp/socket từ kết quả chẩn đoán panic — KHÔNG phải bằng chứng thay
+  // linh kiện, chỉ để kỹ thuật viên biết chỗ cần kiểm tra.
   function cableClues(records) {
     const clues = [];
     for (const record of Array.isArray(records) ? records : []) {
@@ -103,7 +88,7 @@ const PartsHistory = (() => {
     return clues;
   }
 
-  // Absence of a status in CrashReporter is not proof that every part is original.
+  // Không thấy nhãn trong log KHÔNG chứng minh mọi linh kiện còn nguyên bản.
   function assessScan(logCount, statusSignals, cableSignals) {
     if (!Number.isFinite(logCount) || logCount <= 0) return 'noLogs';
     if (Array.isArray(statusSignals) && statusSignals.length) return 'found';
@@ -111,7 +96,7 @@ const PartsHistory = (() => {
     return 'noEvidence';
   }
 
-  return { fromSettings, fromLogs, cableClues, assessScan };
+  return { fromLogs, cableClues, assessScan };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;

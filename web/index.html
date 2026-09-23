@@ -23,7 +23,7 @@
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
         </button>
-        <span class="version-badge">v2.7.7 Pro</span>
+        <span class="version-badge">v2.7.8 Pro</span>
       </div>
     </div>
   </header>
@@ -161,7 +161,7 @@
     <section class="tab-panel" id="partsTab" role="tabpanel" aria-labelledby="tabParts" hidden>
       <section class="card parts-card" id="partsHistoryCard">
         <h2 class="card-title" data-i18n="parts.title">KIỂM TRA LINH KIỆN</h2>
-        <p class="parts-hint" data-i18n="parts.hint">App tự quét log qua pairing. Log không chứa đầy đủ Lịch sử linh kiện iOS; ảnh Cài đặt là cách kiểm tra thêm, tùy chọn.</p>
+        <p class="parts-hint" data-i18n="parts.hint">App đọc dấu hiệu linh kiện đã thay từ log riêng của thiết bị (qua pairing hoặc máy JB). Log không chứa đầy đủ Lịch sử linh kiện iOS, nên hãy đối chiếu Cài đặt để chắc chắn.</p>
         <div class="parts-scan-summary idle" id="partsScanSummary" role="status" aria-live="polite">
           <span class="parts-scan-indicator" aria-hidden="true"></span>
           <div>
@@ -172,9 +172,6 @@
         <p class="parts-note" id="partsPairingRequirement" data-i18n="parts.pairRequired">Chưa ghép đôi. Nhấn kiểm tra để ghép đôi, hoặc nhập pairing file trong Cài đặt.</p>
         <button class="action-btn primary" onclick="scanPartsThroughPairing()">
           <span id="partsScanLabel" data-i18n="parts.scan">Tự kiểm tra qua pairing</span>
-        </button>
-        <button class="action-btn secondary" onclick="pickPartsHistoryScreenshot()">
-          <span data-i18n="parts.pick">Đọc ảnh Cài đặt (tùy chọn)</span>
         </button>
         <div class="parts-results" id="partsHistoryResults" aria-live="polite"></div>
       </section>

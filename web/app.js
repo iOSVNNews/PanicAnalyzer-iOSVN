@@ -8,8 +8,6 @@ let diagnosticRecords = [];
 let incidentGroups = [];
 let currentFilter = 'all';
 let currentSearchQuery = '';
-let settingsPartInspection = null;
-let partInspectionError = '';
 let logPartSignals = [];
 let partsScanState = 'idle';
 let partsScanCount = 0;
@@ -724,23 +722,6 @@ function parseAndIngestLogs(rawLogsArray) {
   renderIncidentList();
 }
 
-function pickPartsHistoryScreenshot() {
-  if (window.webkit?.messageHandlers?.nativeBridge) {
-    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'pickPartsHistory' });
-  } else {
-    showToast(t('parts.iosOnly'), 3500);
-  }
-}
-
-window.onNativePartsHistory = function (result) {
-  partInspectionError = String(result?.error || '');
-  if (!partInspectionError) {
-    settingsPartInspection = PartsHistory.fromSettings(result?.lines);
-    if (settingsPartInspection.findings.length) setPartsScanState('photoFound');
-  }
-  renderPartsHistory();
-};
-
 function renderPartsHistory() {
   const host = document.getElementById('partsHistoryResults');
   if (!host) return;
@@ -763,17 +744,6 @@ function renderPartsHistory() {
     node.append(part, detail);
     host.appendChild(node);
   };
-  if (partInspectionError) paragraph(partInspectionError, 'parts-note parts-error');
-  if (settingsPartInspection) {
-    if (!settingsPartInspection.sectionFound) {
-      paragraph(t('parts.noSection'));
-    } else if (!settingsPartInspection.findings.length) {
-      paragraph(t('parts.noStatus'));
-    } else {
-      paragraph(t('parts.settingsSource'), 'parts-source');
-      settingsPartInspection.findings.forEach(row);
-    }
-  }
   if (logPartSignals.length) {
     paragraph(t('parts.logSource'), 'parts-source');
     logPartSignals.forEach(row);
