@@ -40,4 +40,8 @@ const cable = PartsHistory.cableClues([
     suspectedComponent: 'Socket màn hình', confidence: 'Thấp' }
 ]);
 assert.deepEqual(cable.map(item => item.file), ['panic.ips', 'i2c.ips']);
+assert.equal(PartsHistory.assessScan(0, [], []), 'noLogs');
+assert.equal(PartsHistory.assessScan(3, logs, []), 'found');
+assert.equal(PartsHistory.assessScan(3, [], cable), 'cable');
+assert.equal(PartsHistory.assessScan(3, [], []), 'noEvidence');
 console.log('Parts history: explicit Settings labels and cautious log signals passed');

@@ -84,7 +84,15 @@ const PartsHistory = (() => {
     return clues;
   }
 
-  return { fromSettings, fromLogs, cableClues };
+  // Absence of a status in CrashReporter is not proof that every part is original.
+  function assessScan(logCount, statusSignals, cableSignals) {
+    if (!Number.isFinite(logCount) || logCount <= 0) return 'noLogs';
+    if (Array.isArray(statusSignals) && statusSignals.length) return 'found';
+    if (Array.isArray(cableSignals) && cableSignals.length) return 'cable';
+    return 'noEvidence';
+  }
+
+  return { fromSettings, fromLogs, cableClues, assessScan };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;

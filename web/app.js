@@ -11,6 +11,9 @@ let currentSearchQuery = '';
 let settingsPartInspection = null;
 let partInspectionError = '';
 let logPartSignals = [];
+let partsScanState = 'idle';
+let partsScanCount = 0;
+let partsScanError = '';
 let ruleDatabases = {
   panic_rules: [],
   i2c_rules: {},
@@ -24,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyStaticI18n();
   setActiveTab('panic');
   updatePartsPairingRequirement();
+  renderPartsScanSummary();
   const settingsVersion = document.getElementById('settingsVersion');
   if (settingsVersion) settingsVersion.textContent = window.__APP_VERSION__
     || document.querySelector('.version-badge')?.textContent?.replace(/^v| Pro$/g, '') || '';
@@ -34,6 +38,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge);
   if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__ || window.__AUTO_PAIRING__)) {
+    setPartsScanState(window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__
+      ? 'scanning' : 'pairRequired');
     updateScanStatus(window.__CAN_READ_LOGS__
       ? t('s.readingDirect')
       : (window.__PAIRING_CONFIGURED__
@@ -47,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
       clearScanTimeout();
       showEmptyState();
+      setPartsScanState('error');
     }
   } else {
     showEmptyState();
@@ -87,6 +94,7 @@ function loadAllSamples() {
   const all = ruleDatabases.sample_logs || [];
   if (!all.length) return;
   closeSampleModal();
+  setPartsScanState('idle');
   parseAndIngestLogs(all);
   setDemoBanner(true);
   updateScanStatus(t('s.viewingSamples', { n: all.length }), false);
@@ -116,6 +124,7 @@ window.handleNativeLogsReceived = function(logsJsonStr) {
     parseAndIngestLogs(logs);
   } catch (e) {
     console.error("Error parsing native logs:", e);
+    setPartsScanState('error');
     updateScanStatus(t('s.readError'), false);
     showToast(t('s.readFailToast'), 4000);
   }
@@ -124,11 +133,14 @@ window.handleNativeLogsReceived = function(logsJsonStr) {
 // Trigger Auto-Scan manually
 function triggerAutoScan() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    setPartsScanState(window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__
+      ? 'scanning' : 'pairRequired');
     updateScanStatus(t('s.checking'), true);
     armScanTimeout();
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
   } else {
     showEmptyState();
+    setPartsScanState('error');
   }
 }
 
@@ -150,12 +162,6 @@ function setActiveTab(name) {
     if (panel) panel.hidden = !selected;
     if (button) button.setAttribute('aria-selected', String(selected));
   }
-  window.scrollTo(0, 0);
-}
-
-// Giữ nút bánh răng ở đầu trang như lối tắt đến tab Cài đặt.
-function openSettingsModal() {
-  setActiveTab('settings');
 }
 
 function updatePartsPairingRequirement() {
@@ -169,12 +175,33 @@ function updatePartsPairingRequirement() {
 
 function scanPartsThroughPairing() {
   if (!window.__CAN_READ_LOGS__ && !window.__PAIRING_CONFIGURED__) {
+    setPartsScanState('pairRequired');
     setActiveTab('panic');
     triggerPairingImport();
     return;
   }
   triggerAutoScan();
   showToast(t('parts.scanning'), 3500);
+}
+
+function setPartsScanState(state, count = 0, error = '') {
+  partsScanState = state;
+  partsScanCount = count;
+  partsScanError = String(error || '').slice(0, 240);
+  renderPartsScanSummary();
+}
+
+function renderPartsScanSummary() {
+  const host = document.getElementById('partsScanSummary');
+  const title = document.getElementById('partsScanTitle');
+  const detail = document.getElementById('partsScanDetail');
+  if (!host || !title || !detail) return;
+  host.className = 'parts-scan-summary ' + partsScanState;
+  title.textContent = t('parts.result.' + partsScanState + 'Title');
+  detail.textContent = t('parts.result.' + partsScanState + 'Detail', {
+    n: partsScanCount,
+    message: partsScanError || t('parts.result.errorFallback')
+  });
 }
 
 function triggerPairingFileImport() {
@@ -196,6 +223,7 @@ function openLink(url) {
 // Đổi ngôn ngữ: dịch lại giao diện và phân tích lại log đang xem theo ngôn ngữ mới
 function onLanguageChanged() {
   renderPartsHistory();
+  renderPartsScanSummary();
   updatePartsPairingRequirement();
   const banner = document.getElementById('demoBanner');
   if (banner) banner.innerText = t('s.sampleBanner');
@@ -759,9 +787,6 @@ function renderPartsHistory() {
     }
     paragraph(t('parts.cableCaution'));
   }
-  if (!settingsPartInspection && !logPartSignals.length && !cableClues.length && !partInspectionError) {
-    paragraph(t('parts.noEvidence'));
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,6 +1085,8 @@ function armScanTimeout() {
   clearTimeout(scanTimeoutId);
   scanTimeoutId = setTimeout(() => {
     showEmptyState();
+    updateScanStatus(t('s.timeout'), false);
+    setPartsScanState('error', 0, t('s.timeout'));
     showToast(t('s.timeout'), 4500);
   }, 45000);
 }
@@ -1076,6 +1103,7 @@ function triggerFilePicker() {
 
 window.onNativeScanMode = function(isAutoScan, count, source) {
   clearScanTimeout();
+  if (partsScanState === 'error') return;
   if (count > 0) {
     setDemoBanner(false);
     const sourceLabel = t(source === 'pairing' ? 's.src.pairing'
@@ -1085,12 +1113,23 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
   } else {
     showEmptyState();
     if (source === 'pairing') {
+      updateScanStatus(t('s.noPairingLogs'), false);
       showToast(t('s.noPairingLogs'), 4000);
     } else if (window.__CAN_READ_LOGS__ || source === 'filesystem') {
       showToast(t('s.noLogsJB'), 4500);
     } else {
       showToast(t('s.sandboxBlocked'), 4500);
     }
+  }
+  if (isAutoScan && (source === 'pairing' || source === 'filesystem')) {
+    const outcome = PartsHistory.assessScan(count, logPartSignals,
+      PartsHistory.cableClues(diagnosticRecords));
+    setPartsScanState(outcome, count);
+    showToast(t('parts.result.' + outcome + 'Title'), 4500);
+  } else if (isAutoScan && source === 'sandbox') {
+    setPartsScanState('pairRequired');
+  } else if (!isAutoScan) {
+    setPartsScanState('idle');
   }
 };
 
@@ -1116,10 +1155,18 @@ function applyJailbreakMode() {
 }
 
 window.onNativePairingStatus = function(status) {
-  clearScanTimeout();
   window.__PAIRING_CONFIGURED__ = !!status.configured;
   updatePairingButton(!!status.configured);
   updatePartsPairingRequirement();
+  if (status.error) {
+    clearScanTimeout();
+    if (partsScanState === 'scanning' || partsScanState === 'pairRequired') {
+      setPartsScanState('error', 0, status.message);
+    }
+  } else if (status.configured && partsScanState === 'pairRequired') {
+    setPartsScanState('scanning');
+    armScanTimeout();
+  }
   if (status.message) updateScanStatus(status.message, false);
   showToast(status.error ? `Pairing: ${status.message}` : `✓ ${status.message}`,
     status.error ? 6000 : 4000);
@@ -1140,6 +1187,7 @@ function handleNativeFileSelect(event) {
 
   Promise.all(readPromises).then(results => {
     updateScanStatus(t('s.imported', { n: results.length }), false);
+    setPartsScanState('idle');
     parseAndIngestLogs(results);
   });
 }
@@ -1212,6 +1260,7 @@ function loadSingleSample(idx) {
   const s = ruleDatabases.sample_logs[idx];
   if (!s) return;
   closeSampleModal();
+  setPartsScanState('idle');
   parseAndIngestLogs([s]);
   setDemoBanner(true);
   updateScanStatus(t('s.viewingSample', { t: s.type }), false);
