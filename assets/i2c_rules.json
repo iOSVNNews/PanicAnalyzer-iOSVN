@@ -10,31 +10,51 @@
       "addresses": {
         "0x48": {
           "component": "Cảm biến Barometer / Nhiệt độ (Prs0/Thermal)",
+          "component_en": "Barometer / temperature sensor (Prs0/Thermal)",
+          "component_zh": "气压 / 温度传感器（Prs0/Thermal）",
           "advice": "Kiểm tra cụm cáp sạc, cáp phím nguồn hoặc IC cảm biến áp suất",
+          "advice_en": "Check the charging flex, power button flex or the pressure sensor IC",
+          "advice_zh": "检查尾插排线、电源键排线或气压传感器 IC",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x38": {
           "component": "Cảm biến Tiệm cận & Ánh sáng (ALS/Proximity)",
+          "component_en": "Proximity & ambient light sensor (ALS/Proximity)",
+          "component_zh": "距离与环境光传感器（ALS/Proximity）",
           "advice": "Kiểm tra cụm cáp loa trong/FaceID",
+          "advice_en": "Check the earpiece/Face ID flex",
+          "advice_zh": "检查听筒/Face ID 排线",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x10": {
           "component": "IC Quản lý sạc (Tristar / Hydra / Tigris)",
+          "component_en": "Charging management IC (Tristar / Hydra / Tigris)",
+          "component_zh": "充电管理 IC（Tristar / Hydra / Tigris）",
           "advice": "Kiểm tra cáp sạc, IC sạc hoặc đường VBUS USB",
+          "advice_en": "Check the charging flex, charging IC or the USB VBUS line",
+          "advice_zh": "检查尾插排线、充电 IC 或 USB VBUS 线路",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x34": {
           "component": "IC Nguồn phụ (Sub-PMIC)",
+          "component_en": "Secondary power IC (Sub-PMIC)",
+          "component_zh": "副电源 IC（Sub-PMIC）",
           "advice": "Đo chạm các tụ lọc xung quanh IC nguồn phụ",
+          "advice_en": "Check the filter capacitors around the secondary power IC for shorts",
+          "advice_zh": "检查副电源 IC 周围滤波电容是否短路",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x6b": {
           "component": "IC Sạc nhanh / BQ Charger",
+          "component_en": "Fast-charge IC / BQ charger",
+          "component_zh": "快充 IC / BQ 充电芯片",
           "advice": "Kiểm tra mạch sạc và cuộn cảm sạc",
+          "advice_en": "Check the charging circuit and charging inductor",
+          "advice_zh": "检查充电电路和充电电感",
           "confidence": "Trung bình",
           "models": {}
         }
@@ -45,25 +65,41 @@
       "addresses": {
         "0x20": {
           "component": "IC Điều khiển Màn hình & Cảm ứng",
+          "component_en": "Display & touch controller IC",
+          "component_zh": "屏幕与触摸控制 IC",
           "advice": "Kiểm tra socket màn hình, thử thay màn hình khác",
+          "advice_en": "Check the display connector, try another screen",
+          "advice_zh": "检查屏幕座子，换一块屏幕测试",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x50": {
           "component": "EEPROM Màn hình (True Tone)",
+          "component_en": "Display EEPROM (True Tone)",
+          "component_zh": "屏幕 EEPROM（原彩显示）",
           "advice": "Kiểm tra mạch nạp True Tone hoặc cáp màn hình",
+          "advice_en": "Check the True Tone programming or the display flex",
+          "advice_zh": "检查原彩写入或屏幕排线",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x30": {
           "component": "Cụm FaceID TrueDepth (Dot Projector / Flood)",
+          "component_en": "Face ID TrueDepth (dot projector / flood)",
+          "component_zh": "Face ID 原深感组件（点阵投影器 / 泛光）",
           "advice": "Kiểm tra cáp Face ID, cáp cảm biến loa trên",
+          "advice_en": "Check the Face ID flex and the earpiece sensor flex",
+          "advice_zh": "检查 Face ID 排线和听筒传感器排线",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x70": {
           "component": "Bộ mở rộng I2C Multiplexer",
+          "component_en": "I2C multiplexer",
+          "component_zh": "I2C 多路复用器",
           "advice": "Đo áp 1.8V cấp cho chip chuyển mạch I2C",
+          "advice_en": "Measure the 1.8V supply of the I2C switch chip",
+          "advice_zh": "测量 I2C 切换芯片的 1.8V 供电",
           "confidence": "Trung bình",
           "models": {}
         }
@@ -74,19 +110,31 @@
       "addresses": {
         "0x40": {
           "component": "IC Âm thanh (Audio Codec / Speaker Amp)",
+          "component_en": "Audio IC (audio codec / speaker amp)",
+          "component_zh": "音频 IC（编解码器 / 扬声器功放）",
           "advice": "Kiểm tra IC chuông, IC âm thanh chính",
+          "advice_en": "Check the ringer IC and the main audio IC",
+          "advice_zh": "检查铃声 IC 和主音频 IC",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x68": {
           "component": "Cảm biến Con quay hồi chuyển (IMU Gyro/Accel)",
+          "component_en": "Gyroscope / accelerometer (IMU)",
+          "component_zh": "陀螺仪 / 加速度计（IMU）",
           "advice": "Kiểm tra IC la bàn/gia tốc",
+          "advice_en": "Check the compass/accelerometer IC",
+          "advice_zh": "检查指南针/加速度 IC",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x76": {
           "component": "Cảm biến Áp suất cao cấp",
+          "component_en": "High-precision pressure sensor",
+          "component_zh": "高精度气压传感器",
           "advice": "Kiểm tra đường áp cấp cho sensor",
+          "advice_en": "Check the sensor supply rail",
+          "advice_zh": "检查传感器供电线路",
           "confidence": "Trung bình",
           "models": {}
         }
@@ -97,19 +145,31 @@
       "addresses": {
         "0x18": {
           "component": "Camera sau chính (Wide Camera)",
+          "component_en": "Main rear camera (wide)",
+          "component_zh": "主后置摄像头（广角）",
           "advice": "Kiểm tra socket camera sau, thay thử cụm camera",
+          "advice_en": "Check the rear camera connector, try another camera module",
+          "advice_zh": "检查后置摄像头座子，换摄像头模组测试",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x1a": {
           "component": "Camera trước (Front Selfie Camera)",
+          "component_en": "Front (selfie) camera",
+          "component_zh": "前置摄像头",
           "advice": "Kiểm tra socket camera trước",
+          "advice_en": "Check the front camera connector",
+          "advice_zh": "检查前置摄像头座子",
           "confidence": "Trung bình",
           "models": {}
         },
         "0x28": {
           "component": "Cảm biến LIDAR Scanner (bản Pro)",
+          "component_en": "LiDAR scanner (Pro models)",
+          "component_zh": "LiDAR 扫描仪（Pro 机型）",
           "advice": "Kiểm tra module LIDAR và cáp nối",
+          "advice_en": "Check the LiDAR module and its flex",
+          "advice_zh": "检查 LiDAR 模组及排线",
           "confidence": "Trung bình",
           "models": {}
         }

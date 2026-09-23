@@ -13,17 +13,23 @@
         <img src="logo.png" alt="iOSVN" class="logo-img">
         <div>
           <h1 class="app-title">PANICFULL</h1>
-          <p class="app-subtitle">Chẩn đoán Panic-Full & Phần cứng iOS</p>
+          <p class="app-subtitle" data-i18n="app.subtitle">Chẩn đoán Panic-Full & Phần cứng iOS</p>
         </div>
       </div>
       <div class="header-actions">
-        <button class="refresh-btn" onclick="triggerAutoScan()" title="Quét lại log">
+        <button class="refresh-btn" onclick="triggerAutoScan()" title="Quét lại log" data-i18n-title="app.rescan">
           <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.2" fill="none">
             <path d="M23 4v6h-6M1 20v-6h6"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
         </button>
-        <span class="version-badge">v2.6.7 Pro</span>
+        <button class="refresh-btn" onclick="openSettingsModal()" title="Cài đặt" data-i18n-title="settings.title" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+        <span class="version-badge">v2.7.0 Pro</span>
       </div>
     </div>
   </header>
@@ -34,26 +40,26 @@
       <div class="health-header">
         <div class="health-title-wrap">
           <span class="pulse-dot" id="statusPulse"></span>
-          <h2 class="card-title">TÌNH TRẠNG THIẾT BỊ</h2>
+          <h2 class="card-title" data-i18n="health.title">TÌNH TRẠNG THIẾT BỊ</h2>
         </div>
-        <span class="device-model-badge" id="detectedModelBadge">iPhone (Tự phát hiện)</span>
+        <span class="device-model-badge" id="detectedModelBadge" data-i18n="health.autoModel">iPhone (Tự phát hiện)</span>
       </div>
 
       <div class="stats-grid">
         <div class="stat-box critical" onclick="filterBySeverity('critical')">
           <div class="stat-number" id="statCriticalCount">0</div>
-          <div class="stat-label">Lỗi cần quan tâm</div>
+          <div class="stat-label" data-i18n="stat.critical">Lỗi cần quan tâm</div>
           <div class="stat-sub">SMC, I2C, NVMe, BB</div>
         </div>
         <div class="stat-box warning" onclick="filterBySeverity('warning')">
           <div class="stat-number" id="statWarningCount">0</div>
-          <div class="stat-label">Cần theo dõi</div>
+          <div class="stat-label" data-i18n="stat.warning">Cần theo dõi</div>
           <div class="stat-sub">Watchdog, Thermal</div>
         </div>
         <div class="stat-box normal" onclick="filterBySeverity('normal')">
           <div class="stat-number" id="statNormalCount">0</div>
-          <div class="stat-label">Có thể bỏ qua</div>
-          <div class="stat-sub">Jetsam, Crash lẻ</div>
+          <div class="stat-label" data-i18n="stat.normal">Có thể bỏ qua</div>
+          <div class="stat-sub" data-i18n="stat.normalSub">Jetsam, Crash lẻ</div>
         </div>
       </div>
 
@@ -71,7 +77,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
           <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
         </svg>
-        <span>Tự động quét Log hệ thống</span>
+        <span data-i18n="btn.autoScan">Tự động quét Log hệ thống</span>
       </button>
       
       <button class="action-btn secondary" id="btnImportFile" onclick="triggerFilePicker()">
@@ -81,7 +87,7 @@
           <line x1="12" y1="18" x2="12" y2="12"/>
           <line x1="9" y1="15" x2="15" y2="15"/>
         </svg>
-        <span>Chọn file .ips / .crash</span>
+        <span data-i18n="btn.pickFile">Chọn file .ips / .crash</span>
       </button>
 
       <button class="action-btn secondary" id="btnPairing" onclick="triggerPairingImport()">
@@ -93,17 +99,17 @@
       </button>
 
       <div class="pairing-card" id="pairingCard" hidden>
-        <div class="pairing-card-title" id="pairingCardTitle">Ghép đôi iPhone này</div>
+        <div class="pairing-card-title" id="pairingCardTitle" data-i18n="pair.title">Ghép đôi iPhone này</div>
         <div class="pairing-pin" id="pairingPin" hidden></div>
         <ol class="pairing-steps">
-          <li>Bật LocalDevVPN và Chế độ nhà phát triển.</li>
-          <li>Mở Cài đặt, về trang chính › <b>Quyền riêng tư &amp; Bảo mật</b> › cuộn xuống cuối › <b>Nhà phát triển</b>. (iOS không cho app mở thẳng mục này.)</li>
-          <li>Chọn đúng <b id="pairingHostName">PanicAnalyzer</b> — không chọn SideInstaller hay máy khác.</li>
-          <li>Nhập mã PIN ở trên (đã sao chép sẵn, có cả trong thông báo).</li>
+          <li data-i18n="pair.step1">Bật LocalDevVPN và Chế độ nhà phát triển.</li>
+          <li data-i18n="pair.step2">Mở Cài đặt, về trang chính › <b>Quyền riêng tư &amp; Bảo mật</b> › cuộn xuống cuối › <b>Nhà phát triển</b>. (iOS không cho app mở thẳng mục này.)</li>
+          <li data-i18n="pair.step3">Chọn đúng <b>PanicAnalyzer</b> — không chọn SideInstaller hay máy khác.</li>
+          <li data-i18n="pair.step4">Nhập mã PIN ở trên (đã sao chép sẵn, có cả trong thông báo).</li>
         </ol>
         <div class="pairing-card-actions">
-          <button class="action-btn primary" onclick="nativeAction('openPrivacySettings')">Mở Cài đặt</button>
-          <button class="action-btn secondary" onclick="nativeAction('cancelPairing')">Huỷ ghép đôi</button>
+          <button class="action-btn primary" onclick="nativeAction('openPrivacySettings')" data-i18n="btn.openSettings">Mở Cài đặt</button>
+          <button class="action-btn secondary" onclick="nativeAction('cancelPairing')" data-i18n="btn.cancelPairing">Huỷ ghép đôi</button>
         </div>
       </div>
 
@@ -111,7 +117,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
         </svg>
-        <span>Nạp log mẫu kiểm thử</span>
+        <span data-i18n="btn.samples">Nạp log mẫu kiểm thử</span>
       </button>
     </section>
 
@@ -123,23 +129,23 @@
           <circle cx="11" cy="11" r="8"/>
           <line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input type="text" id="searchInput" placeholder="Tìm mã lỗi, cảm biến, I2C, NVMe..." oninput="handleSearch(event)">
+        <input type="text" id="searchInput" placeholder="Tìm mã lỗi, cảm biến, I2C, NVMe..." data-i18n-placeholder="search.placeholder" oninput="handleSearch(event)">
         <button class="clear-search-btn" id="btnClearSearch" onclick="clearSearch()" style="display:none">&times;</button>
       </div>
 
       <div class="chips-scroll">
-        <button class="filter-chip active" data-filter="all" onclick="setChipFilter('all')">Tất cả</button>
-        <button class="filter-chip critical" data-filter="critical" onclick="setChipFilter('critical')">Cần quan tâm</button>
-        <button class="filter-chip warning" data-filter="warning" onclick="setChipFilter('warning')">Cần theo dõi</button>
-        <button class="filter-chip normal" data-filter="normal" onclick="setChipFilter('normal')">Có thể bỏ qua</button>
-        <button class="filter-chip i2c" data-filter="i2c" onclick="setChipFilter('i2c')">Lỗi I2C</button>
+        <button class="filter-chip active" data-filter="all" onclick="setChipFilter('all')" data-i18n="chip.all">Tất cả</button>
+        <button class="filter-chip critical" data-filter="critical" onclick="setChipFilter('critical')" data-i18n="chip.critical">Cần quan tâm</button>
+        <button class="filter-chip warning" data-filter="warning" onclick="setChipFilter('warning')" data-i18n="chip.warning">Cần theo dõi</button>
+        <button class="filter-chip normal" data-filter="normal" onclick="setChipFilter('normal')" data-i18n="chip.normal">Có thể bỏ qua</button>
+        <button class="filter-chip i2c" data-filter="i2c" onclick="setChipFilter('i2c')" data-i18n="chip.i2c">Lỗi I2C</button>
         <button class="filter-chip smc" data-filter="smc" onclick="setChipFilter('smc')">SMC Sensor</button>
       </div>
     </section>
 
     <section class="results-section">
       <div class="results-header">
-        <h3 class="section-heading" id="resultsHeading">DANH SÁCH LỖI ĐÃ PHÂN TÍCH</h3>
+        <h3 class="section-heading" id="resultsHeading" data-i18n="results.heading">DANH SÁCH LỖI ĐÃ PHÂN TÍCH</h3>
         <span class="results-count-badge" id="resultsCountBadge">0 cụm lỗi</span>
       </div>
 
@@ -150,8 +156,8 @@
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <h4>Chưa có dữ liệu log</h4>
-          <p>Mở log trong <b>Dữ liệu phân tích</b> rồi bấm <b>Chia sẻ → PanicAnalyzer</b>. Trên iOS 27, chỉ cần bật LocalDevVPN để app tự ghép đôi và quét CrashReporter.</p>
+          <h4 data-i18n="empty.title">Chưa có dữ liệu log</h4>
+          <p data-i18n="empty.body">Mở log trong <b>Dữ liệu phân tích</b> rồi bấm <b>Chia sẻ → PanicAnalyzer</b>. Trên iOS 27, chỉ cần bật LocalDevVPN để app tự ghép đôi và quét CrashReporter.</p>
         </div>
       </div>
     </section>
@@ -162,7 +168,7 @@
       <div class="modal-header">
         <div class="modal-title-wrap">
           <span class="badge" id="modalSeverityBadge">NGHIÊM TRỌNG</span>
-          <h3 id="modalTitle">Chi tiết chẩn đoán</h3>
+          <h3 id="modalTitle" data-i18n="modal.details">Chi tiết chẩn đoán</h3>
         </div>
         <button class="modal-close-btn" onclick="closeDetailModal()">&times;</button>
       </div>
@@ -176,16 +182,16 @@
             <polyline points="16 6 12 2 8 6"/>
             <line x1="12" y1="2" x2="12" y2="15"/>
           </svg>
-          Xuất báo cáo Sanitize
+          <span data-i18n="btn.export">Xuất báo cáo Sanitize</span>
         </button>
         <button class="btn btn-outline" id="adminBtn" style="display:none" onclick="sendToAdmin()">
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
             <line x1="22" y1="2" x2="11" y2="13"/>
             <polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
-          Gửi log cho admin
+          <span data-i18n="btn.admin">Gửi log cho admin</span>
         </button>
-        <button class="btn btn-primary" onclick="closeDetailModal()">Đóng</button>
+        <button class="btn btn-primary" onclick="closeDetailModal()" data-i18n="btn.close">Đóng</button>
       </div>
     </div>
   </div>
@@ -194,19 +200,71 @@
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <span class="badge badge-info">THỬ NGHIỆM</span>
-          <h3>Thư viện Log mẫu</h3>
+          <span class="badge badge-info" data-i18n="sample.badge">THỬ NGHIỆM</span>
+          <h3 data-i18n="sample.title">Thư viện Log mẫu</h3>
         </div>
         <button class="modal-close-btn" onclick="closeSampleModal()">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="sample-intro">Chọn một mẫu log thực tế dưới đây để kiểm tra ngay khả năng nhận diện lỗi:</p>
-        <button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="loadAllSamples()">Nạp tất cả mẫu để xem thử</button>
+        <p class="sample-intro" data-i18n="sample.intro">Chọn một mẫu log thực tế dưới đây để kiểm tra ngay khả năng nhận diện lỗi:</p>
+        <button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="loadAllSamples()" data-i18n="btn.loadAllSamples">Nạp tất cả mẫu để xem thử</button>
         <div class="sample-list" id="sampleListContainer"></div>
       </div>
     </div>
   </div>
 
+  <div class="modal-overlay" id="settingsModal" onclick="if (event.target.id === 'settingsModal') closeSettingsModal()">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3 data-i18n="settings.title">Cài đặt</h3>
+        </div>
+        <button class="modal-close-btn" onclick="closeSettingsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-group">
+          <div class="settings-label" data-i18n="settings.language">Ngôn ngữ</div>
+          <div class="lang-options">
+            <button class="lang-option" data-lang="vi" onclick="setLang('vi')">Tiếng Việt</button>
+            <button class="lang-option" data-lang="en" onclick="setLang('en')">English</button>
+            <button class="lang-option" data-lang="zh" onclick="setLang('zh')">中文</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-label" data-i18n="settings.pairing">Ghép đôi</div>
+          <button class="action-btn secondary" onclick="triggerPairingFileImport()">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span data-i18n="btn.importPairing">Nhập file pairing thủ công</span>
+          </button>
+          <p class="settings-hint" data-i18n="settings.importHint">Nhận Remote Pairing record (.plist) hoặc lockdown pairing file (.mobiledevicepairing / .plist) tạo từ máy tính, iLoader, SideInstaller…</p>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-label" data-i18n="settings.about">Thông tin</div>
+          <div class="about-list">
+            <a class="about-row" href="#" onclick="openLink('https://github.com/iOSVNNews/PanicAnalyzer-iOSVN'); return false;">
+              <span data-i18n="settings.repo">Mã nguồn GitHub</span><b>PanicAnalyzer-iOSVN</b>
+            </a>
+            <div class="about-row"><span data-i18n="settings.author">Tác giả</span><b>iOSVN</b></div>
+            <a class="about-row" href="#" onclick="openLink('https://t.me/longdzqua'); return false;">
+              <span data-i18n="settings.telegram">Telegram tác giả</span><b>@longdzqua</b>
+            </a>
+            <a class="about-row" href="#" onclick="openLink('https://iosvn.com.vn'); return false;">
+              <span data-i18n="settings.website">Website</span><b>iosvn.com.vn</b>
+            </a>
+            <div class="about-row"><span data-i18n="settings.version">Phiên bản</span><b id="settingsVersion"></b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 
   

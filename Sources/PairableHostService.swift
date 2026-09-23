@@ -59,7 +59,9 @@ final class PairableHostService: NSObject {
             try check(pa_host_prepare(name, &host, &serviceC, &txtBytes, &txtLength))
         }
         guard let host, let serviceC else {
-            throw HostError(message: "Không tạo được danh tính máy chủ ghép đôi.")
+            throw HostError(message: Loc.s("Không tạo được danh tính máy chủ ghép đôi.",
+                                           "Could not create the pairing host identity.",
+                                           "无法创建配对主机身份。"))
         }
         defer { pa_host_free(host) }
         let serviceID = String(cString: serviceC)
@@ -73,7 +75,11 @@ final class PairableHostService: NSObject {
                 for (key, value) in dict { txt[key] = Data(value.utf8) }
             }
         }
-        guard !txt.isEmpty else { throw HostError(message: "Thiếu thông tin Bonjour của máy chủ ghép đôi.") }
+        guard !txt.isEmpty else {
+            throw HostError(message: Loc.s("Thiếu thông tin Bonjour của máy chủ ghép đôi.",
+                                           "The pairing host's Bonjour data is missing.",
+                                           "缺少配对主机的 Bonjour 信息。"))
+        }
 
         let listener = try Self.listen()
         defer { close(listener.fd) }
@@ -155,10 +161,15 @@ final class PairableHostService: NSObject {
     private func waitForConnection(_ listener: Int32, timeout: TimeInterval) throws -> Int32 {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if isCancelled { throw HostError(message: "Đã huỷ ghép đôi.") }
+            if isCancelled { throw HostError(message: Loc.s("Đã huỷ ghép đôi.", "Pairing cancelled.", "已取消配对。")) }
             if let publishError = currentPublishError {
-                throw HostError(message: "iOS không cho quảng bá PanicAnalyzer qua Bonjour (\(publishError)). "
-                    + "Bật Cài đặt > PanicAnalyzer > Mạng cục bộ rồi thử lại.")
+                throw HostError(message: Loc.s(
+                    "iOS không cho quảng bá PanicAnalyzer qua Bonjour (\(publishError)). "
+                        + "Bật Cài đặt > PanicAnalyzer > Mạng cục bộ rồi thử lại.",
+                    "iOS would not advertise PanicAnalyzer over Bonjour (\(publishError)). "
+                        + "Turn on Settings > PanicAnalyzer > Local Network and try again.",
+                    "iOS 不允许通过 Bonjour 广播 PanicAnalyzer（\(publishError)）。"
+                        + "请开启 设置 > PanicAnalyzer > 本地网络 后重试。"))
             }
             var descriptor = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
             let ready = poll(&descriptor, 1, 500)
@@ -168,17 +179,23 @@ final class PairableHostService: NSObject {
             if client >= 0 { return client }
             if errno != EINTR && errno != EAGAIN { throw Self.posixError("accept") }
         }
-        throw HostError(message: "Hết thời gian chờ. Trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển "
-            + "chưa có ai chọn \(Self.hostName). Bật Chế độ nhà phát triển và LocalDevVPN rồi thử lại.")
+        throw HostError(message: Loc.s(
+            "Hết thời gian chờ. Trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển "
+                + "chưa có ai chọn \(Self.hostName). Bật Chế độ nhà phát triển và LocalDevVPN rồi thử lại.",
+            "Timed out. Nobody picked \(Self.hostName) in Settings > Privacy & Security > Developer. "
+                + "Turn on Developer Mode and LocalDevVPN, then try again.",
+            "等待超时。没有在 设置 > 隐私与安全性 > 开发者 中选择 \(Self.hostName)。"
+                + "请打开开发者模式和 LocalDevVPN 后重试。"))
     }
 
     private static func posixError(_ call: String) -> HostError {
-        HostError(message: "\(call) lỗi: \(String(cString: strerror(errno)))")
+        HostError(message: "\(call): \(String(cString: strerror(errno)))")
     }
 
     private func check(_ error: UnsafeMutablePointer<CChar>?) throws {
         guard let error else { return }
-        let message = String(validatingUTF8: error) ?? "Lỗi ghép đôi không xác định"
+        let message = String(validatingUTF8: error)
+            ?? Loc.s("Lỗi ghép đôi không xác định", "Unknown pairing error", "未知配对错误")
         pa_error_free(error)
         throw HostError(message: message)
     }
@@ -187,7 +204,7 @@ final class PairableHostService: NSObject {
 extension PairableHostService: NetServiceDelegate {
     func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
         stateLock.lock()
-        publishError = "mã lỗi \(errorDict[NetService.errorCode]?.intValue ?? 0)"
+        publishError = "\(errorDict[NetService.errorCode]?.intValue ?? 0)"
         stateLock.unlock()
     }
 }

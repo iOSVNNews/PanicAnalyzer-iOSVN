@@ -66,7 +66,9 @@ enum LocalVPNConnection {
             .split(separator: "/", omittingEmptySubsequences: false)
         guard (1...2).contains(parts.count),
               parts.count == 1 || (Int(parts[1]).map { (0...32).contains($0) } ?? false) else {
-            throw ConnectionError(message: "Device IP không hợp lệ. Ví dụ: 10.7.0.1 hoặc 10.7.0.1/32.")
+            throw ConnectionError(message: Loc.s("Device IP không hợp lệ. Ví dụ: 10.7.0.1 hoặc 10.7.0.1/32.",
+                                                 "Invalid Device IP. Example: 10.7.0.1 or 10.7.0.1/32.",
+                                                 "Device IP 无效。例如：10.7.0.1 或 10.7.0.1/32。"))
         }
         let octets = parts[0].split(separator: ".", omittingEmptySubsequences: false)
         guard octets.count == 4,
@@ -74,7 +76,9 @@ enum LocalVPNConnection {
                   && UInt8($0) != nil }),
               let first = UInt8(octets[0]), first > 0, first < 224,
               first != 127 else {
-            throw ConnectionError(message: "Hãy nhập IPv4 ở mục Device IP của LocalDevVPN, không phải Tunnel IP.")
+            throw ConnectionError(message: Loc.s("Hãy nhập IPv4 ở mục Device IP của LocalDevVPN, không phải Tunnel IP.",
+                                                 "Enter the IPv4 from LocalDevVPN's Device IP field, not the Tunnel IP.",
+                                                 "请输入 LocalDevVPN 中 Device IP 的 IPv4，而不是 Tunnel IP。"))
         }
         return octets.map { String(UInt8($0)!) }.joined(separator: ".")
     }
@@ -85,7 +89,9 @@ enum LocalVPNConnection {
         if trimmed.isEmpty { return nil }
         guard trimmed.allSatisfy({ $0 >= "0" && $0 <= "9" }),
               let value = Int(trimmed), (1...65535).contains(value) else {
-            throw ConnectionError(message: "Cổng RemotePairing không hợp lệ. Để trống để app tự dò, hoặc nhập số như 49152.")
+            throw ConnectionError(message: Loc.s("Cổng RemotePairing không hợp lệ.",
+                                                 "Invalid RemotePairing port.",
+                                                 "RemotePairing 端口无效。"))
         }
         return UInt16(value)
     }
@@ -146,9 +152,16 @@ enum LocalVPNConnection {
 
         let triedPorts = tried.sorted().map(String.init).joined(separator: ", ")
         throw ConnectionError(
-            message: "LocalDevVPN đã chạy nhưng dịch vụ RemotePairing của iOS không mở tại \(address) "
-                + "(đã thử cổng \(triedPorts)) và không dò được cổng qua Bonjour \(remotePairingServiceType). "
-                + "Hãy tắt rồi bật lại LocalDevVPN, bật Wi-Fi, cho phép quyền Mạng cục bộ, rồi thử lại."
+            message: Loc.s(
+                "LocalDevVPN đã chạy nhưng dịch vụ RemotePairing của iOS không mở tại \(address) "
+                    + "(đã thử cổng \(triedPorts)) và không dò được cổng qua Bonjour \(remotePairingServiceType). "
+                    + "Hãy tắt rồi bật lại LocalDevVPN, bật Wi-Fi, cho phép quyền Mạng cục bộ, rồi thử lại.",
+                "LocalDevVPN is running but iOS's RemotePairing service is not open at \(address) "
+                    + "(tried ports \(triedPorts)) and no port was found via Bonjour \(remotePairingServiceType). "
+                    + "Turn LocalDevVPN off and on, turn on Wi-Fi, allow Local Network, then try again.",
+                "LocalDevVPN 已运行，但 iOS 的 RemotePairing 服务在 \(address) 未开放"
+                    + "（已尝试端口 \(triedPorts)），且无法通过 Bonjour \(remotePairingServiceType) 找到端口。"
+                    + "请关闭再打开 LocalDevVPN、打开 Wi-Fi、允许本地网络后重试。")
                 + (lastError.map { " (\($0.localizedDescription))" } ?? ""),
             refused: true
         )
@@ -173,7 +186,7 @@ enum LocalVPNConnection {
     static func probe(address: String, port: UInt16, timeout: TimeInterval) throws {
         precondition(!Thread.isMainThread, "VPN checks must not block the UI")
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
-            throw ConnectionError(message: "Cổng LocalDevVPN không hợp lệ.")
+            throw ConnectionError(message: Loc.s("Cổng LocalDevVPN không hợp lệ.", "Invalid LocalDevVPN port.", "LocalDevVPN 端口无效。"))
         }
         // Fast, deterministic answer first: a plain TCP connect reports RST as
         // ECONNREFUSED at once, while Network.framework may keep retrying a
@@ -183,7 +196,9 @@ enum LocalVPNConnection {
             return
         case ECONNREFUSED:
             throw ConnectionError(
-                message: "LocalDevVPN đã chạy nhưng cổng RemotePairing \(address):\(port) đang đóng (Connection refused).",
+                message: Loc.s("LocalDevVPN đã chạy nhưng cổng RemotePairing \(address):\(port) đang đóng (Connection refused).",
+                               "LocalDevVPN is running but RemotePairing port \(address):\(port) is closed (Connection refused).",
+                               "LocalDevVPN 已运行，但 RemotePairing 端口 \(address):\(port) 已关闭（Connection refused）。"),
                 refused: true
             )
         default:
@@ -196,7 +211,7 @@ enum LocalVPNConnection {
         var finished = false
         var succeeded = false
         var refused = false
-        var detail = "Kết nối quá thời gian."
+        var detail = Loc.s("Kết nối quá thời gian.", "Connection timed out.", "连接超时。")
         func finish(_ success: Bool) {
             guard !finished else { return }
             finished = true
@@ -223,7 +238,9 @@ enum LocalVPNConnection {
                     return
                 }
                 if connection.currentPath?.unsatisfiedReason == .localNetworkDenied {
-                    detail = "Bật quyền Mạng cục bộ cho PanicAnalyzer trong Cài đặt iOS."
+                    detail = Loc.s("Bật quyền Mạng cục bộ cho PanicAnalyzer trong Cài đặt iOS.",
+                                   "Allow Local Network for PanicAnalyzer in iOS Settings.",
+                                   "请在 iOS 设置中为 PanicAnalyzer 开启本地网络权限。")
                 }
                 // Stay alive while permission is granted or the VPN route comes up.
             case .failed(let error):
@@ -243,13 +260,22 @@ enum LocalVPNConnection {
         guard result.0 else {
             if result.2 {
                 throw ConnectionError(
-                    message: "LocalDevVPN đã chạy nhưng cổng RemotePairing \(address):\(port) đang đóng. \(result.1)",
+                    message: Loc.s("LocalDevVPN đã chạy nhưng cổng RemotePairing \(address):\(port) đang đóng. \(result.1)",
+                                   "LocalDevVPN is running but RemotePairing port \(address):\(port) is closed. \(result.1)",
+                                   "LocalDevVPN 已运行，但 RemotePairing 端口 \(address):\(port) 已关闭。\(result.1)"),
                     refused: true
                 )
             }
-            throw ConnectionError(message: "Không kết nối được LocalDevVPN tại \(address):\(port). "
-                + "Bật hoặc kết nối lại LocalDevVPN (Device IP mặc định 10.7.0.1) và kiểm tra quyền "
-                + "Mạng cục bộ của PanicAnalyzer. \(result.1)")
+            throw ConnectionError(message: Loc.s(
+                "Không kết nối được LocalDevVPN tại \(address):\(port). "
+                    + "Bật hoặc kết nối lại LocalDevVPN (Device IP mặc định 10.7.0.1) và kiểm tra quyền "
+                    + "Mạng cục bộ của PanicAnalyzer. \(result.1)",
+                "Cannot reach LocalDevVPN at \(address):\(port). "
+                    + "Turn on or reconnect LocalDevVPN (default Device IP 10.7.0.1) and check PanicAnalyzer's "
+                    + "Local Network permission. \(result.1)",
+                "无法连接 \(address):\(port) 上的 LocalDevVPN。"
+                    + "请打开或重新连接 LocalDevVPN（默认 Device IP 10.7.0.1），并检查 PanicAnalyzer 的"
+                    + "本地网络权限。\(result.1)"))
         }
     }
 

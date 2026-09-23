@@ -122,6 +122,7 @@ body {
 }
 
 .version-badge {
+  white-space: nowrap;
   background: rgba(255, 107, 0, 0.18);
   color: var(--accent-blue);
   font-size: 11px;
@@ -809,3 +810,45 @@ body {
 .timeline-time { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
 .timeline-file { color: var(--text-muted); font-size: 11.5px; word-break: break-all; }
 .timeline-more { color: var(--text-muted); font-size: 12px; padding-top: 6px; }
+
+/* ---- Cài đặt ứng dụng ---- */
+.settings-group { display: flex; flex-direction: column; gap: 8px; }
+.settings-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.settings-hint { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
+.lang-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.lang-option {
+  padding: 11px 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-border);
+  background: #1a1a1d;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lang-option.active { border-color: var(--brand); background: var(--brand-dim); color: var(--brand-bright); }
+.about-list {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--card-border);
+}
+.about-row:last-child { border-bottom: none; }
+.about-row b { color: var(--text-primary); font-weight: 600; text-align: right; word-break: break-all; }
+a.about-row b { color: var(--brand-bright); }

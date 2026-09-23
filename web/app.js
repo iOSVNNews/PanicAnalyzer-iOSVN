@@ -18,6 +18,7 @@ let ruleDatabases = {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+  applyStaticI18n();
   await loadDatabases();
   updateDetectedModel();
   updatePairingButton(!!window.__PAIRING_CONFIGURED__);
@@ -25,10 +26,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge);
   if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__ || window.__AUTO_PAIRING__)) {
     updateScanStatus(window.__PAIRING_CONFIGURED__
-      ? "Đang kết nối CrashReporter qua pairing..."
+      ? t('s.connecting')
       : (window.__AUTO_PAIRING__
-        ? "Đang kiểm tra ghép đôi qua LocalDevVPN..."
-        : "Đang đọc log hệ thống..."), true);
+        ? t('s.checkingPair')
+        : t('s.readingSystem')), true);
     armScanTimeout();
     try {
       window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
@@ -48,7 +49,7 @@ function showEmptyState() {
   setDemoBanner(false);
   updateDashboardStats();
   renderIncidentList();
-  updateScanStatus(SANDBOX_HINT, false);
+  updateScanStatus(t('s.sandboxHint'), false);
 }
 
 // Banner cảnh báo khi đang xem dữ liệu mẫu
@@ -64,7 +65,7 @@ function setDemoBanner(on) {
   el.style.cssText = 'margin:0 0 12px;padding:12px 14px;border-radius:12px;'
     + 'background:rgba(255,107,0,.12);border:1px solid rgba(255,107,0,.38);'
     + 'color:#ffa02e;font-size:13px;font-weight:600;line-height:1.45';
-  el.innerText = 'DỮ LIỆU MẪU \u2014 đây KHÔNG phải log của máy bạn, chỉ để xem thử giao diện.';
+  el.innerText = t('s.sampleBanner');
   list.parentNode.insertBefore(el, list);
 }
 
@@ -75,7 +76,7 @@ function loadAllSamples() {
   closeSampleModal();
   parseAndIngestLogs(all);
   setDemoBanner(true);
-  updateScanStatus(`Đang xem ${all.length} log MẪU (không phải máy bạn).`, false);
+  updateScanStatus(t('s.viewingSamples', { n: all.length }), false);
 }
 
 // Update Scan Status in UI
@@ -102,15 +103,15 @@ window.handleNativeLogsReceived = function(logsJsonStr) {
     parseAndIngestLogs(logs);
   } catch (e) {
     console.error("Error parsing native logs:", e);
-    updateScanStatus("Lỗi đọc log từ hệ thống.", false);
-    showToast('Đọc log thất bại — thử nạp file thủ công', 4000);
+    updateScanStatus(t('s.readError'), false);
+    showToast(t('s.readFailToast'), 4000);
   }
 };
 
 // Trigger Auto-Scan manually
 function triggerAutoScan() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    updateScanStatus("Đang kiểm tra log hệ thống...", true);
+    updateScanStatus(t('s.checking'), true);
     armScanTimeout();
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
   } else {
@@ -120,12 +121,57 @@ function triggerAutoScan() {
 
 function triggerPairingImport() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    updateScanStatus('Đang ghép đôi trên thiết bị qua LocalDevVPN...', true);
+    updateScanStatus(t('s.pairing'), true);
     armScanTimeout();
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'pairDevice' });
     return;
   }
-  showToast('Tính năng pairing chỉ có trong ứng dụng iOS.', 3500);
+  showToast(t('s.iosOnly'), 3500);
+}
+
+// Cài đặt ứng dụng: ngôn ngữ, nhập file pairing thủ công, thông tin tác giả
+function openSettingsModal() {
+  applyStaticI18n();
+  const modal = document.getElementById('settingsModal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeSettingsModal() {
+  const modal = document.getElementById('settingsModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function triggerPairingFileImport() {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    closeSettingsModal();
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'importPairing' });
+    return;
+  }
+  showToast(t('s.iosOnly'), 3500);
+}
+
+function openLink(url) {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'openURL', url: url });
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+// Đổi ngôn ngữ: dịch lại giao diện và phân tích lại log đang xem theo ngôn ngữ mới
+function onLanguageChanged() {
+  const banner = document.getElementById('demoBanner');
+  if (banner) banner.innerText = t('s.sampleBanner');
+  updateDetectedModel();
+  updatePairingButton(!!window.__PAIRING_CONFIGURED__);
+  renderRulesInfo(window.__RULES_INFO__);
+  populateSampleLogsModal();
+  if (diagnosticRecords.length) {
+    reanalyzeStoredLogs();
+  } else {
+    renderIncidentList();
+    updateScanStatus(t('s.sandboxHint'), false);
+  }
 }
 
 function nativeAction(action) {
@@ -142,16 +188,14 @@ window.onNativePairingCard = function(info) {
   card.hidden = false;
   const title = document.getElementById('pairingCardTitle');
   const pinBox = document.getElementById('pairingPin');
-  const host = document.getElementById('pairingHostName');
-  if (host && info.host) host.innerText = info.host;
   if (info.stage === 'permission') {
-    title.innerText = 'Đang xin quyền Mạng cục bộ… chọn Cho phép';
+    title.innerText = t('pair.permission');
     pinBox.hidden = true;
   } else if (info.stage === 'advertising') {
-    title.innerText = 'Đang chờ ghép đôi — làm theo các bước dưới';
+    title.innerText = t('pair.waiting');
     pinBox.hidden = true;
   } else if (info.stage === 'pin' && info.pin) {
-    title.innerText = 'Nhập mã này trong Cài đặt';
+    title.innerText = t('pair.enterPin');
     pinBox.innerText = info.pin.replace(/(\d{3})(\d{3})/, '$1 $2');
     pinBox.hidden = false;
   }
@@ -194,7 +238,7 @@ function updateDetectedModel() {
     badge.innerText = ios ? `${name} · iOS ${ios}` : name;
     badge.title = id;
   } else {
-    badge.innerText = 'Chế độ xem trước';
+    badge.innerText = t('health.preview');
   }
 }
 
@@ -217,7 +261,7 @@ function parseTimestamp(raw) {
 
 // Ngày giờ theo múi giờ của máy, ví dụ "20/09/2026 10:15:30".
 function formatLogTime(ms) {
-  if (!ms) return 'Không rõ thời gian';
+  if (!ms) return t('time.unknown');
   const d = new Date(ms);
   const p = n => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -229,13 +273,13 @@ function formatAgo(ms) {
   const diff = Date.now() - ms;
   if (diff < 0) return '';
   const min = Math.floor(diff / 60000);
-  if (min < 1) return 'vừa xong';
-  if (min < 60) return `${min} phút trước`;
+  if (min < 1) return t('time.now');
+  if (min < 60) return t('time.min', { n: min });
   const h = Math.floor(min / 60);
-  if (h < 24) return `${h} giờ trước`;
+  if (h < 24) return t('time.hour', { n: h });
   const day = Math.floor(h / 24);
-  if (day < 60) return `${day} ngày trước`;
-  return `${Math.floor(day / 30)} tháng trước`;
+  if (day < 60) return t('time.day', { n: day });
+  return t('time.month', { n: Math.floor(day / 30) });
 }
 
 function sortedOccurrences(g) {
@@ -243,12 +287,12 @@ function sortedOccurrences(g) {
 }
 
 function normalizeI2CError(m) {
-  if (!m) return 'không rõ';
+  if (!m) return t('i2c.unknown');
   const raw = m[1].toLowerCase();
-  if (/stuck|checkbusstatus|bus busy/.test(raw)) return 'bus kẹt (SCL/SDA giữ mức thấp)';
-  if (/nack/.test(raw)) return 'NACK (thiết bị không phản hồi)';
+  if (/stuck|checkbusstatus|bus busy/.test(raw)) return t('i2c.stuck');
+  if (/nack/.test(raw)) return t('i2c.nack');
   if (/timeout|timed ?out/.test(raw)) return 'timeout';
-  if (/arbitration/.test(raw)) return 'mất quyền điều khiển bus';
+  if (/arbitration/.test(raw)) return t('i2c.arb');
   return raw;
 }
 
@@ -288,9 +332,9 @@ function parseLogContent(rawText, filename = "log.ips") {
     missingSensors: [], i2cEvents: [], backtrace: [],
     logType: "unknown", ruleId: null, rule: null,
     baseSeverity: "normal", severity: "normal",
-    confidence: "Thấp", title: "Log chẩn đoán iOS",
-    suspectedComponent: "Chưa xác định",
-    repairAdvice: "Xem thông tin kỹ thuật trong raw log.",
+    confidence: "Thấp", title: t('rec.defaultTitle'),
+    suspectedComponent: t('rec.defaultSuspect'),
+    repairAdvice: t('rec.defaultAdvice'),
     modelSpecific: false,
     resetCounter: null
   };
@@ -402,13 +446,13 @@ function ruleMatches(text, lower, m) {
 const FALLBACK_RULES = {
   kernel_panic: { id: 'kernel-panic-unknown', family: 'KernelPanic', baseSeverity: 'warning',
     subsystemWeight: 1, escalateAt: 3, windowHours: 48,
-    title: 'Kernel Panic chưa phân loại', suspected: 'Cần đọc chi tiết raw log',
-    subsystem: 'Kernel', advice: 'Mở "Thông tin kỹ thuật" để xem panicString và backtrace.',
+    titleKey: 'rule.kp.title', suspectedKey: 'rule.kp.s',
+    subsystem: 'Kernel', adviceKey: 'rule.kp.a',
     confidence: 'Thấp' },
   unknown: { id: 'unknown-log', family: 'Unknown', baseSeverity: 'normal',
     subsystemWeight: 0, escalateAt: 10, windowHours: 24,
-    title: 'Log chẩn đoán thông thường', suspected: 'Không xác định',
-    subsystem: 'Diagnostics', advice: 'Không có dấu hiệu lỗi phần cứng rõ ràng.',
+    titleKey: 'rule.gen.title', suspectedKey: 'rule.gen.s',
+    subsystem: 'Diagnostics', adviceKey: 'rule.gen.a',
     confidence: 'Thấp' }
 };
 
@@ -424,23 +468,23 @@ function applyRules(record, text) {
   record.panicFamily = hit.family;
   record.baseSeverity = hit.baseSeverity || 'normal';
   record.severity = record.baseSeverity;
-  record.title = hit.title;
-  record.suspectedComponent = hit.suspected;
-  record.repairAdvice = hit.advice;
+  record.title = hit.titleKey ? t(hit.titleKey) : loc(hit, 'title');
+  record.suspectedComponent = hit.suspectedKey ? t(hit.suspectedKey) : loc(hit, 'suspected');
+  record.repairAdvice = hit.adviceKey ? t(hit.adviceKey) : loc(hit, 'advice');
   record.confidence = hit.confidence || 'Trung bình';
 
   // Làm giàu: cảm biến SMC
   if (record.missingSensors.length) {
     const s = record.missingSensors[0];
     const info = (ruleDatabases.sensor_database || {})[s];
-    record.title = `SMC Panic - Thiếu cảm biến ${record.missingSensors.join(', ')}`;
+    record.title = t('smc.title', { s: record.missingSensors.join(', ') });
     if (info) {
-      record.suspectedComponent = `${info.name} (${info.location})`;
-      record.repairAdvice = `${info.meaning}. Khuyến nghị: ${info.action}.`;
+      record.suspectedComponent = `${info.name} (${loc(info, 'location')})`;
+      record.repairAdvice = t('smc.advice', { m: loc(info, 'meaning'), a: loc(info, 'action') });
       record.confidence = 'Cao';
       record.modelSpecific = true;
     } else {
-      record.suspectedComponent = `Cảm biến ${s} trên cụm cáp ngoại vi`;
+      record.suspectedComponent = t('smc.suspect', { s: s });
       record.confidence = 'Trung bình';
     }
   }
@@ -450,26 +494,26 @@ function applyRules(record, text) {
     const ev = record.i2cEvents[0];
     const db = ruleDatabases.i2c_rules || {};
     const devLabel = ev.deviceName
-      ? ` (thiết bị: ${ev.deviceName})`
+      ? t('i2c.devLabel', { d: ev.deviceName })
       : (ev.address ? ` @ ${ev.address}` : '');
-    record.title = `Lỗi I2C - ${ev.bus}${devLabel} (${ev.error})`;
+    record.title = t('i2c.title', { bus: ev.bus, dev: devLabel, err: ev.error });
 
     // Tra theo tên thiết bị trước (độ chính xác cao hơn địa chỉ hex)
     const devEntry = ev.deviceName ? ((db.device_names || {})[ev.deviceName]) : null;
     if (devEntry) {
       const byModel = devEntry.models && record.product ? devEntry.models[record.product] : null;
       if (byModel) {
-        record.suspectedComponent = `${devEntry.component}`;
+        record.suspectedComponent = loc(devEntry, 'component');
         record.confidence = devEntry.confidence || 'Cao';
         record.modelSpecific = true;
-        record.repairAdvice = `${byModel} — ${devEntry.advice}`;
+        record.repairAdvice = `${byModel} — ${loc(devEntry, 'advice')}`;
       } else {
-        record.suspectedComponent = devEntry.component;
+        record.suspectedComponent = loc(devEntry, 'component');
         record.confidence = devEntry.confidence || 'Cao';
-        record.repairAdvice = devEntry.advice;
+        record.repairAdvice = loc(devEntry, 'advice');
       }
       if (devEntry.priority) {
-        record.repairAdvice += `\n\nThứ tự kiểm tra: ${devEntry.priority}`;
+        record.repairAdvice += '\n\n' + t('i2c.order', { p: loc(devEntry, 'priority') });
       }
     } else {
       // Fallback tra theo địa chỉ hex
@@ -478,17 +522,17 @@ function applyRules(record, text) {
       if (addr) {
         const byModel = addr.models && record.product ? addr.models[record.product] : null;
         if (byModel) {
-          record.suspectedComponent = `Nghi ngờ: ${byModel.component}`;
+          record.suspectedComponent = t('i2c.suspect', { c: loc(byModel, 'component') });
           record.confidence = byModel.confidence || 'Cao';
           record.modelSpecific = true;
-          record.repairAdvice = byModel.advice || addr.advice;
+          record.repairAdvice = loc(byModel, 'advice') || loc(addr, 'advice');
         } else {
-          record.suspectedComponent = `Nghi ngờ: ${addr.component} (chưa xác minh cho model này)`;
+          record.suspectedComponent = t('i2c.suspectUnverified', { c: loc(addr, 'component') });
           record.confidence = addr.confidence || 'Trung bình';
-          record.repairAdvice = `${addr.advice} Lưu ý: cùng địa chỉ có thể là linh kiện khác trên đời máy khác.`;
+          record.repairAdvice = t('i2c.addrNote', { a: loc(addr, 'advice') });
         }
       } else {
-        record.suspectedComponent = `IC ngoại vi trên bus ${ev.bus} (chưa xác định)`;
+        record.suspectedComponent = t('i2c.unknownIc', { bus: ev.bus });
         record.confidence = 'Thấp';
       }
     }
@@ -666,7 +710,7 @@ function renderIncidentList() {
     return true;
   });
 
-  if (countBadge) countBadge.innerText = `${filtered.length} cụm lỗi`;
+  if (countBadge) countBadge.innerText = t('results.count', { n: filtered.length });
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -675,8 +719,8 @@ function renderIncidentList() {
           <circle cx="12" cy="12" r="10"/>
           <line x1="8" y1="12" x2="16" y2="12"/>
         </svg>
-        <h4>Không tìm thấy lỗi phù hợp</h4>
-        <p>Thử đổi bộ lọc hoặc xóa ô tìm kiếm.</p>
+        <h4>${t('empty.noMatch')}</h4>
+        <p>${t('empty.noMatchHint')}</p>
       </div>
     `;
     return;
@@ -685,7 +729,7 @@ function renderIncidentList() {
   let html = '';
   filtered.forEach((g, idx) => {
     const confClass = g.confidence === 'Cao' ? 'confidence-high' : (g.confidence === 'Trung bình' ? 'confidence-med' : 'confidence-low');
-    const freqText = g.windowCount > 1 ? `${g.windowCount} lần / ${g.windowHours} giờ` : `1 lần phát hiện`;
+    const freqText = g.windowCount > 1 ? t('card.freqWindow', { n: g.windowCount, h: g.windowHours }) : t('card.freqOnce');
     const rec = g.latestRecord;
 
     html += `
@@ -696,12 +740,12 @@ function renderIncidentList() {
         </div>
 
         <div class="suspect-line">
-          <span>Nghi ngờ:</span>
+          <span>${t('card.suspect')}</span>
           <span class="suspect-highlight">${escapeHtml(g.suspectedComponent)}</span>
         </div>
 
         <div class="time-line">
-          <span>Lần gần nhất:</span>
+          <span>${t('card.latest')}</span>
           <b>${formatLogTime(rec.timestampMs)}</b>
           ${rec.timestampMs ? `<span class="time-ago">${formatAgo(rec.timestampMs)}</span>` : ''}
         </div>
@@ -709,7 +753,7 @@ function renderIncidentList() {
         <div class="meta-row">
           <span class="meta-item">${escapeHtml(rec.product || "iPhone")}</span>
           <span class="meta-item">${escapeHtml(rec.build || rec.osVersion || "iOS 15+")}</span>
-          <span class="confidence-badge ${confClass}">Độ tin cậy: ${g.confidence}</span>
+          <span class="confidence-badge ${confClass}">${t('card.confidence', { c: confLabel(g.confidence) })}</span>
         </div>
       </div>
     `;
@@ -737,23 +781,23 @@ function openDetailModal(index) {
   if (modalTitle) modalTitle.innerText = g.title;
   if (badge) {
     badge.className = `badge ${g.severity}`;
-    badge.innerText = g.severity === 'critical' ? 'NGHIÊM TRỌNG' : (g.severity === 'warning' ? 'CẦN THEO DÕI' : 'BÌNH THƯỜNG');
+    badge.innerText = t('sev.' + g.severity);
   }
 
   let i2cHtml = '';
   if (rec.i2cEvents && rec.i2cEvents.length > 0) {
     const ev0 = rec.i2cEvents[0];
     const devRow = ev0.deviceName
-      ? `<b>Thiết bị:</b> <span style="color:var(--accent);font-weight:700;">${escapeHtml(ev0.deviceName)}</span><br>` : '';
-    const addrRow = ev0.address ? `<b>Địa chỉ Hex:</b> ${ev0.address}<br>` : '';
+      ? `<b>${t('d.device')}</b> <span style="color:var(--accent);font-weight:700;">${escapeHtml(ev0.deviceName)}</span><br>` : '';
+    const addrRow = ev0.address ? `<b>${t('d.addr')}</b> ${ev0.address}<br>` : '';
     i2cHtml = `
       <div class="detail-section">
-        <div class="detail-label">Thông tin giao tiếp I2C phát hiện</div>
+        <div class="detail-label">${t('d.i2cTitle')}</div>
         <div class="detail-text">
           <b>Bus:</b> ${ev0.bus}<br>
           ${devRow}${addrRow}
-          <b>Loại lỗi:</b> ${ev0.error}<br>
-          <b>Bộ điều khiển:</b> ${ev0.controller}
+          <b>${t('d.errType')}</b> ${ev0.error}<br>
+          <b>${t('d.controller')}</b> ${ev0.controller}
         </div>
       </div>
     `;
@@ -761,7 +805,7 @@ function openDetailModal(index) {
   // Hiện reset counter nếu có
   const rcMatch = (rec.panicString || rec.rawText || '').match(/(?:panic count|reset counter)[:\s]+?(\d+)/i);
   const resetCountHtml = rcMatch
-    ? `<div class="detail-section"><div class="detail-label">Số lần panic gần đây</div><div class="detail-text">Máy đã ghi nhận <b>${rcMatch[1]}</b> lần panic (theo bộ đếm của hệ thống)</div></div>`
+    ? `<div class="detail-section"><div class="detail-label">${t('d.resetTitle')}</div><div class="detail-text">${t('d.resetBody', { n: rcMatch[1] })}</div></div>`
     : '';
 
   const occurrences = sortedOccurrences(g);
@@ -773,21 +817,21 @@ function openDetailModal(index) {
       </div>`).join('');
   const stamped = occurrences.filter(r => r.timestampMs);
   const span = stamped.length > 1
-    ? `Từ <b>${formatLogTime(stamped[stamped.length - 1].timestampMs)}</b> đến <b>${formatLogTime(stamped[0].timestampMs)}</b><br>`
+    ? t('d.span', { a: formatLogTime(stamped[stamped.length - 1].timestampMs), b: formatLogTime(stamped[0].timestampMs) }) + '<br>'
     : '';
   const timelineHtml = `
       <div class="detail-section">
-        <div class="detail-label">Thời gian xảy ra trên máy (${occurrences.length} lần)</div>
-        <div class="detail-text">${span}${timelineRows}${occurrences.length > shown.length ? `<div class="timeline-more">… và ${occurrences.length - shown.length} lần cũ hơn</div>` : ''}</div>
+        <div class="detail-label">${t('d.timeline', { n: occurrences.length })}</div>
+        <div class="detail-text">${span}${timelineRows}${occurrences.length > shown.length ? `<div class="timeline-more">${t('d.older', { n: occurrences.length - shown.length })}</div>` : ''}</div>
       </div>`;
 
   let sensorHtml = '';
   if (rec.missingSensors && rec.missingSensors.length > 0) {
     sensorHtml = `
       <div class="detail-section">
-        <div class="detail-label">Cảm biến nhiệt / áp suất bị mất tín hiệu</div>
+        <div class="detail-label">${t('d.sensorTitle')}</div>
         <div class="detail-text">
-          <b>Mã cảm biến:</b> <span style="color:var(--sev-critical); font-weight:700;">${rec.missingSensors.join(', ')}</span>
+          <b>${t('d.sensorCode')}</b> <span style="color:var(--sev-critical); font-weight:700;">${rec.missingSensors.join(', ')}</span>
         </div>
       </div>
     `;
@@ -796,14 +840,14 @@ function openDetailModal(index) {
   if (body) {
     body.innerHTML = `
       <div class="detail-section">
-        <div class="detail-label">Thành phần phần cứng nghi ngờ</div>
+        <div class="detail-label">${t('d.suspect')}</div>
         <div class="detail-text" style="font-size:15px; font-weight:600; color:#fff;">
           ${escapeHtml(g.suspectedComponent)}
         </div>
       </div>
 
       <div class="detail-section">
-        <div class="detail-label">Khuyến nghị kỹ thuật & Sửa chữa</div>
+        <div class="detail-label">${t('d.advice')}</div>
         <div class="detail-text" style="color:var(--text-primary);">
           ${escapeHtml(g.repairAdvice)}
         </div>
@@ -816,18 +860,18 @@ function openDetailModal(index) {
       ${timelineHtml}
 
       <div class="detail-section">
-        <div class="detail-label">Thông số thiết bị & Tần suất</div>
+        <div class="detail-label">${t('d.specs')}</div>
         <div class="detail-text">
-          <b>Model thiết bị:</b> ${escapeHtml(rec.product)}<br>
-          <b>Hệ điều hành / Build:</b> ${escapeHtml(rec.osVersion || rec.build || "iOS")}<br>
-          <b>Số lần lặp lại:</b> ${g.count} lần (${g.windowCount} lần trong ${g.windowHours} giờ)<br>
-          <b>Điểm mức độ:</b> ${g.score}<br>
-          <b>Độ tin cậy chẩn đoán:</b> ${g.confidence}
+          <b>${t('d.model')}</b> ${escapeHtml(rec.product)}<br>
+          <b>${t('d.os')}</b> ${escapeHtml(rec.osVersion || rec.build || "iOS")}<br>
+          <b>${t('d.repeat')}</b> ${t('d.repeatVal', { n: g.count, w: g.windowCount, h: g.windowHours })}<br>
+          <b>${t('d.score')}</b> ${g.score}<br>
+          <b>${t('d.conf')}</b> ${confLabel(g.confidence)}
         </div>
       </div>
 
       <div class="detail-section">
-        <div class="detail-label">Thông tin kỹ thuật (Raw Log Trích đoạn)</div>
+        <div class="detail-label">${t('d.raw')}</div>
         <div class="raw-log-block">${escapeHtml(rec.panicString || rec.rawText.substring(0, 1200))}</div>
       </div>
     `;
@@ -855,23 +899,23 @@ function exportSanitizedReport() {
   if (!g) return;
 
   const rec = g.latestRecord;
-  let report = `=== BÁO CÁO CHẨN ĐOÁN PANIC ANALYZER (IOSVN) ===\n`;
-  report += `Thời gian xuất: ${new Date().toLocaleString('vi-VN')}\n`;
-  report += `Thiết bị: ${rec.product || "iPhone"}\n`;
-  report += `Hệ điều hành: ${rec.osVersion || rec.build || "iOS"}\n\n`;
-  report += `1. CHẨN ĐOÁN CHÍNH:\n`;
-  report += ` - Tiêu đề: ${g.title}\n`;
-  report += ` - Mức độ: ${g.severity.toUpperCase()}\n`;
-  report += ` - Linh kiện nghi ngờ: ${g.suspectedComponent}\n`;
-  report += ` - Độ tin cậy: ${g.confidence}\n`;
-  report += ` - Tần suất xuất hiện: ${g.count} lần\n`;
-  report += ` - Lần gần nhất: ${formatLogTime(rec.timestampMs)}\n`;
+  let report = `${t('r.header')}\n`;
+  report += `${t('r.exported')}: ${new Date().toLocaleString(dateLocale())}\n`;
+  report += `${t('r.device')}: ${rec.product || "iPhone"}\n`;
+  report += `${t('r.os')}: ${rec.osVersion || rec.build || "iOS"}\n\n`;
+  report += `${t('r.main')}\n`;
+  report += ` - ${t('r.title')}: ${g.title}\n`;
+  report += ` - ${t('r.sev')}: ${t('sev.' + g.severity)}\n`;
+  report += ` - ${t('r.suspect')}: ${g.suspectedComponent}\n`;
+  report += ` - ${t('r.conf')}: ${confLabel(g.confidence)}\n`;
+  report += ` - ${t('r.freq')}: ${t('r.times', { n: g.count })}\n`;
+  report += ` - ${t('r.latest')}: ${formatLogTime(rec.timestampMs)}\n`;
   const times = sortedOccurrences(g).filter(r => r.timestampMs).slice(0, 20)
     .map(r => `   • ${formatLogTime(r.timestampMs)}`).join('\n');
-  if (times) report += ` - Các thời điểm:\n${times}\n`;
+  if (times) report += ` - ${t('r.allTimes')}:\n${times}\n`;
   report += `\n`;
-  report += `2. HƯỚNG DẪN XỬ LÝ:\n${g.repairAdvice}\n\n`;
-  report += `3. RAW LOG (ĐÃ SANITIZE):\n`;
+  report += `${t('r.advice')}\n${g.repairAdvice}\n\n`;
+  report += `${t('r.raw')}\n`;
   
   // Sanitize raw text
   let safeRaw = rec.panicString || rec.rawText.substring(0, 800);
@@ -887,9 +931,9 @@ function exportSanitizedReport() {
   } else {
     // Web copy to clipboard or download file
     navigator.clipboard.writeText(report).then(() => {
-      alert("Đã sao chép báo cáo chẩn đoán (Sanitized) vào bộ nhớ tạm!");
+      alert(t('r.copied'));
     }).catch(() => {
-      alert("Báo cáo:\n\n" + report);
+      alert(t('r.report') + "\n\n" + report);
     });
   }
 }
@@ -898,14 +942,12 @@ function exportSanitizedReport() {
 // 6. Native File Input Handling
 // ---------------------------------------------------------------------------
 let scanTimeoutId = null;
-const SANDBOX_HINT = 'Chưa có log. Cách nhanh nhất: mở log trong Dữ liệu phân tích, bấm Chia sẻ '
-  + '\u2192 PanicAnalyzer. Trên iOS 27, bật LocalDevVPN để app tự ghép đôi và quét CrashReporter.';
 
 function armScanTimeout() {
   clearTimeout(scanTimeoutId);
   scanTimeoutId = setTimeout(() => {
     showEmptyState();
-    showToast('Kết nối quá thời gian — kiểm tra LocalDevVPN rồi thử lại.', 4500);
+    showToast(t('s.timeout'), 4500);
   }, 45000);
 }
 function clearScanTimeout() { clearTimeout(scanTimeoutId); scanTimeoutId = null; }
@@ -923,29 +965,28 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
   clearScanTimeout();
   if (count > 0) {
     setDemoBanner(false);
-    const sourceLabel = source === 'pairing' ? 'qua pairing'
-      : (source === 'share' ? 'từ Share Sheet' : (source === 'file' ? 'từ tệp' : 'từ máy'));
-    updateScanStatus(`Đã phân tích ${count} log thật ${sourceLabel}.`, false);
-    showToast(`✓ Đọc được ${count} file log ${sourceLabel}`, 3000);
+    const sourceLabel = t(source === 'pairing' ? 's.src.pairing'
+      : (source === 'share' ? 's.src.share' : (source === 'file' ? 's.src.file' : 's.src.device')));
+    updateScanStatus(t('s.analyzed', { n: count, src: sourceLabel }), false);
+    showToast(t('s.readToast', { n: count, src: sourceLabel }), 3000);
   } else {
     showEmptyState();
     if (source === 'pairing') {
-      showToast('Không tìm thấy crash report qua pairing.', 4000);
+      showToast(t('s.noPairingLogs'), 4000);
     } else {
-      showToast('iOS sandbox chặn đọc trực tiếp — hãy dùng Chia sẻ hoặc pairing.', 4500);
+      showToast(t('s.sandboxBlocked'), 4500);
     }
   }
 };
 
 function updatePairingButton(configured) {
   const label = document.getElementById('pairingButtonLabel');
-  if (label) label.innerText = configured
-    ? 'Kết nối lại thiết bị này'
-    : 'Ghép đôi thiết bị này';
+  if (label) label.innerText = t(configured ? 'btn.repair' : 'btn.pair');
 }
 
 window.onNativePairingStatus = function(status) {
   clearScanTimeout();
+  window.__PAIRING_CONFIGURED__ = !!status.configured;
   updatePairingButton(!!status.configured);
   if (status.message) updateScanStatus(status.message, false);
   showToast(status.error ? `Pairing: ${status.message}` : `✓ ${status.message}`,
@@ -966,7 +1007,7 @@ function handleNativeFileSelect(event) {
   });
 
   Promise.all(readPromises).then(results => {
-    updateScanStatus(`Đã nhập và phân tích ${results.length} file .ips thành công!`, false);
+    updateScanStatus(t('s.imported', { n: results.length }), false);
     parseAndIngestLogs(results);
   });
 }
@@ -1041,7 +1082,7 @@ function loadSingleSample(idx) {
   closeSampleModal();
   parseAndIngestLogs([s]);
   setDemoBanner(true);
-  updateScanStatus(`Đang xem 1 log MẪU: ${s.type} (không phải máy bạn).`, false);
+  updateScanStatus(t('s.viewingSample', { t: s.type }), false);
 }
 
 function escapeHtml(str) {
@@ -1072,10 +1113,10 @@ function renderRulesInfo(info) {
   const el = document.getElementById('rulesInfo');
   if (!el) return;
   const src = (info && info.source) || 'bundle';
-  const label = src === 'remote' ? 'đã cập nhật' : (src === 'cache' ? 'bản đã tải' : 'bản dựng sẵn');
+  const label = t('rules.' + (src === 'remote' || src === 'cache' ? src : 'bundle'));
   const when = info && info.updatedAt ? ` · ${info.updatedAt}` : '';
-  el.innerHTML = `<span>Bộ luật: ${rulesCount()} lỗi · ${label}${when}</span>`
-    + `<button class="link-btn" onclick="refreshRulesNow()">Cập nhật</button>`;
+  el.innerHTML = `<span>${t('rules.info', { n: rulesCount(), label: label, when: when })}</span>`
+    + `<button class="link-btn" onclick="refreshRulesNow()">${t('btn.update')}</button>`;
 }
 
 // Toast thông báo nhẹ ở đáy màn hình
@@ -1102,7 +1143,7 @@ function showToast(msg, durationMs) {
 
 function refreshRulesNow() {
   const el = document.getElementById('rulesInfo');
-  if (el) el.innerHTML = '<span>Đang tải bộ luật mới…</span>';
+  if (el) el.innerHTML = `<span>${t('rules.loading')}</span>`;
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'refreshRules' });
   } else {
@@ -1120,9 +1161,9 @@ window.onNativeRulesUpdated = function (info) {
   renderRulesInfo(info);
   if (info && info.changed) {
     reanalyzeStoredLogs();
-    showToast(`✓ Bộ luật đã cập nhật — ${rulesCount()} lỗi`, 3500);
+    showToast(t('rules.updated', { n: rulesCount() }), 3500);
   } else {
-    showToast('Đang dùng bộ luật mới nhất (' + rulesCount() + ' lỗi)', 2500);
+    showToast(t('rules.latest', { n: rulesCount() }), 2500);
   }
 };
 
@@ -1144,15 +1185,16 @@ function needsAdminHelp(g) {
 
 function buildAdminReport(g) {
   const rec = g.latestRecord || {};
-  let t = `PANIC ANALYZER - iOSVN\n`;
-  t += `Máy: ${rec.product || window.__DEVICE_MODEL__ || 'không rõ'}\n`;
-  t += `iOS: ${rec.osVersion || rec.build || 'không rõ'}\n`;
-  t += `Nhận diện: ${g.title} (luật: ${rec.ruleId || 'không khớp'})\n`;
-  t += `Độ tin cậy: ${g.confidence} · ${g.count} lần\n`;
-  t += `Bộ luật: ${rulesCount()} lỗi\n\n`;
-  t += `--- panicString ---\n`;
-  t += (rec.panicString || (rec.rawText || '').substring(0, 1500));
-  return t;
+  const unknown = t('admin.unknown');
+  let txt = `PANIC ANALYZER - iOSVN\n`;
+  txt += `${t('admin.device')}: ${rec.product || window.__DEVICE_MODEL__ || unknown}\n`;
+  txt += `iOS: ${rec.osVersion || rec.build || unknown}\n`;
+  txt += `${t('admin.detected')}: ${g.title} (${t('admin.rule')}: ${rec.ruleId || t('admin.noRule')})\n`;
+  txt += `${t('r.conf')}: ${confLabel(g.confidence)} · ${t('r.times', { n: g.count })}\n`;
+  txt += `${t('admin.rules', { n: rulesCount() })}\n\n`;
+  txt += `--- panicString ---\n`;
+  txt += (rec.panicString || (rec.rawText || '').substring(0, 1500));
+  return txt;
 }
 
 function sendToAdmin() {
@@ -1178,14 +1220,14 @@ function sendToAdmin() {
 let appUpdateInfo = null;
 
 window.onNativeAppUpdate = function (info) {
-  if (!info) { showToast('Đang dùng bản mới nhất', 2500); return; }
-  if (!info.version) { showToast('Đang dùng bản mới nhất', 2500); return; }
+  if (!info) { showToast(t('upd.latest'), 2500); return; }
+  if (!info.version) { showToast(t('upd.latest'), 2500); return; }
   appUpdateInfo = info;
   const el = document.getElementById('updateBanner');
   if (!el) return;
   const notes = info.notes ? `<span>${escapeHtml(info.notes)}</span>` : '';
-  el.innerHTML = `Đã có bản ${escapeHtml(info.version)} — chạm để tải`
-    + `<span>Bạn đang dùng bản ${escapeHtml(info.current || window.__APP_VERSION__ || '')}</span>`
+  el.innerHTML = t('upd.available', { v: escapeHtml(info.version) })
+    + `<span>${t('upd.current', { v: escapeHtml(info.current || window.__APP_VERSION__ || '') })}</span>`
     + notes;
   el.style.display = '';
 };

@@ -18,7 +18,7 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: PanicAnalyzer
-        CFBundleShortVersionString: 2.6.7
+        CFBundleShortVersionString: 2.7.0
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSLocalNetworkUsageDescription: Kết nối tới LocalDevVPN trên chính thiết bị để đọc crash report bằng Remote Pairing.
         NSBonjourServices:
@@ -48,6 +48,10 @@ targets:
           - public.data
         LSRequiresIPhoneOS: true
         CFBundleDevelopmentRegion: vi
+        CFBundleLocalizations:
+        - vi
+        - en
+        - zh-Hans
         CFBundlePackageType: APPL
     settings:
       base:
@@ -73,6 +77,7 @@ targets:
     platform: iOS
     sources:
     - path: ShareExtension
+    - path: Sources/Localization.swift
     info:
       path: ShareExtension/Info.plist
       properties:

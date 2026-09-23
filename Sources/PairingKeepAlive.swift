@@ -56,8 +56,12 @@ final class PairingKeepAlive {
     func showPin(_ pin: String) {
         UIPasteboard.general.string = pin
         let content = UNMutableNotificationContent()
-        content.title = "Mã ghép đôi PanicAnalyzer: \(pin)"
-        content.body = "Nhập mã này trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển. Mã đã được sao chép."
+        content.title = Loc.s("Mã ghép đôi PanicAnalyzer: \(pin)",
+                              "PanicAnalyzer pairing code: \(pin)",
+                              "PanicAnalyzer 配对码：\(pin)")
+        content.body = Loc.s("Nhập mã này trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển. Mã đã được sao chép.",
+                             "Enter this code in Settings > Privacy & Security > Developer. It has been copied.",
+                             "请在 设置 > 隐私与安全性 > 开发者 中输入此代码。代码已复制。")
         content.sound = .default
         let request = UNNotificationRequest(identifier: notificationID, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)

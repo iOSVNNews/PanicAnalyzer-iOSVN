@@ -2,55 +2,107 @@
   "Prs0": {
     "name": "Barometric Pressure Sensor",
     "location": "Cáp chân sạc (đuôi sạc) hoặc cáp nút nguồn trên",
+    "location_en": "Charging port flex or top power button flex",
+    "location_zh": "尾插排线或顶部电源键排线",
     "meaning": "Cảm biến áp suất khí quyển",
-    "action": "Thay cáp sạc dưới hoặc kiểm tra socket"
+    "meaning_en": "Barometric pressure sensor",
+    "meaning_zh": "气压传感器",
+    "action": "Thay cáp sạc dưới hoặc kiểm tra socket",
+    "action_en": "Replace the charging flex or check the connector",
+    "action_zh": "更换尾插排线或检查座子"
   },
   "TG0B": {
     "name": "Battery Gas Gauge Voltage",
     "location": "Mạch BMS Pin / Socket Pin",
+    "location_en": "Battery BMS circuit / battery connector",
+    "location_zh": "电池 BMS 电路 / 电池座",
     "meaning": "Cảm biến đo điện áp pin",
-    "action": "Kiểm tra chân pin giữa (BSI), thay thử pin khác"
+    "meaning_en": "Battery voltage sensor",
+    "meaning_zh": "电池电压传感器",
+    "action": "Kiểm tra chân pin giữa (BSI), thay thử pin khác",
+    "action_en": "Check the middle battery pin (BSI), try another battery",
+    "action_zh": "检查电池中间针脚（BSI），换电池测试"
   },
   "TG0V": {
     "name": "Battery Voltage Monitor",
     "location": "Socket Pin",
     "meaning": "Đo điện áp cell pin",
-    "action": "Kiểm tra socket pin tiếp xúc chập chờn"
+    "meaning_en": "Battery cell voltage",
+    "meaning_zh": "电芯电压检测",
+    "action": "Kiểm tra socket pin tiếp xúc chập chờn",
+    "action_en": "Check the battery connector for intermittent contact",
+    "action_zh": "检查电池座是否接触不良"
   },
   "TG0P": {
     "name": "Power Management Thermal",
     "location": "IC nguồn chính (PMIC)",
+    "location_en": "Main power IC (PMIC)",
+    "location_zh": "主电源 IC（PMIC）",
     "meaning": "Nhiệt độ IC nguồn",
-    "action": "Kiểm tra IC nguồn có bị quá nhiệt / chập tải"
+    "meaning_en": "Power IC temperature",
+    "meaning_zh": "电源 IC 温度",
+    "action": "Kiểm tra IC nguồn có bị quá nhiệt / chập tải",
+    "action_en": "Check the power IC for overheating / a shorted load",
+    "action_zh": "检查电源 IC 是否过热 / 短路拉载"
   },
   "TT0P": {
     "name": "Taptic Engine Temp",
     "location": "Cục rung Taptic Engine",
+    "location_en": "Taptic Engine",
+    "location_zh": "Taptic Engine 振动马达",
     "meaning": "Cảm biến nhiệt cụm rung",
-    "action": "Kiểm tra cáp và socket cắm Taptic Engine"
+    "meaning_en": "Taptic Engine thermal sensor",
+    "meaning_zh": "振动马达温度传感器",
+    "action": "Kiểm tra cáp và socket cắm Taptic Engine",
+    "action_en": "Check the Taptic Engine flex and connector",
+    "action_zh": "检查 Taptic Engine 排线和座子"
   },
   "TT0B": {
     "name": "Taptic Bottom Sensor",
     "location": "Vùng đáy máy / Cáp sạc",
+    "location_en": "Bottom of the phone / charging flex",
+    "location_zh": "机身底部 / 尾插排线",
     "meaning": "Nhiệt độ vùng đáy máy",
-    "action": "Kiểm tra cụm đuôi sạc"
+    "meaning_en": "Bottom area temperature",
+    "meaning_zh": "底部区域温度",
+    "action": "Kiểm tra cụm đuôi sạc",
+    "action_en": "Check the charging port assembly",
+    "action_zh": "检查尾插组件"
   },
   "Mic1": {
     "name": "Bottom Microphone Sensor",
     "location": "Cáp đuôi sạc",
+    "location_en": "Charging port flex",
+    "location_zh": "尾插排线",
     "meaning": "Cảm biến tích hợp trong mic dưới",
-    "action": "Thay thế cụm cáp đuôi sạc"
+    "meaning_en": "Sensor built into the bottom microphone",
+    "meaning_zh": "底部麦克风内置传感器",
+    "action": "Thay thế cụm cáp đuôi sạc",
+    "action_en": "Replace the charging port flex",
+    "action_zh": "更换尾插排线"
   },
   "Nand": {
     "name": "NAND Flash Thermal",
     "location": "Ổ cứng NAND Flash",
+    "location_en": "NAND flash storage",
+    "location_zh": "NAND 闪存",
     "meaning": "Nhiệt độ ổ cứng",
-    "action": "Kiểm tra ổ cứng NAND có nóng bất thường"
+    "meaning_en": "Storage temperature",
+    "meaning_zh": "存储温度",
+    "action": "Kiểm tra ổ cứng NAND có nóng bất thường",
+    "action_en": "Check whether the NAND gets abnormally hot",
+    "action_zh": "检查 NAND 是否异常发热"
   },
   "Th0H": {
     "name": "Wireless Charging / NFC Temp",
     "location": "Cuộn sạc không dây lưng máy",
+    "location_en": "Wireless charging coil on the back",
+    "location_zh": "背部无线充电线圈",
     "meaning": "Nhiệt độ NFC & sạc không dây",
-    "action": "Kiểm tra cáp sạc không dây mặt lưng"
+    "meaning_en": "NFC & wireless charging temperature",
+    "meaning_zh": "NFC 与无线充电温度",
+    "action": "Kiểm tra cáp sạc không dây mặt lưng",
+    "action_en": "Check the wireless charging flex on the back",
+    "action_zh": "检查背部无线充电排线"
   }
 }

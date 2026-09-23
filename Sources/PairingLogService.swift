@@ -23,12 +23,19 @@ final class PairingLogService {
         var errorDescription: String? {
             switch self {
             case .missingFile:
-                return "Thiết bị này chưa hỗ trợ tự ghép đôi. Hãy dùng Share Sheet hoặc nhập pairing file."
+                return Loc.s("Thiết bị này chưa hỗ trợ tự ghép đôi. Hãy dùng Share Sheet hoặc nhập pairing file trong Cài đặt của app.",
+                             "This device can't pair itself. Use the Share Sheet or import a pairing file in the app's Settings.",
+                             "此设备不支持自行配对。请使用共享或在应用设置中导入配对文件。")
             case .notPaired:
-                return "Chưa ghép đôi. Bấm \"Ghép đôi thiết bị này\", rồi vào Cài đặt > Quyền riêng tư & Bảo mật > "
-                    + "Nhà phát triển, chọn \(PairableHostService.hostName) và nhập mã PIN app hiển thị."
+                return Loc.s(
+                    "Chưa ghép đôi. Bấm \"Ghép đôi thiết bị này\", rồi vào Cài đặt > Quyền riêng tư & Bảo mật > "
+                        + "Nhà phát triển, chọn \(PairableHostService.hostName) và nhập mã PIN app hiển thị.",
+                    "Not paired yet. Tap \"Pair this device\", then go to Settings > Privacy & Security > "
+                        + "Developer, pick \(PairableHostService.hostName) and enter the PIN the app shows.",
+                    "尚未配对。点「配对本机」，然后前往 设置 > 隐私与安全性 > 开发者，"
+                        + "选择 \(PairableHostService.hostName) 并输入应用显示的 PIN 码。")
             case .invalidFile(let detail):
-                return "Remote Pairing file không hợp lệ: \(detail)"
+                return Loc.s("Pairing file không hợp lệ: \(detail)", "Invalid pairing file: \(detail)", "配对文件无效：\(detail)")
             case .bridge(let detail):
                 return detail
             }
@@ -89,11 +96,11 @@ final class PairingLogService {
 
         let data = try Data(contentsOf: source, options: .mappedIfSafe)
         guard data.count <= 1024 * 1024 else {
-            throw PairingError.invalidFile("file lớn hơn 1 MB")
+            throw PairingError.invalidFile(Loc.s("file lớn hơn 1 MB", "file is larger than 1 MB", "文件大于 1 MB"))
         }
         guard let directory = pairingDirectory,
               let destination = isRemotePairingPlist(data) ? pairingFileURL : lockdownRecordURL else {
-            throw PairingError.invalidFile("không mở được Application Support")
+            throw PairingError.invalidFile(Loc.s("không mở được Application Support", "cannot open Application Support", "无法打开 Application Support"))
         }
         try FileManager.default.createDirectory(
             at: directory,
@@ -111,8 +118,12 @@ final class PairingLogService {
                         try check(pa_lockdown_validate(path))
                     } catch {
                         throw PairingError.invalidFile(
-                            "không phải Remote Pairing record (public_key/private_key/identifier) "
-                                + "cũng không phải lockdown pairing file (HostID, certificates…)"
+                            Loc.s("không phải Remote Pairing record (public_key/private_key/identifier) "
+                                    + "cũng không phải lockdown pairing file (HostID, certificates…)",
+                                  "neither a Remote Pairing record (public_key/private_key/identifier) "
+                                    + "nor a lockdown pairing file (HostID, certificates…)",
+                                  "既不是 Remote Pairing 记录（public_key/private_key/identifier），"
+                                    + "也不是 lockdown 配对文件（HostID、证书…）")
                         )
                     }
                 }
@@ -147,7 +158,7 @@ final class PairingLogService {
                       onPin: @escaping (String) -> Void) throws {
         guard supportsOnDevicePairing else { throw PairingError.missingFile }
         guard let directory = pairingDirectory, let working = workingPairingFileURL else {
-            throw PairingError.invalidFile("không mở được Application Support")
+            throw PairingError.invalidFile(Loc.s("không mở được Application Support", "cannot open Application Support", "无法打开 Application Support"))
         }
         let host = PairableHostService()
         operationLock.lock()
@@ -165,7 +176,9 @@ final class PairingLogService {
         defer { try? FileManager.default.removeItem(at: working) }
         try host.pair(pairingPath: working, timeout: timeout, onAdvertising: onAdvertising, onPin: onPin)
         guard nativePairingFileIsValid(working) else {
-            throw PairingError.invalidFile("iOS trả về pairing record không đọc được")
+            throw PairingError.invalidFile(Loc.s("iOS trả về pairing record không đọc được",
+                                                 "iOS returned an unreadable pairing record",
+                                                 "iOS 返回的配对记录无法读取"))
         }
         try promoteWorkingPairingFile(working)
         // A new pairing may come with a restarted remotepairingd: rediscover.
@@ -215,11 +228,13 @@ final class PairingLogService {
             } catch {
                 guard let remoteError else { throw error }
                 throw PairingError.bridge(remoteError.localizedDescription
-                    + "\n\nĐường dự phòng CoreDeviceProxy cũng lỗi: " + error.localizedDescription)
+                    + "\n\n" + Loc.s("Đường dự phòng CoreDeviceProxy cũng lỗi: ",
+                                     "The CoreDeviceProxy fallback also failed: ",
+                                     "CoreDeviceProxy 备用通道也失败：") + error.localizedDescription)
             }
         }
         guard let session else {
-            throw PairingError.bridge("RSD tunnel không trả về phiên làm việc hợp lệ.")
+            throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
         }
         defer { pa_session_free(session) }
 
@@ -303,7 +318,7 @@ final class PairingLogService {
             throw error
         }
         guard let session else {
-            throw PairingError.bridge("RSD tunnel không trả về phiên làm việc hợp lệ.")
+            throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
         }
         try? promoteWorkingPairingFile(pairingURL)
         return session
@@ -315,7 +330,7 @@ final class PairingLogService {
     /// lockdownd for one (iOS shows "Tin cậy máy tính này?").
     private func openLockdownSession(deviceIP: String) throws -> OpaquePointer {
         guard let directory = pairingDirectory, let recordURL = lockdownRecordURL else {
-            throw PairingError.invalidFile("không mở được Application Support")
+            throw PairingError.invalidFile(Loc.s("không mở được Application Support", "cannot open Application Support", "无法打开 Application Support"))
         }
         var lastError: Error?
         if hasLockdownRecord {
@@ -353,7 +368,9 @@ final class PairingLogService {
             }
         }
         guard minted else {
-            throw lastError ?? PairingError.bridge("Không tạo được lockdown pair record.")
+            throw lastError ?? PairingError.bridge(Loc.s("Không tạo được lockdown pair record.",
+                                                         "Could not create a lockdown pair record.",
+                                                         "无法创建 lockdown 配对记录。"))
         }
         if FileManager.default.fileExists(atPath: recordURL.path) {
             _ = try FileManager.default.replaceItemAt(recordURL, withItemAt: staging)
@@ -372,7 +389,7 @@ final class PairingLogService {
             }
         }
         guard let opened else {
-            throw PairingError.bridge("CoreDeviceProxy không trả về phiên làm việc hợp lệ.")
+            throw PairingError.bridge(Loc.s("CoreDeviceProxy không trả về phiên làm việc hợp lệ.", "CoreDeviceProxy returned no valid session.", "CoreDeviceProxy 未返回有效会话。"))
         }
         return opened
     }
@@ -415,7 +432,7 @@ final class PairingLogService {
         guard let directory = pairingDirectory,
               let destination = pairingFileURL,
               let working = workingPairingFileURL else {
-            throw PairingError.invalidFile("không mở được Application Support")
+            throw PairingError.invalidFile(Loc.s("không mở được Application Support", "cannot open Application Support", "无法打开 Application Support"))
         }
         try FileManager.default.createDirectory(
             at: directory,
@@ -432,7 +449,7 @@ final class PairingLogService {
     private func promoteWorkingPairingFile(_ working: URL) throws {
         guard let destination = pairingFileURL,
               FileManager.default.fileExists(atPath: working.path) else {
-            throw PairingError.invalidFile("pairing record chưa được tạo")
+            throw PairingError.invalidFile(Loc.s("pairing record chưa được tạo", "the pairing record was not created", "配对记录尚未创建"))
         }
         if FileManager.default.fileExists(atPath: destination.path) {
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: working)
@@ -499,7 +516,8 @@ final class PairingLogService {
 
     private func check(_ error: UnsafeMutablePointer<CChar>?) throws {
         guard let error else { return }
-        let message = String(validatingUTF8: error) ?? "Lỗi pairing không xác định"
+        let message = String(validatingUTF8: error)
+            ?? Loc.s("Lỗi pairing không xác định", "Unknown pairing error", "未知配对错误")
         pa_error_free(error)
         throw PairingError.bridge(message)
     }

@@ -13,9 +13,15 @@
       ]
     },
     "title": "Lỗi I2C - Chân SCL bị giữ mức thấp",
+    "title_en": "I2C error - SCL line held low",
+    "title_zh": "I2C 错误 - SCL 线被拉低",
     "suspected": "IC hoặc cáp trên bus I2C bị chập (tên thiết bị nằm ngay sau \"for device\")",
+    "suspected_en": "An IC or flex cable on the I2C bus is shorted (the device name follows \"for device\")",
+    "suspected_zh": "I2C 总线上的 IC 或排线短路（设备名在 \"for device\" 之后）",
     "subsystem": "I2C Bus Controller",
     "advice": "Một thiết bị đang giữ chân clock của bus xuống thấp nên cả bus chết. Đọc tên ngay sau \"for device\" để biết IC nào: roswell = cảm ứng, audio-speaker-top = loa trên, ad5860 = bộ điều khiển rung/âm thanh. Gần như luôn là lỗi phần cứng.",
+    "advice_en": "A device is holding the bus clock line low, so the whole bus is dead. Read the name right after \"for device\" to find the IC: roswell = touch, audio-speaker-top = top speaker, ad5860 = haptic/audio driver. Almost always a hardware fault.",
+    "advice_zh": "某个设备把总线时钟线拉低，导致整条总线失效。查看 \"for device\" 后面的名称即可定位 IC：roswell = 触摸，audio-speaker-top = 上扬声器，ad5860 = 振动/音频驱动。几乎都是硬件故障。",
     "confidence": "Cao",
     "source": "VERIFIED ifixit.com/Answers/View/843331"
   },
@@ -32,9 +38,15 @@
       ]
     },
     "title": "Lỗi I2C - Ngắt báo lỗi truyền",
+    "title_en": "I2C error - Transfer error interrupt",
+    "title_zh": "I2C 错误 - 传输错误中断",
     "suspected": "Thiết bị trên bus I2C tương ứng",
+    "suspected_en": "The device on the corresponding I2C bus",
+    "suspected_zh": "对应 I2C 总线上的设备",
     "subsystem": "I2C Bus Controller",
     "advice": "Bus I2C báo lỗi trong lúc truyền. Kết hợp số bus (i2c0..i2c3) và tên thiết bị để khoanh vùng cáp/IC.",
+    "advice_en": "The I2C bus reported an error during a transfer. Combine the bus number (i2c0..i2c3) with the device name to narrow down the cable/IC.",
+    "advice_zh": "I2C 总线在传输过程中报错。结合总线编号（i2c0..i2c3）和设备名来缩小排线/IC 范围。",
     "confidence": "Cao",
     "source": "VERIFIED ifixit.com/Answers/View/799472"
   },
@@ -51,9 +63,15 @@
       ]
     },
     "title": "SMC Panic - Mất dữ liệu cảm biến (BSC failure)",
+    "title_en": "SMC Panic - Sensor data lost (BSC failure)",
+    "title_zh": "SMC Panic - 传感器数据丢失（BSC failure）",
     "suspected": "Cụm cảm biến theo bitmask trong \"S.sensor array\"",
+    "suspected_en": "Sensor cluster given by the bitmask in \"S.sensor array\"",
+    "suspected_zh": "由 \"S.sensor array\" 位掩码指示的传感器组",
     "subsystem": "System Management Controller",
     "advice": "SMC không nhận đủ dữ liệu cảm biến nên buộc khởi động lại. Đọc dãy sau \"S.sensor array 0 - 4 is\" và đối chiếu ĐÚNG đời máy — cùng một bit ở đời máy khác là linh kiện khác. iOS mới in giá trị thập phân, cần đổi sang hex trước khi tra.",
+    "advice_en": "The SMC did not receive enough sensor data and forced a restart. Read the values after \"S.sensor array 0 - 4 is\" and match them to the EXACT model — the same bit is a different part on another model. Newer iOS prints decimal values; convert to hex before looking them up.",
+    "advice_zh": "SMC 未收到足够的传感器数据而强制重启。读取 \"S.sensor array 0 - 4 is\" 后的数值，并严格按机型对照——同一位在其他机型上对应不同元件。新版 iOS 输出十进制，查表前需转换为十六进制。",
     "confidence": "Cao",
     "source": "VERIFIED ifixit.com/Answers/View/799078"
   },
@@ -71,9 +89,15 @@
       ]
     },
     "title": "Lỗi bộ nhớ trong - ANS2 Panic",
+    "title_en": "Storage error - ANS2 Panic",
+    "title_zh": "存储错误 - ANS2 Panic",
     "suspected": "Chip NAND hoặc đường PCIe tới bộ điều khiển bộ nhớ",
+    "suspected_en": "NAND chip or the PCIe link to the storage controller",
+    "suspected_zh": "NAND 芯片或通往存储控制器的 PCIe 链路",
     "subsystem": "Apple NAND Storage (ANS2)",
     "advice": "Bộ điều khiển bộ nhớ mất liên kết PCIe với NAND. Hầu như luôn là phần cứng: chân NAND, mạch nguồn NAND hoặc đường mạch trên main. Xem thêm \"Unexpected link down\" và \"ltssm=\".",
+    "advice_en": "The storage controller lost its PCIe link to the NAND. Almost always hardware: NAND pins, NAND power circuit or board traces. Also look for \"Unexpected link down\" and \"ltssm=\".",
+    "advice_zh": "存储控制器与 NAND 的 PCIe 链路断开。几乎都是硬件问题：NAND 焊点、NAND 供电电路或主板走线。另请查看 \"Unexpected link down\" 和 \"ltssm=\"。",
     "confidence": "Cao",
     "source": "VERIFIED discussions.apple.com/thread/254968902"
   },
@@ -93,9 +117,15 @@
       ]
     },
     "title": "Lỗi bộ nhớ trong - Mất liên kết PCIe",
+    "title_en": "Storage error - PCIe link lost",
+    "title_zh": "存储错误 - PCIe 链路丢失",
     "suspected": "Đường PCIe giữa SoC và NAND",
+    "suspected_en": "PCIe lane between the SoC and the NAND",
+    "suspected_zh": "SoC 与 NAND 之间的 PCIe 通道",
     "subsystem": "Apple NAND Storage (ANS2)",
     "advice": "Liên kết PCIe tới bộ nhớ không thiết lập được (ltssm=0x00 DETECT_QUIET nghĩa là chưa bắt tay được lần nào). Lỗi phần cứng: kiểm tra NAND và mạch nguồn của nó.",
+    "advice_en": "The PCIe link to storage could not be established (ltssm=0x00 DETECT_QUIET means it never trained once). Hardware fault: check the NAND and its power circuit.",
+    "advice_zh": "无法建立到存储的 PCIe 链路（ltssm=0x00 DETECT_QUIET 表示从未握手成功）。硬件故障：检查 NAND 及其供电电路。",
     "confidence": "Cao",
     "source": "VERIFIED discussions.apple.com/thread/254968902"
   },
@@ -112,9 +142,15 @@
       ]
     },
     "title": "AOP Panic - Dữ liệu cảm biến sai (moly)",
+    "title_en": "AOP Panic - Bad sensor data (moly)",
+    "title_zh": "AOP Panic - 传感器数据错误（moly）",
     "suspected": "Bus cảm biến của AOP, thường là cụm cáp cổng sạc",
+    "suspected_en": "AOP sensor bus, usually the charging port flex",
+    "suspected_zh": "AOP 传感器总线，通常是尾插排线",
     "subsystem": "Always-On Processor",
     "advice": "Bộ đồng xử lý cảm biến nhận dữ liệu không hợp lệ. Hay gặp sau khi thay cổng sạc hoặc dùng cáp không chính hãng.",
+    "advice_en": "The sensor coprocessor received invalid data. Common after replacing the charging port or using a non-genuine cable.",
+    "advice_zh": "传感器协处理器收到无效数据。常见于更换尾插或使用非原装排线之后。",
     "confidence": "Cao",
     "source": "VERIFIED discussions.apple.com/thread/254691803"
   },
@@ -131,9 +167,15 @@
       ]
     },
     "title": "AOP Panic - Cảm biến áp suất BMP284",
+    "title_en": "AOP Panic - BMP284 pressure sensor",
+    "title_zh": "AOP Panic - BMP284 气压传感器",
     "suspected": "Cảm biến áp suất Bosch BMP284 (nằm trên cụm cáp cổng sạc ở phần lớn đời máy)",
+    "suspected_en": "Bosch BMP284 pressure sensor (on the charging port flex on most models)",
+    "suspected_zh": "博世 BMP284 气压传感器（多数机型位于尾插排线上）",
     "subsystem": "Always-On Processor",
     "advice": "Cảm biến áp suất khí quyển không phản hồi. Kiểm tra cụm cáp cổng sạc; nếu vừa thay cổng sạc lô thì thay lại hàng chuẩn.",
+    "advice_en": "The barometric pressure sensor is not responding. Check the charging port flex; if it was recently replaced with an aftermarket part, fit a genuine one.",
+    "advice_zh": "气压传感器无响应。检查尾插排线；如刚换过副厂尾插，请换回原装件。",
     "confidence": "Cao",
     "source": "VERIFIED discussions.apple.com/thread/254691803"
   },
@@ -155,9 +197,15 @@
       ]
     },
     "title": "AOP Panic - Lỗi bus cảm biến",
+    "title_en": "AOP Panic - Sensor bus error",
+    "title_zh": "AOP Panic - 传感器总线错误",
     "suspected": "Bus cảm biến của AOP (số bus nằm ngay trong chuỗi lỗi)",
+    "suspected_en": "AOP sensor bus (the bus number is in the error string)",
+    "suspected_zh": "AOP 传感器总线（总线编号在错误字符串中）",
     "subsystem": "Always-On Processor",
     "advice": "Đọc số bus trong chuỗi (i2cscm0..4, i2csm0..3, i2cm0..1) rồi kiểm tra cụm cáp nối với bus đó. Chưa có bảng đối chiếu bus sang linh kiện đã kiểm chứng, nên đây chỉ là gợi ý khoanh vùng.",
+    "advice_en": "Read the bus number in the string (i2cscm0..4, i2csm0..3, i2cm0..1) and check the flex connected to that bus. There is no verified bus-to-part table yet, so this only narrows the area.",
+    "advice_zh": "读取字符串中的总线编号（i2cscm0..4、i2csm0..3、i2cm0..1），检查连接该总线的排线。目前没有经过验证的总线-元件对照表，仅作范围参考。",
     "confidence": "Thấp",
     "source": "Chua kiem chung bang log that"
   },
@@ -175,9 +223,15 @@
       ]
     },
     "title": "SEP Panic - Secure Enclave không phản hồi",
+    "title_en": "SEP Panic - Secure Enclave not responding",
+    "title_zh": "SEP Panic - 安全隔区无响应",
     "suspected": "Secure Enclave hoặc liên kết SoC-SEP",
+    "suspected_en": "Secure Enclave or the SoC-SEP link",
+    "suspected_zh": "安全隔区（Secure Enclave）或 SoC 与 SEP 的连接",
     "subsystem": "Secure Enclave Processor",
     "advice": "SEP không trả lời yêu cầu trong thời hạn. Xem thêm \"SEP state:\" và \"Mailbox status\". Nếu vẫn lặp lại sau khi khôi phục iOS thì nghiêng về phần cứng.",
+    "advice_en": "The SEP did not answer a request in time. Also look at \"SEP state:\" and \"Mailbox status\". If it still repeats after restoring iOS, lean towards hardware.",
+    "advice_zh": "SEP 未能按时响应请求。另请查看 \"SEP state:\" 和 \"Mailbox status\"。若重刷 iOS 后仍反复出现，倾向硬件问题。",
     "confidence": "Cao",
     "source": "VERIFIED developer.apple.com/forums/thread/718309"
   },
@@ -195,9 +249,15 @@
       ]
     },
     "title": "Watchdog - SoC tự reset khi ngủ/thức",
+    "title_en": "Watchdog - SoC reset during sleep/wake",
+    "title_zh": "看门狗 - 睡眠/唤醒时 SoC 复位",
     "suspected": "Mạch nguồn SoC / PMU (cộng đồng sửa chữa hay quy về Tristar)",
+    "suspected_en": "SoC / PMU power circuit (repair shops often point to Tristar)",
+    "suspected_zh": "SoC / PMU 供电电路（维修圈常归因于 Tristar）",
     "subsystem": "SoC Watchdog",
     "advice": "Nguồn cấp cho SoC sụt trong lúc chuyển trạng thái ngủ/thức. Kiểm tra mạch nguồn, Tristar và pin.",
+    "advice_en": "SoC power dropped during a sleep/wake transition. Check the power circuit, Tristar and the battery.",
+    "advice_zh": "睡眠/唤醒切换时 SoC 供电掉压。检查供电电路、Tristar 和电池。",
     "confidence": "Trung bình",
     "source": "VERIFIED discussions.apple.com/thread/253624966"
   },
@@ -214,9 +274,15 @@
       ]
     },
     "title": "Treo khi chuyển trạng thái ngủ/thức",
+    "title_en": "Hang during sleep/wake transition",
+    "title_zh": "睡眠/唤醒切换时卡死",
     "suspected": "Driver chặn quá trình ngủ/thức (hay gặp: Wi-Fi, codec âm thanh, IC khuếch đại)",
+    "suspected_en": "A driver blocking sleep/wake (common: Wi-Fi, audio codec, amplifier IC)",
+    "suspected_zh": "阻塞睡眠/唤醒的驱动（常见：Wi-Fi、音频编解码器、功放 IC）",
     "subsystem": "IOPMrootDomain",
     "advice": "Một driver không hoàn tất bước ngủ/thức đúng hạn. Chỉ xảy ra sau khi cập nhật iOS thì nghiêng về phần mềm; lặp lại đều đặn thì kiểm tra Wi-Fi và mạch âm thanh.",
+    "advice_en": "A driver did not finish its sleep/wake step in time. If it only started after an iOS update, lean towards software; if it repeats regularly, check Wi-Fi and the audio circuit.",
+    "advice_zh": "某个驱动未按时完成睡眠/唤醒步骤。若仅在升级 iOS 后出现，倾向软件；若规律性反复出现，检查 Wi-Fi 和音频电路。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu IOPMrootDomain.cpp"
   },
@@ -233,9 +299,15 @@
       ]
     },
     "title": "Hết thời gian chờ khi tắt máy / khởi động lại",
+    "title_en": "Timeout during shutdown / restart",
+    "title_zh": "关机/重启时超时",
     "suspected": "Kext hoặc driver chặn tiến trình tắt máy",
+    "suspected_en": "A kext or driver blocking shutdown",
+    "suspected_zh": "阻塞关机流程的 kext 或驱动",
     "subsystem": "IOPMrootDomain",
     "advice": "Đọc tên pha trong dấu nháy để biết bước nào bị treo. Phần lớn là lỗi phần mềm.",
+    "advice_en": "Read the phase name in quotes to see which step hung. Mostly a software fault.",
+    "advice_zh": "查看引号中的阶段名称以确定卡在哪一步。多数为软件问题。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu IOPMrootDomain.cpp"
   },
@@ -252,9 +324,15 @@
       ]
     },
     "title": "SoC quá nhiệt - AppleSocHot",
+    "title_en": "SoC overheating - AppleSocHot",
+    "title_zh": "SoC 过热 - AppleSocHot",
     "suspected": "SoC hoặc đường cảm biến nhiệt giữa PMIC và CPU",
+    "suspected_en": "SoC or the thermal sensor path between the PMIC and CPU",
+    "suspected_zh": "SoC 或 PMIC 与 CPU 之间的温度传感器线路",
     "subsystem": "Thermal",
     "advice": "SoC chạm ngưỡng nhiệt bảo vệ. Nếu máy không hề nóng mà vẫn báo thì nghi đường cảm biến nhiệt trên main bị đứt.",
+    "advice_en": "The SoC hit its thermal protection threshold. If the phone is not hot at all but still reports it, suspect a broken thermal sensor line on the board.",
+    "advice_zh": "SoC 触发了过热保护阈值。若手机并不烫却仍报错，怀疑主板上的温度传感器线路断开。",
     "confidence": "Trung bình",
     "source": "VERIFIED-weak ifixit.com/Wiki/iPhone_Kernel_Panics"
   },
@@ -272,9 +350,15 @@
       ]
     },
     "title": "SMC Panic - Mất tín hiệu cảm biến",
+    "title_en": "SMC Panic - Sensor signal lost",
+    "title_zh": "SMC Panic - 传感器信号丢失",
     "suspected": "Module cảm biến ngoại vi (cáp sạc, cáp màn hình, pin)",
+    "suspected_en": "Peripheral sensor module (charging flex, display flex, battery)",
+    "suspected_zh": "外围传感器模块（尾插排线、屏幕排线、电池）",
     "subsystem": "SMC / Thermal & Power Monitor",
     "advice": "Đọc mã cảm biến ngay sau 'Missing sensor(s)' để xác định cụm cáp cần kiểm tra. Lỗi lặp lại nhiều lần là dấu hiệu phần cứng thật.",
+    "advice_en": "Read the sensor code right after 'Missing sensor(s)' to find which flex to check. Repeated occurrences indicate a real hardware fault.",
+    "advice_zh": "读取 'Missing sensor(s)' 后的传感器代码以确定要检查的排线。多次重复出现说明确实是硬件故障。",
     "confidence": "Cao"
   },
   {
@@ -292,9 +376,15 @@
       ]
     },
     "title": "SMC Panic - Lỗi khẳng định (Assertion Failed)",
+    "title_en": "SMC Panic - Assertion failed",
+    "title_zh": "SMC Panic - 断言失败（Assertion Failed）",
     "suspected": "Mảng cảm biến ngoại vi (iPhone 13 trở lên)",
+    "suspected_en": "Peripheral sensor array (iPhone 13 and later)",
+    "suspected_zh": "外围传感器阵列（iPhone 13 及以后）",
     "subsystem": "System Management Controller",
     "advice": "SMC không nhận đủ dữ liệu cảm biến trong 3 phút nên buộc khởi động lại. Mã trong log chỉ ra cụm cảm biến lỗi, NHƯNG bitmask khác nhau giữa các đời máy — không suy ra linh kiện nếu chưa đối chiếu đúng model.",
+    "advice_en": "The SMC did not get enough sensor data for 3 minutes and forced a restart. The code in the log points to the failing sensor cluster, BUT the bitmask differs between models — do not infer a part without matching the exact model.",
+    "advice_zh": "SMC 在 3 分钟内未收到足够的传感器数据而强制重启。日志中的代码指向故障传感器组，但位掩码因机型而异——未对照具体机型前不要推断元件。",
     "confidence": "Trung bình"
   },
   {
@@ -327,9 +417,15 @@
       ]
     },
     "title": "Lỗi giao tiếp I2C",
+    "title_en": "I2C communication error",
+    "title_zh": "I2C 通信错误",
     "suspected": "IC ngoại vi trên bus I2C — hay gặp nhất là cảm biến ánh sáng (ALS) và camera trước",
+    "suspected_en": "Peripheral IC on the I2C bus — most often the ambient light sensor (ALS) and front camera",
+    "suspected_zh": "I2C 总线上的外围 IC——最常见的是环境光传感器（ALS）和前置摄像头",
     "subsystem": "I2C Bus Controller",
     "advice": "Đo điện áp và điện trở kéo lên 1.8V trên SDA/SCL của bus lỗi. SCL/SDA bị giữ mức thấp thường do một IC trên bus chạm hoặc chết — tháo lần lượt để cô lập.",
+    "advice_en": "Measure the 1.8V pull-up voltage and resistance on SDA/SCL of the failing bus. SDA/SCL held low is usually an IC on the bus shorted or dead — disconnect parts one by one to isolate.",
+    "advice_zh": "测量故障总线 SDA/SCL 上的 1.8V 上拉电压和阻值。SDA/SCL 被拉低通常是总线上某个 IC 短路或损坏——逐个断开排查。",
     "confidence": "Trung bình"
   },
   {
@@ -348,9 +444,15 @@
       ]
     },
     "title": "DCP Panic - Lỗi bộ đồng xử lý màn hình",
+    "title_en": "DCP Panic - Display coprocessor error",
+    "title_zh": "DCP Panic - 显示协处理器错误",
     "suspected": "Màn hình, cáp/socket màn hình, hoặc khối DCP trong CPU",
+    "suspected_en": "Display, display flex/connector, or the DCP block in the CPU",
+    "suspected_zh": "屏幕、屏幕排线/座子，或 CPU 内的 DCP 模块",
     "subsystem": "Display Coprocessor (DCP / RTKit)",
     "advice": "DCP là bộ xử lý riêng điều khiển màn hình. Lỗi timing element thường do màn hình không tương thích, cáp màn hình lỏng/đứt, hoặc màn thay lô kém. Thử màn khác trước khi nghi CPU.",
+    "advice_en": "DCP is the dedicated processor driving the display. Timing element errors are usually an incompatible screen, a loose/broken display flex, or a poor aftermarket screen. Try another screen before suspecting the CPU.",
+    "advice_zh": "DCP 是驱动屏幕的专用处理器。时序错误通常由不兼容的屏幕、排线松动/断裂或劣质副厂屏引起。怀疑 CPU 之前先换一块屏幕测试。",
     "confidence": "Cao"
   },
   {
@@ -368,9 +470,15 @@
       ]
     },
     "title": "Panic nguồn khối ANE (Neural Engine)",
+    "title_en": "ANE (Neural Engine) power panic",
+    "title_zh": "ANE（神经网络引擎）供电 Panic",
     "suspected": "Khối Neural Engine trong CPU hoặc đường cấp nguồn của nó",
+    "suspected_en": "The Neural Engine block in the CPU or its power rail",
+    "suspected_zh": "CPU 内的神经网络引擎模块或其供电线路",
     "subsystem": "Power Management / Apple Neural Engine",
     "advice": "Khối ANE không hạ nguồn được khi ngủ/tắt máy. Thường là lỗi CPU hoặc IC nguồn, không phải linh kiện rời.",
+    "advice_en": "The ANE block could not power down during sleep/shutdown. Usually a CPU or power IC fault, not a discrete part.",
+    "advice_zh": "ANE 模块在睡眠/关机时无法断电。通常是 CPU 或电源 IC 问题，而非分立元件。",
     "confidence": "Trung bình"
   },
   {
@@ -388,9 +496,15 @@
       ]
     },
     "title": "AppleSocHot - CPU quá nhiệt nghiêm trọng",
+    "title_en": "AppleSocHot - Severe CPU overheating",
+    "title_zh": "AppleSocHot - CPU 严重过热",
     "suspected": "Đường cấp nguồn từ IC nguồn lên CPU, hoặc IC WiFi/Audio chạm tải",
+    "suspected_en": "Power rail from the power IC to the CPU, or a Wi-Fi/Audio IC shorting the rail",
+    "suspected_zh": "电源 IC 到 CPU 的供电线路，或 Wi-Fi/音频 IC 短路拉载",
     "subsystem": "SoC Thermal Protection",
     "advice": "CPU vượt ngưỡng nhiệt an toàn. Thường do chạm tải trên đường nguồn chứ không phải nóng do dùng nặng. Đo dòng tiêu thụ lúc máy đứng yên; cách ly IC WiFi và IC audio.",
+    "advice_en": "The CPU exceeded its safe temperature. Usually caused by a short on a power rail rather than heavy use. Measure idle current draw; isolate the Wi-Fi IC and audio IC.",
+    "advice_zh": "CPU 超过安全温度。通常是供电线路短路导致，而非重度使用发热。测量待机电流；隔离 Wi-Fi IC 和音频 IC。",
     "confidence": "Cao"
   },
   {
@@ -409,9 +523,15 @@
       ]
     },
     "title": "SEP ROM Boot - Lỗi khởi động Secure Enclave",
+    "title_en": "SEP ROM Boot - Secure Enclave boot failure",
+    "title_zh": "SEP ROM Boot - 安全隔区启动失败",
     "suspected": "Vùng ROM của Secure Enclave trong CPU",
+    "suspected_en": "The Secure Enclave ROM area inside the CPU",
+    "suspected_zh": "CPU 内安全隔区的 ROM 区域",
     "subsystem": "Secure Enclave Processor",
     "advice": "Hỏng vùng ROM của SEP. Dữ liệu SEP là duy nhất cho từng máy và KHÔNG thay thế được — cảnh báo khách trước nguy cơ mất dữ liệu trước khi can thiệp.",
+    "advice_en": "The SEP ROM area is damaged. SEP data is unique to each device and CANNOT be replaced — warn the customer about possible data loss before working on it.",
+    "advice_zh": "SEP ROM 区域损坏。SEP 数据每台设备唯一且无法替换——动手维修前务必告知客户可能丢失数据。",
     "confidence": "Trung bình"
   },
   {
@@ -430,9 +550,15 @@
       ]
     },
     "title": "SEP (Secure Enclave) Panic",
+    "title_en": "SEP (Secure Enclave) Panic",
+    "title_zh": "SEP（安全隔区）Panic",
     "suspected": "Secure Enclave trong CPU, cụm Face ID / Touch ID",
+    "suspected_en": "Secure Enclave in the CPU, Face ID / Touch ID assembly",
+    "suspected_zh": "CPU 内的安全隔区、Face ID / Touch ID 组件",
     "subsystem": "Secure Enclave Processor",
     "advice": "Thường gặp sau khi thay cảm biến vân tay/Face ID không đúng cặp với CPU. Kiểm tra cáp Face ID và lịch sử sửa chữa máy.",
+    "advice_en": "Common after replacing a fingerprint/Face ID sensor that is not paired to the CPU. Check the Face ID flex and the phone's repair history.",
+    "advice_zh": "常见于更换了未与 CPU 配对的指纹/Face ID 传感器之后。检查 Face ID 排线和维修记录。",
     "confidence": "Trung bình"
   },
   {
@@ -449,9 +575,15 @@
       ]
     },
     "title": "AOP NMI POWER - Ngắt không che được từ AOP",
+    "title_en": "AOP NMI POWER - Non-maskable interrupt from AOP",
+    "title_zh": "AOP NMI POWER - 来自 AOP 的不可屏蔽中断",
     "suspected": "Cáp nút nguồn, hoặc cụm camera trước",
+    "suspected_en": "Power button flex or the front camera assembly",
+    "suspected_zh": "电源键排线或前置摄像头组件",
     "subsystem": "Always-On Processor",
     "advice": "NMI là ngắt phần cứng không thể bỏ qua. Theo kinh nghiệm sửa chữa, thường liên quan cáp nút nguồn và cụm camera trước. Cách ly từng cụm để khoanh vùng.",
+    "advice_en": "An NMI is a hardware interrupt that cannot be ignored. From repair experience it is usually linked to the power button flex and the front camera assembly. Isolate each assembly to narrow it down.",
+    "advice_zh": "NMI 是无法忽略的硬件中断。根据维修经验，通常与电源键排线和前置摄像头组件有关。逐个隔离组件排查。",
     "confidence": "Trung bình"
   },
   {
@@ -468,9 +600,15 @@
       ]
     },
     "title": "AOP Panic - K2 Bosch (cảm biến Bosch)",
+    "title_en": "AOP Panic - K2 Bosch (Bosch sensor)",
+    "title_zh": "AOP Panic - K2 Bosch（博世传感器）",
     "suspected": "Cụm cáp chân sạc hoặc loa ngoài",
+    "suspected_en": "Charging port flex or loudspeaker",
+    "suspected_zh": "尾插排线或外放扬声器",
     "subsystem": "Always-On Processor / Sensor Bus",
     "advice": "Thường xảy ra khi dùng chức năng âm thanh. Liên quan đường tín hiệu tới loa và cụm cáp đuôi sạc. Thử cách ly loa ngoài trước.",
+    "advice_en": "Usually happens while using audio. Related to the speaker signal path and the charging port flex. Try isolating the loudspeaker first.",
+    "advice_zh": "通常在使用音频功能时发生。与扬声器信号线路和尾插排线有关。先尝试隔离外放扬声器。",
     "confidence": "Trung bình"
   },
   {
@@ -488,9 +626,15 @@
       ]
     },
     "title": "AOP (Always-On Processor) Panic",
+    "title_en": "AOP (Always-On Processor) Panic",
+    "title_zh": "AOP（常开处理器）Panic",
     "suspected": "Taptic Engine, IC Audio, cảm biến tiệm cận hoặc hở chân CPU",
+    "suspected_en": "Taptic Engine, audio IC, proximity sensor or lifted CPU pads",
+    "suspected_zh": "Taptic Engine、音频 IC、距离传感器或 CPU 虚焊",
     "subsystem": "Always-On Processor Subsystem",
     "advice": "Cách ly cụm cáp loa trong (chứa cảm biến tiệm cận) và Taptic Engine. Vẫn lỗi thì đo đường tín hiệu AOP vào CPU.",
+    "advice_en": "Isolate the earpiece flex (which carries the proximity sensor) and the Taptic Engine. If it still fails, measure the AOP signal lines to the CPU.",
+    "advice_zh": "隔离听筒排线（含距离传感器）和 Taptic Engine。仍有故障则测量 AOP 到 CPU 的信号线。",
     "confidence": "Trung bình"
   },
   {
@@ -518,9 +662,15 @@
       ]
     },
     "title": "PMGR Power Panic - Lỗi mạch quản lý nguồn",
+    "title_en": "PMGR Power Panic - Power management fault",
+    "title_zh": "PMGR Power Panic - 电源管理故障",
     "suspected": "IC nguồn chính (PMIC), cuộn cảm cấp pha CPU hoặc hở chân CPU",
+    "suspected_en": "Main power IC (PMIC), CPU phase inductors or lifted CPU pads",
+    "suspected_zh": "主电源 IC（PMIC）、CPU 供电电感或 CPU 虚焊",
     "subsystem": "Power Management Subsystem (PMGR)",
     "advice": "Panic khi hạ nguồn khối chức năng (quiesce). Kiểm tra cuộn cảm quanh CPU, đo áp các pha VCORE. REQUIRE failed ở PMGR_PS_* chỉ ra khối cụ thể không tắt được nguồn.",
+    "advice_en": "Panic while powering down a functional block (quiesce). Check the inductors around the CPU and measure the VCORE phase voltages. REQUIRE failed on PMGR_PS_* names the block that would not power down.",
+    "advice_zh": "在关闭功能模块电源（quiesce）时发生 Panic。检查 CPU 周围电感，测量 VCORE 各相电压。PMGR_PS_* 处的 REQUIRE failed 指出无法断电的具体模块。",
     "confidence": "Trung bình"
   },
   {
@@ -540,9 +690,15 @@
       ]
     },
     "title": "GPU Panic - Lỗi xử lý đồ hoạ",
+    "title_en": "GPU Panic - Graphics processing error",
+    "title_zh": "GPU Panic - 图形处理错误",
     "suspected": "GPU trong CPU, nguồn cấp GPU hoặc quá nhiệt",
+    "suspected_en": "GPU in the CPU, GPU power or overheating",
+    "suspected_zh": "CPU 内的 GPU、GPU 供电或过热",
     "subsystem": "Graphics Subsystem",
     "advice": "Kiểm tra máy có nóng bất thường khi dùng nặng không. Đo áp cấp pha GPU. Lỗi lặp lại nhiều là dấu hiệu hở chân/suy CPU.",
+    "advice_en": "Check whether the phone gets abnormally hot under heavy use. Measure the GPU phase voltage. Frequent repeats suggest lifted pads/degraded CPU.",
+    "advice_zh": "检查重度使用时是否异常发热。测量 GPU 供电电压。频繁重复说明 CPU 虚焊/老化。",
     "confidence": "Trung bình"
   },
   {
@@ -561,9 +717,15 @@
       ]
     },
     "title": "Lỗi khởi động NAND",
+    "title_en": "NAND boot failure",
+    "title_zh": "NAND 启动失败",
     "suspected": "Ổ cứng NAND Flash hoặc đường cấp nguồn NAND",
+    "suspected_en": "NAND flash storage or the NAND power rail",
+    "suspected_zh": "NAND 闪存或 NAND 供电线路",
     "subsystem": "Storage / NAND Boot",
     "advice": "Kiểm tra áp cấp NAND (0.9V / 1.8V / 2.5V). Mất áp thì thay cuộn/IC nguồn; đủ áp thì đóng lại hoặc thay NAND.",
+    "advice_en": "Check the NAND supply voltages (0.9V / 1.8V / 2.5V). If a rail is missing, replace the inductor/power IC; if all are present, reball or replace the NAND.",
+    "advice_zh": "检查 NAND 供电电压（0.9V / 1.8V / 2.5V）。缺压则更换电感/电源 IC；电压正常则重植或更换 NAND。",
     "confidence": "Cao"
   },
   {
@@ -584,9 +746,15 @@
       ]
     },
     "title": "Lỗi bộ điều khiển ổ cứng NVMe / ANS2",
+    "title_en": "NVMe / ANS2 storage controller error",
+    "title_zh": "NVMe / ANS2 存储控制器错误",
     "suspected": "NAND Flash hoặc đường cấp nguồn NAND từ CPU",
+    "suspected_en": "NAND flash or the NAND power rail from the CPU",
+    "suspected_zh": "NAND 闪存或来自 CPU 的 NAND 供电线路",
     "subsystem": "Storage Subsystem (NVMe/ANS)",
     "advice": "Đo áp 0.9V, 1.8V, 2.5V cho NAND Flash. Mất áp thì thay cuộn dây/IC nguồn; đủ áp thì cần đóng lại hoặc thay NAND.",
+    "advice_en": "Measure 0.9V, 1.8V and 2.5V for the NAND flash. If a rail is missing, replace the inductor/power IC; if all are present, reball or replace the NAND.",
+    "advice_zh": "测量 NAND 闪存的 0.9V、1.8V、2.5V。缺压则更换电感/电源 IC；电压正常则需重植或更换 NAND。",
     "confidence": "Cao"
   },
   {
@@ -609,9 +777,15 @@
       ]
     },
     "title": "Baseband / Modem Panic - Lỗi sóng viễn thông",
+    "title_en": "Baseband / Modem Panic - Cellular error",
+    "title_zh": "基带 / 调制解调器 Panic - 蜂窝网络错误",
     "suspected": "IC Baseband (Modem), IC nguồn Baseband hoặc hở chân bo ghép",
+    "suspected_en": "Baseband (modem) IC, baseband power IC or lifted pads on the stacked board",
+    "suspected_zh": "基带（Modem）IC、基带电源 IC 或双层板虚焊",
     "subsystem": "Cellular Baseband Subsystem",
     "advice": "Kiểm tra máy có mất vi trình Modem trong Cài đặt không. Máy 2 tầng (iPhone X trở lên) kiểm tra hở chân viền ghép.",
+    "advice_en": "Check whether the Modem Firmware is missing in Settings. On stacked boards (iPhone X and later) check the interposer for lifted pads.",
+    "advice_zh": "检查设置中是否缺少调制解调器固件。双层主板（iPhone X 及以后）检查夹层边框是否虚焊。",
     "confidence": "Trung bình"
   },
   {
@@ -629,9 +803,15 @@
       ]
     },
     "title": "Lỗi IC WiFi / Bluetooth (BCMWLAN)",
+    "title_en": "Wi-Fi / Bluetooth IC error (BCMWLAN)",
+    "title_zh": "Wi-Fi / 蓝牙 IC 错误（BCMWLAN）",
     "suspected": "IC WiFi/Bluetooth hoặc bus PCIe cấp cho module WiFi",
+    "suspected_en": "Wi-Fi/Bluetooth IC or the PCIe bus to the Wi-Fi module",
+    "suspected_zh": "Wi-Fi/蓝牙 IC 或连接 Wi-Fi 模块的 PCIe 总线",
     "subsystem": "Wireless Subsystem",
     "advice": "Kiểm tra công tắc WiFi có bị xám mờ không. Làm chân lại hoặc thay IC WiFi.",
+    "advice_en": "Check whether the Wi-Fi switch is greyed out. Reball or replace the Wi-Fi IC.",
+    "advice_zh": "检查 Wi-Fi 开关是否变灰。重植或更换 Wi-Fi IC。",
     "confidence": "Cao"
   },
   {
@@ -650,9 +830,15 @@
       ]
     },
     "title": "Lỗi bật cổng PCIe (WiFi/BT hoặc Baseband)",
+    "title_en": "PCIe port enable failure (Wi-Fi/BT or baseband)",
+    "title_zh": "PCIe 端口启用失败（Wi-Fi/蓝牙或基带）",
     "suspected": "IC WiFi/Bluetooth hoặc IC Baseband trên bus PCIe",
+    "suspected_en": "Wi-Fi/Bluetooth IC or baseband IC on the PCIe bus",
+    "suspected_zh": "PCIe 总线上的 Wi-Fi/蓝牙 IC 或基带 IC",
     "subsystem": "PCIe Link / Port Enable",
     "advice": "Cổng PCIe không bật được — thường là IC WiFi/BT hoặc Baseband chết hoặc hở chân. Kiểm tra WiFi có bị xám mờ và máy có mất sóng không để phân biệt hai bên.",
+    "advice_en": "The PCIe port could not be enabled — usually a dead or lifted Wi-Fi/BT or baseband IC. Check whether Wi-Fi is greyed out and whether there is no signal to tell the two apart.",
+    "advice_zh": "无法启用 PCIe 端口——通常是 Wi-Fi/蓝牙或基带 IC 损坏或虚焊。通过 Wi-Fi 是否变灰、是否无信号来区分两者。",
     "confidence": "Trung bình"
   },
   {
@@ -671,9 +857,15 @@
       ]
     },
     "title": "Lỗi điều khiển Màn hình / Camera (SMMU)",
+    "title_en": "Display / Camera controller error (SMMU)",
+    "title_zh": "屏幕 / 摄像头控制器错误（SMMU）",
     "suspected": "Cụm Camera hoặc cáp/socket màn hình",
+    "suspected_en": "Camera assembly or the display flex/connector",
+    "suspected_zh": "摄像头组件或屏幕排线/座子",
     "subsystem": "DART / Display / Camera Subsystem",
     "advice": "Cách ly lần lượt camera sau, camera trước và màn hình. Kiểm tra socket cong vênh hoặc lỏng chân.",
+    "advice_en": "Isolate the rear camera, front camera and display one at a time. Check for bent or loose connectors.",
+    "advice_zh": "依次隔离后置摄像头、前置摄像头和屏幕。检查座子是否变形或松动。",
     "confidence": "Cao"
   },
   {
@@ -690,9 +882,15 @@
       ]
     },
     "title": "Undefined Kernel Instruction",
+    "title_en": "Undefined Kernel Instruction",
+    "title_zh": "未定义的内核指令",
     "suspected": "Thường do phần mềm; lặp lại nhiều mới nghi RAM/NAND",
+    "suspected_en": "Usually software; only suspect RAM/NAND if it repeats often",
+    "suspected_zh": "通常是软件问题；频繁重复时才怀疑 RAM/NAND",
     "subsystem": "Kernel",
     "advice": "Lệnh nhân bị hỏng khi thực thi. Đa số là lỗi phần mềm — thử khôi phục firmware trước. Chỉ nghi RAM/NAND khi lỗi lặp lại nhiều lần sau khi đã cài lại.",
+    "advice_en": "A kernel instruction was corrupt when executed. Mostly software — try restoring the firmware first. Only suspect RAM/NAND if it keeps repeating after a reinstall.",
+    "advice_zh": "执行时内核指令损坏。多数为软件问题——先尝试刷机。重装后仍频繁出现才怀疑 RAM/NAND。",
     "confidence": "Thấp"
   },
   {
@@ -713,9 +911,15 @@
       ]
     },
     "title": "Watchdog Timeout - Mất phản hồi từ thermalmonitord",
+    "title_en": "Watchdog Timeout - thermalmonitord stopped responding",
+    "title_zh": "看门狗超时 - thermalmonitord 无响应",
     "suspected": "Cảm biến nhiệt trên bo mạch, cáp sạc hoặc cáp nút nguồn",
+    "suspected_en": "Board thermal sensor, charging flex or power button flex",
+    "suspected_zh": "主板温度传感器、尾插排线或电源键排线",
     "subsystem": "Thermal Monitoring Daemon",
     "advice": "Hệ điều hành khởi động lại vì không nhận báo cáo nhiệt sau 180s. Kiểm tra đường cảm biến nhiệt trên cụm cáp sạc và nút bấm.",
+    "advice_en": "The OS restarted because it got no thermal report for 180s. Check the thermal sensor lines on the charging flex and the button flex.",
+    "advice_zh": "系统因 180 秒内未收到温度报告而重启。检查尾插排线和按键排线上的温度传感器线路。",
     "confidence": "Cao"
   },
   {
@@ -734,9 +938,15 @@
       ]
     },
     "title": "Watchdog Timeout - Tiến trình hệ thống treo",
+    "title_en": "Watchdog Timeout - System process hung",
+    "title_zh": "看门狗超时 - 系统进程卡死",
     "suspected": "Tiến trình hệ thống bị treo, chưa chắc do phần cứng",
+    "suspected_en": "A system process hung; not necessarily hardware",
+    "suspected_zh": "系统进程卡死，不一定是硬件问题",
     "subsystem": "System Watchdog",
     "advice": "Tiến trình hệ thống không báo cáo đúng hạn. Nếu là SpringBoard, logd, wifid thì gần như luôn là lỗi phần mềm. Chỉ nghi phần cứng khi lặp lại nhiều lần cùng một tiến trình.",
+    "advice_en": "A system process did not check in on time. If it is SpringBoard, logd or wifid it is almost always software. Only suspect hardware if the same process repeats many times.",
+    "advice_zh": "系统进程未按时响应。若是 SpringBoard、logd、wifid，几乎都是软件问题。同一进程多次重复时才怀疑硬件。",
     "confidence": "Trung bình"
   },
   {
@@ -759,9 +969,15 @@
       ]
     },
     "title": "Thermal Event - Máy quá nhiệt",
+    "title_en": "Thermal Event - Phone overheating",
+    "title_zh": "温度事件 - 手机过热",
     "suspected": "Quá nhiệt do tải nặng, pin chai hoặc IC nguồn chập tải",
+    "suspected_en": "Overheating from heavy load, a worn battery or a shorted power IC",
+    "suspected_zh": "高负载、电池老化或电源 IC 短路导致过热",
     "subsystem": "Thermal Management",
     "advice": "Một vài lần là bình thường (sạc + dùng nặng). Lặp lại thường xuyên thì kiểm tra pin và dòng tiêu thụ khi idle.",
+    "advice_en": "A few times is normal (charging + heavy use). If it happens often, check the battery and the idle current draw.",
+    "advice_zh": "偶尔几次属正常（边充边重度使用）。频繁出现则检查电池和待机电流。",
     "confidence": "Trung bình"
   },
   {
@@ -777,9 +993,15 @@
       ]
     },
     "title": "Hỏng vùng nhớ kernel (zone metadata)",
+    "title_en": "Kernel memory corruption (zone metadata)",
+    "title_zh": "内核内存损坏（zone metadata）",
     "suspected": "Driver ghi sai bộ nhớ; nếu đổi tên zone liên tục thì nghi RAM",
+    "suspected_en": "A driver writing memory wrongly; if the zone name keeps changing, suspect RAM",
+    "suspected_zh": "驱动错误写入内存；若 zone 名称不断变化则怀疑 RAM",
     "subsystem": "Kernel Memory (zalloc)",
     "advice": "Đọc tên zone ngay sau \"detected in zone\" để biết hệ thống con nào gây ra. Cùng một zone lặp lại = lỗi phần mềm; nhiều zone khác nhau = nghi RAM.",
+    "advice_en": "Read the zone name right after \"detected in zone\" to see which subsystem caused it. Same zone repeating = software; many different zones = suspect RAM.",
+    "advice_zh": "查看 \"detected in zone\" 后的 zone 名称以确定哪个子系统引起。同一 zone 重复 = 软件问题；多个不同 zone = 怀疑 RAM。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu zalloc.c"
   },
@@ -796,9 +1018,15 @@
       ]
     },
     "title": "Hỏng vùng nhớ kernel - Giải phóng hai lần",
+    "title_en": "Kernel memory corruption - Double free",
+    "title_zh": "内核内存损坏 - 重复释放",
     "suspected": "Driver giải phóng cùng một vùng nhớ hai lần",
+    "suspected_en": "A driver freeing the same memory twice",
+    "suspected_zh": "驱动对同一块内存释放了两次",
     "subsystem": "Kernel Memory (zalloc)",
     "advice": "Lỗi phần mềm trong driver. Thử khôi phục iOS trước khi nghĩ tới phần cứng.",
+    "advice_en": "A software bug in a driver. Try restoring iOS before thinking about hardware.",
+    "advice_zh": "驱动中的软件错误。考虑硬件之前先尝试重刷 iOS。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu zalloc.c"
   },
@@ -815,9 +1043,15 @@
       ]
     },
     "title": "Hỏng vùng nhớ kernel - Ghi vào vùng đã giải phóng",
+    "title_en": "Kernel memory corruption - Write after free",
+    "title_zh": "内核内存损坏 - 释放后写入",
     "suspected": "Driver ghi vào bộ nhớ đã trả lại",
+    "suspected_en": "A driver writing to memory that was already returned",
+    "suspected_zh": "驱动向已释放的内存写入",
     "subsystem": "Kernel Memory (zalloc)",
     "advice": "Lỗi phần mềm. Nếu chỉ xuất hiện trên một máy và lặp lại thì cân nhắc kiểm tra RAM.",
+    "advice_en": "Software bug. If it only appears on one phone and keeps repeating, consider testing the RAM.",
+    "advice_zh": "软件错误。若仅在一台设备上反复出现，可考虑检测 RAM。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu zalloc.c"
   },
@@ -834,9 +1068,15 @@
       ]
     },
     "title": "Hỏng vùng nhớ kernel - Con trỏ lạc",
+    "title_en": "Kernel memory corruption - Stray pointer",
+    "title_zh": "内核内存损坏 - 野指针",
     "suspected": "Driver giải phóng con trỏ không thuộc vùng cấp phát",
+    "suspected_en": "A driver freeing a pointer outside the allocator's zones",
+    "suspected_zh": "驱动释放了不属于分配区域的指针",
     "subsystem": "Kernel Memory (zalloc)",
     "advice": "Lỗi phần mềm trong driver.",
+    "advice_en": "Software bug in a driver.",
+    "advice_zh": "驱动中的软件错误。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu zalloc.c"
   },
@@ -853,9 +1093,15 @@
       ]
     },
     "title": "Hỏng vùng nhớ kernel - Con trỏ không hợp lệ",
+    "title_en": "Kernel memory corruption - Invalid pointer",
+    "title_zh": "内核内存损坏 - 无效指针",
     "suspected": "Trạng thái bộ cấp phát bị hỏng",
+    "suspected_en": "Allocator state is corrupted",
+    "suspected_zh": "内存分配器状态损坏",
     "subsystem": "Kernel Memory (zalloc)",
     "advice": "Lỗi phần mềm; nếu lặp lại sau khi khôi phục iOS thì kiểm tra RAM/NAND.",
+    "advice_en": "Software bug; if it repeats after restoring iOS, check RAM/NAND.",
+    "advice_zh": "软件问题；重刷 iOS 后仍重复则检查 RAM/NAND。",
     "confidence": "Trung bình",
     "source": "VERIFIED xnu zalloc.c"
   },
@@ -872,9 +1118,15 @@
       ]
     },
     "title": "Kernel Panic - Không đọc được lệnh",
+    "title_en": "Kernel Panic - Instruction fetch abort",
+    "title_zh": "内核 Panic - 取指异常",
     "suspected": "Trang mã bị lỗi; phần lớn là phần mềm",
+    "suspected_en": "Corrupted code page; mostly software",
+    "suspected_zh": "代码页损坏；多数为软件问题",
     "subsystem": "Kernel",
     "advice": "CPU nhảy vào vùng nhớ không hợp lệ. Thường là lỗi driver. Chỉ khi lặp lại sau khi khôi phục iOS sạch mới nghi NAND/RAM.",
+    "advice_en": "The CPU jumped into invalid memory. Usually a driver bug. Only suspect NAND/RAM if it repeats after a clean iOS restore.",
+    "advice_zh": "CPU 跳转到了无效内存。通常是驱动错误。干净重刷 iOS 后仍重复才怀疑 NAND/RAM。",
     "confidence": "Thấp",
     "source": "VERIFIED xnu sleh.c"
   },
@@ -891,9 +1143,15 @@
       ]
     },
     "title": "Kernel Panic - Truy cập bộ nhớ lệch địa chỉ",
+    "title_en": "Kernel Panic - Unaligned memory access",
+    "title_zh": "内核 Panic - 未对齐内存访问",
     "suspected": "Lỗi driver",
+    "suspected_en": "Driver bug",
+    "suspected_zh": "驱动错误",
     "subsystem": "Kernel",
     "advice": "Gần như luôn là lỗi phần mềm trong driver.",
+    "advice_en": "Almost always a software bug in a driver.",
+    "advice_zh": "几乎都是驱动中的软件错误。",
     "confidence": "Thấp",
     "source": "VERIFIED xnu sleh.c"
   },
@@ -910,9 +1168,15 @@
       ]
     },
     "title": "Kernel Panic - Tràn ngăn xếp",
+    "title_en": "Kernel Panic - Stack overflow",
+    "title_zh": "内核 Panic - 栈溢出",
     "suspected": "Lỗi driver",
+    "suspected_en": "Driver bug",
+    "suspected_zh": "驱动错误",
     "subsystem": "Kernel",
     "advice": "Lỗi phần mềm. Khôi phục iOS nếu lặp lại.",
+    "advice_en": "Software bug. Restore iOS if it repeats.",
+    "advice_zh": "软件错误。重复出现则重刷 iOS。",
     "confidence": "Thấp",
     "source": "VERIFIED xnu sleh.c"
   },
@@ -930,9 +1194,15 @@
       ]
     },
     "title": "Kernel Panic - Vi phạm Pointer Authentication",
+    "title_en": "Kernel Panic - Pointer Authentication violation",
+    "title_zh": "内核 Panic - 指针认证违规",
     "suspected": "Thường do khai thác lỗ hổng hoặc lỗi JIT",
+    "suspected_en": "Usually an exploit or a JIT bug",
+    "suspected_zh": "通常由漏洞利用或 JIT 错误引起",
     "subsystem": "Kernel",
     "advice": "Cơ chế bảo vệ con trỏ của Apple chặn một thao tác bất thường. Gần như luôn là phần mềm.",
+    "advice_en": "Apple's pointer protection blocked an abnormal operation. Almost always software.",
+    "advice_zh": "苹果的指针保护机制拦截了异常操作。几乎都是软件问题。",
     "confidence": "Thấp",
     "source": "VERIFIED xnu sleh.c"
   },
@@ -962,9 +1232,15 @@
       ]
     },
     "title": "Kernel panic do hoạt động phần mềm / jailbreak",
+    "title_en": "Kernel panic from software activity / jailbreak",
+    "title_zh": "由软件活动 / 越狱引起的内核 Panic",
     "suspected": "Công cụ jailbreak hoặc tweak gây lỗi kernel — không phải phần cứng",
+    "suspected_en": "A jailbreak tool or tweak crashing the kernel — not hardware",
+    "suspected_zh": "越狱工具或插件导致内核错误——并非硬件问题",
     "subsystem": "Phần mềm hệ thống",
     "advice": "Panic này do phần mềm gây ra (jailbreak, tweak, hook). Không chỉ ra hỏng phần cứng. Nếu xuất hiện nhiều lần: gỡ tweak hoặc reinstall jailbreak.",
+    "advice_en": "This panic is caused by software (jailbreak, tweaks, hooks). It does not indicate a hardware fault. If it happens often: remove tweaks or reinstall the jailbreak.",
+    "advice_zh": "该 Panic 由软件引起（越狱、插件、hook），不表示硬件损坏。频繁出现时：卸载插件或重装越狱。",
     "confidence": "Cao",
     "source": "AMFI.kext / XNU code-signing subsystem — xác nhận từ log thật của người dùng jailbreak"
   },
@@ -985,9 +1261,15 @@
       ]
     },
     "title": "Vi phạm code signing / sandbox",
+    "title_en": "Code signing / sandbox violation",
+    "title_zh": "代码签名 / 沙盒违规",
     "suspected": "Tweak hoặc app bên thứ ba vi phạm giới hạn phần mềm — không phải phần cứng",
+    "suspected_en": "A tweak or third-party app breaking software limits — not hardware",
+    "suspected_zh": "插件或第三方应用违反软件限制——并非硬件问题",
     "subsystem": "Phần mềm hệ thống",
     "advice": "Không phải lỗi phần cứng. Liên quan đến tweak, app sideload hoặc jailbreak. Xem backtrace để biết process nào gây ra.",
+    "advice_en": "Not a hardware fault. Related to tweaks, sideloaded apps or a jailbreak. Check the backtrace to see which process caused it.",
+    "advice_zh": "不是硬件故障。与插件、侧载应用或越狱有关。查看回溯以确定是哪个进程引起的。",
     "confidence": "Cao",
     "source": "XNU AMFI/sandbox — hành vi đã xác nhận qua log từ thiết bị jailbreak"
   },
@@ -1004,9 +1286,15 @@
       ]
     },
     "title": "Kernel Panic - Lỗi truy cập bộ nhớ (chưa phân loại)",
+    "title_en": "Kernel Panic - Memory access error (unclassified)",
+    "title_zh": "内核 Panic - 内存访问错误（未分类）",
     "suspected": "Chưa xác định — đây là nhóm rất rộng",
+    "suspected_en": "Undetermined — this is a very broad category",
+    "suspected_zh": "无法确定——这是一个非常宽泛的类别",
     "subsystem": "Kernel",
     "advice": "Đây là loại panic phổ biến nhất và KHÔNG chỉ ra linh kiện nào. Mở \"Thông tin kỹ thuật\" đọc panicString và backtrace, hoặc gom nhiều lần lỗi để tìm quy luật.",
+    "advice_en": "This is the most common panic type and does NOT point to any part. Open \"Technical details\" to read the panicString and backtrace, or collect several occurrences to find a pattern.",
+    "advice_zh": "这是最常见的 Panic 类型，并不指向任何元件。打开「技术信息」查看 panicString 和回溯，或收集多次记录寻找规律。",
     "confidence": "Thấp",
     "source": "VERIFIED xnu sleh.c — nhom rong, xep cuoi"
   },
@@ -1027,9 +1315,15 @@
       ]
     },
     "title": "SpringBoard Crash - Giao diện hệ thống khởi động lại",
+    "title_en": "SpringBoard Crash - System UI restarted",
+    "title_zh": "SpringBoard 崩溃 - 系统界面重启",
     "suspected": "Xung đột phần mềm hoặc tweak; hiếm khi do phần cứng",
+    "suspected_en": "Software conflict or tweak; rarely hardware",
+    "suspected_zh": "软件冲突或插件；很少是硬件问题",
     "subsystem": "SpringBoard / UI",
     "advice": "Lẻ tẻ thì bỏ qua. Lặp lại nhiều lần trong ngày mới cần xem tweak/cấu hình hoặc RAM.",
+    "advice_en": "Ignore occasional ones. Only if it repeats many times a day look at tweaks/configuration or RAM.",
+    "advice_zh": "偶尔出现可忽略。一天内多次重复才需检查插件/配置或 RAM。",
     "confidence": "Trung bình"
   },
   {
@@ -1048,9 +1342,15 @@
       ]
     },
     "title": "CPUResource - Ứng dụng dùng CPU vượt ngưỡng",
+    "title_en": "CPUResource - App exceeded CPU limit",
+    "title_zh": "CPUResource - 应用 CPU 占用超限",
     "suspected": "Ứng dụng chạy nền tiêu tốn CPU",
+    "suspected_en": "A background app using a lot of CPU",
+    "suspected_zh": "后台应用大量占用 CPU",
     "subsystem": "Resource Monitor",
     "advice": "Đây là báo cáo hiệu năng của iOS, không phải lỗi phần cứng. Có thể bỏ qua.",
+    "advice_en": "This is an iOS performance report, not a hardware fault. Safe to ignore.",
+    "advice_zh": "这是 iOS 的性能报告，不是硬件故障。可以忽略。",
     "confidence": "Cao"
   },
   {
@@ -1068,9 +1368,15 @@
       ]
     },
     "title": "DiskWrites - Ứng dụng ghi đĩa nhiều",
+    "title_en": "DiskWrites - App writing a lot to disk",
+    "title_zh": "DiskWrites - 应用大量写入磁盘",
     "suspected": "Ứng dụng ghi dữ liệu nhiều bất thường",
+    "suspected_en": "An app writing unusually large amounts of data",
+    "suspected_zh": "应用异常大量写入数据",
     "subsystem": "Storage Resource Monitor",
     "advice": "Báo cáo hiệu năng thông thường của iOS. Không liên quan phần cứng.",
+    "advice_en": "A normal iOS performance report. Not hardware related.",
+    "advice_zh": "常规的 iOS 性能报告，与硬件无关。",
     "confidence": "Cao"
   },
   {
@@ -1090,9 +1396,15 @@
       ]
     },
     "title": "Jetsam Event - Giải phóng bộ nhớ RAM",
+    "title_en": "Jetsam Event - RAM reclaimed",
+    "title_zh": "Jetsam 事件 - 回收内存",
     "suspected": "Ứng dụng nền vượt ngưỡng RAM",
+    "suspected_en": "A background app exceeded its RAM limit",
+    "suspected_zh": "后台应用超出内存上限",
     "subsystem": "Memory Manager (Jetsam)",
     "advice": "Cơ chế bảo vệ tự động của iOS khi RAM đầy, không phải lỗi phần cứng. Bỏ qua an toàn.",
+    "advice_en": "iOS's automatic protection when RAM is full, not a hardware fault. Safe to ignore.",
+    "advice_zh": "iOS 在内存不足时的自动保护机制，不是硬件故障。可放心忽略。",
     "confidence": "Cao"
   },
   {
@@ -1113,9 +1425,15 @@
       ]
     },
     "title": "Crash ứng dụng thông thường",
+    "title_en": "Ordinary app crash",
+    "title_zh": "普通应用崩溃",
     "suspected": "Lỗi lập trình của ứng dụng bên thứ ba",
+    "suspected_en": "A programming bug in a third-party app",
+    "suspected_zh": "第三方应用的程序错误",
     "subsystem": "User Application Space",
     "advice": "Không liên quan phần cứng. Cập nhật hoặc cài lại ứng dụng bị crash.",
+    "advice_en": "Not hardware related. Update or reinstall the crashing app.",
+    "advice_zh": "与硬件无关。更新或重装崩溃的应用。",
     "confidence": "Cao"
   }
 ]

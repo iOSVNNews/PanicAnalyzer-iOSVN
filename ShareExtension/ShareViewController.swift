@@ -34,9 +34,9 @@ final class ShareViewController: UIViewController {
     private func receiveFiles() {
         let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
             .flatMap { $0.attachments ?? [] }
-        guard !providers.isEmpty else { return finish(saved: 0, reason: "Không có file nào") }
+        guard !providers.isEmpty else { return finish(saved: 0, reason: Loc.s("Không có file nào", "No files", "没有文件")) }
         guard let inbox = inboxURL() else {
-            return finish(saved: 0, reason: "Không mở được vùng chia sẻ App Group")
+            return finish(saved: 0, reason: Loc.s("Không mở được vùng chia sẻ App Group", "Cannot open the shared App Group", "无法打开共享 App Group"))
         }
 
         var saved = 0
@@ -70,7 +70,7 @@ final class ShareViewController: UIViewController {
         }
 
         group.notify(queue: .main) {
-            self.finish(saved: saved, reason: saved == 0 ? "Không đọc được file" : nil)
+            self.finish(saved: saved, reason: saved == 0 ? Loc.s("Không đọc được file", "Could not read the file", "无法读取文件") : nil)
         }
     }
 
@@ -109,10 +109,10 @@ final class ShareViewController: UIViewController {
             extensionContext?.completeRequest(returningItems: nil)
             return
         }
-        let title = "Không nhận được log"
+        let title = Loc.s("Không nhận được log", "No log received", "未收到日志")
         let msg = reason
         let alert = UIAlertController(title: title, message: msg, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Xong", style: .default) { _ in
+        alert.addAction(UIAlertAction(title: Loc.s("Xong", "Done", "完成"), style: .default) { _ in
             self.extensionContext?.completeRequest(returningItems: nil)
         })
         present(alert, animated: true)

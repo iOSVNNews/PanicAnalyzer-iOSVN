@@ -281,6 +281,7 @@ final class LogBridge: NSObject {
         parts.append("window.__AUTO_PAIRING__ = \(PairingLogService.shared.supportsOnDevicePairing ? "true" : "false");")
         parts.append("window.__IOS_VERSION__ = \"\(iosVersion)\";")
         parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
+        parts.append("window.__APP_LANG__ = \"\(Loc.lang)\";")
         parts.append("window.__NATIVE_BRIDGE_READY__ = true;")
         return parts.joined(separator: "\n")
     }
@@ -325,7 +326,9 @@ final class LogBridge: NSObject {
                 if !wasConfigured && PairingLogService.shared.isConfigured {
                     self.notifyPairingStatus(
                         configured: true,
-                        message: "Đã tự ghép đôi và lưu pairing record trên thiết bị.",
+                        message: Loc.s("Đã tự ghép đôi và lưu pairing record trên thiết bị.",
+                                       "Paired on-device and saved the pairing record.",
+                                       "已在本机完成配对并保存配对记录。"),
                         isError: false
                     )
                 }
@@ -401,7 +404,9 @@ final class LogBridge: NSObject {
                 try PairingLogService.shared.importPairingFile(from: url)
                 self.notifyPairingStatus(
                     configured: true,
-                    message: "Đã lưu Remote Pairing file. Hãy bật LocalDevVPN để quét log.",
+                    message: Loc.s("Đã nhập pairing file. Bật LocalDevVPN để quét log.",
+                                   "Pairing file imported. Turn on LocalDevVPN to scan logs.",
+                                   "配对文件已导入。打开 LocalDevVPN 以扫描日志。"),
                     isError: false
                 )
                 self.scanLogs()
@@ -423,7 +428,9 @@ final class LogBridge: NSObject {
                 try PairingLogService.shared.removePairingFile()
                 self.notifyPairingStatus(
                     configured: false,
-                    message: "Đã xoá Remote Pairing file khỏi ứng dụng.",
+                    message: Loc.s("Đã xoá pairing file khỏi ứng dụng.",
+                                   "Pairing file removed from the app.",
+                                   "已从应用中删除配对文件。"),
                     isError: false
                 )
             } catch {
@@ -451,7 +458,9 @@ final class LogBridge: NSObject {
         pushPairingCard(stage: "permission", pin: nil)
         notifyPairingStatus(
             configured: PairingLogService.shared.isConfigured,
-            message: "Đang xin quyền Mạng cục bộ… Hãy chọn Cho phép nếu iOS hỏi.",
+            message: Loc.s("Đang xin quyền Mạng cục bộ… Hãy chọn Cho phép nếu iOS hỏi.",
+                           "Requesting Local Network permission… Tap Allow if iOS asks.",
+                           "正在请求本地网络权限… 如 iOS 询问请点「允许」。"),
             isError: false
         )
         // Without Local Network permission iOS drops our Bonjour advertisement
@@ -461,8 +470,13 @@ final class LogBridge: NSObject {
                 self.finishPairingUI()
                 self.notifyPairingStatus(
                     configured: PairingLogService.shared.isConfigured,
-                    message: "Chưa có quyền Mạng cục bộ nên PanicAnalyzer không hiện trong Cài đặt. "
-                        + "Vào Cài đặt > PanicAnalyzer > bật Mạng cục bộ rồi bấm Ghép đôi lại.",
+                    message: Loc.s(
+                        "Chưa có quyền Mạng cục bộ nên PanicAnalyzer không hiện trong Cài đặt. "
+                            + "Vào Cài đặt > PanicAnalyzer > bật Mạng cục bộ rồi bấm Ghép đôi lại.",
+                        "Without Local Network permission PanicAnalyzer cannot appear in Settings. "
+                            + "Go to Settings > PanicAnalyzer, turn on Local Network, then tap Pair again.",
+                        "没有本地网络权限，PanicAnalyzer 无法出现在设置中。"
+                            + "请前往 设置 > PanicAnalyzer 开启本地网络，然后再次点配对。"),
                     isError: true
                 )
                 return
@@ -481,8 +495,13 @@ final class LogBridge: NSObject {
                     onAdvertising: {
                         self.notifyPairingStatus(
                             configured: PairingLogService.shared.isConfigured,
-                            message: "Đang chờ ghép đôi: mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển, "
-                                + "chọn \(PairableHostService.hostName) (không chọn SideInstaller hay máy khác).",
+                            message: Loc.s(
+                                "Đang chờ ghép đôi: mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển, "
+                                    + "chọn \(PairableHostService.hostName) (không chọn SideInstaller hay máy khác).",
+                                "Waiting for pairing: open Settings > Privacy & Security > Developer, "
+                                    + "pick \(PairableHostService.hostName) (not SideInstaller or another computer).",
+                                "等待配对：打开 设置 > 隐私与安全性 > 开发者，"
+                                    + "选择 \(PairableHostService.hostName)（不要选 SideInstaller 或其他电脑）。"),
                             isError: false
                         )
                         DispatchQueue.main.async {
@@ -498,7 +517,9 @@ final class LogBridge: NSObject {
                         }
                         self.notifyPairingStatus(
                             configured: PairingLogService.shared.isConfigured,
-                            message: "Nhập mã \(pin) trong Cài đặt (đã sao chép mã).",
+                            message: Loc.s("Nhập mã \(pin) trong Cài đặt (đã sao chép mã).",
+                                           "Enter code \(pin) in Settings (copied).",
+                                           "请在设置中输入代码 \(pin)（已复制）。"),
                             isError: false
                         )
                     }
@@ -507,7 +528,9 @@ final class LogBridge: NSObject {
                     self.finishPairingUI()
                     self.notifyPairingStatus(
                         configured: true,
-                        message: "Đã ghép đôi và lưu pairing record. Đang đọc CrashReporter qua LocalDevVPN…",
+                        message: Loc.s("Đã ghép đôi và lưu pairing record. Đang đọc CrashReporter qua LocalDevVPN…",
+                                       "Paired and saved the pairing record. Reading CrashReporter via LocalDevVPN…",
+                                       "配对成功并已保存配对记录。正在通过 LocalDevVPN 读取 CrashReporter…"),
                         isError: false
                     )
                     self.scanLogs()
@@ -558,25 +581,36 @@ final class LogBridge: NSObject {
     }
 
     private func presentPairingInstructions(pin: String?) {
-        let steps = "1. Bật LocalDevVPN và Chế độ nhà phát triển.\n"
-            + "2. Trong Cài đặt (trang chính) chọn Quyền riêng tư & Bảo mật, cuộn xuống cuối, chọn Nhà phát triển.\n"
-            + "3. Chọn đúng \"\(PairableHostService.hostName)\" — không chọn SideInstaller hay máy khác.\n"
-            + "4. Nhập mã PIN hiện trên màn hình app và trong thông báo (đã sao chép sẵn)."
-        let message = pin.map { "Mã PIN: \($0)\n\n" + steps } ?? steps
+        let host = PairableHostService.hostName
+        let steps = Loc.s(
+            "1. Bật LocalDevVPN và Chế độ nhà phát triển.\n"
+                + "2. Trong Cài đặt (trang chính) chọn Quyền riêng tư & Bảo mật, cuộn xuống cuối, chọn Nhà phát triển.\n"
+                + "3. Chọn đúng \"\(host)\" — không chọn SideInstaller hay máy khác.\n"
+                + "4. Nhập mã PIN hiện trên màn hình app và trong thông báo (đã sao chép sẵn).",
+            "1. Turn on LocalDevVPN and Developer Mode.\n"
+                + "2. In Settings (main page) choose Privacy & Security, scroll to the bottom, choose Developer.\n"
+                + "3. Pick \"\(host)\" — not SideInstaller or another computer.\n"
+                + "4. Enter the PIN shown in the app and in the notification (already copied).",
+            "1. 打开 LocalDevVPN 和开发者模式。\n"
+                + "2. 在设置（主页面）选择 隐私与安全性，滑到底部，选择 开发者。\n"
+                + "3. 选择 \"\(host)\"——不要选 SideInstaller 或其他电脑。\n"
+                + "4. 输入应用和通知中显示的 PIN 码（已复制）。")
+        let pinTitle: (String) -> String = { Loc.s("Mã ghép đôi: \($0)", "Pairing code: \($0)", "配对码：\($0)") }
+        let message = pin.map { "PIN: \($0)\n\n" + steps } ?? steps
         if let alert = pairingAlert {
             alert.message = message
-            if let pin { alert.title = "Mã ghép đôi: \(pin)" }
+            if let pin { alert.title = pinTitle(pin) }
             return
         }
         let alert = UIAlertController(
-            title: pin.map { "Mã ghép đôi: \($0)" } ?? "Ghép đôi iPhone này",
+            title: pin.map(pinTitle) ?? Loc.s("Ghép đôi iPhone này", "Pair this iPhone", "配对这台 iPhone"),
             message: message,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Huỷ ghép đôi", style: .destructive) { _ in
+        alert.addAction(UIAlertAction(title: Loc.s("Huỷ ghép đôi", "Cancel pairing", "取消配对"), style: .destructive) { _ in
             PairingLogService.shared.cancelPairing()
         })
-        alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: Loc.s("Mở Cài đặt", "Open Settings", "打开设置"), style: .default) { [weak self] _ in
             // Pairing keeps running in the background; the PIN arrives as a notification.
             self?.openPrivacySettings()
         })
@@ -654,6 +688,7 @@ extension LogBridge: WKScriptMessageHandler {
         case "importPairing": presentPairingPicker()
         case "pairDevice":    pairThisDevice()
         case "openPrivacySettings": openPrivacySettings()
+        case "setLanguage":   Loc.setLanguage(body["lang"] as? String ?? "")
         case "cancelPairing": PairingLogService.shared.cancelPairing()
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
