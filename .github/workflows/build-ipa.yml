@@ -150,6 +150,7 @@ jobs:
           - Ghép đôi iOS 27 ngay trên máy: chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển
           - Tự chuyển sang CoreDeviceProxy (lockdown 62078) khi tunnel RPPairing tới chính máy bị đóng; nhận cả lockdown pairing file
           - Tiếng Việt / English / 中文, màn Cài đặt (ngôn ngữ, nhập file pairing, thông tin tác giả)
+          - Máy JB/TrollStore đọc thẳng log hệ thống (quét đệ quy), không cần ghép đôi
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

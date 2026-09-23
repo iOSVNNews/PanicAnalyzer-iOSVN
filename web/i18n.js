@@ -3,6 +3,9 @@
 
 const I18N = {
   vi: {
+    's.readingDirect': 'Đang đọc trực tiếp log hệ thống (máy JB)…',
+    's.noLogsJB': 'Đọc trực tiếp được nhưng chưa có panic log nào. Máy chưa từng sập nguồn, hoặc log đã bị xoá.',
+    'jb.tag': 'Đọc trực tiếp',
     'settings.title': 'Cài đặt', 'settings.language': 'Ngôn ngữ', 'settings.pairing': 'Ghép đôi',
     'settings.importHint': 'Nhận Remote Pairing record (.plist) hoặc lockdown pairing file (.mobiledevicepairing / .plist) tạo từ máy tính, iLoader, SideInstaller…',
     'settings.about': 'Thông tin', 'settings.repo': 'Mã nguồn GitHub', 'settings.author': 'Tác giả',
@@ -138,6 +141,9 @@ const I18N = {
     'lang.label': 'VI',
   },
   en: {
+    's.readingDirect': 'Reading system logs directly (jailbroken)…',
+    's.noLogsJB': 'Direct read works but there are no panic logs yet. The device never panicked, or the logs were cleared.',
+    'jb.tag': 'Direct read',
     'settings.title': 'Settings', 'settings.language': 'Language', 'settings.pairing': 'Pairing',
     'settings.importHint': 'Accepts a Remote Pairing record (.plist) or a lockdown pairing file (.mobiledevicepairing / .plist) made on a computer, iLoader, SideInstaller…',
     'settings.about': 'About', 'settings.repo': 'GitHub source code', 'settings.author': 'Author',
@@ -273,6 +279,9 @@ const I18N = {
     'lang.label': 'EN',
   },
   zh: {
+    's.readingDirect': '正在直接读取系统日志（越狱设备）…',
+    's.noLogsJB': '可直接读取，但暂无 panic 日志。设备从未发生 panic，或日志已被清除。',
+    'jb.tag': '直接读取',
     'settings.title': '设置', 'settings.language': '语言', 'settings.pairing': '配对',
     'settings.importHint': '支持 Remote Pairing 记录（.plist）或在电脑、iLoader、SideInstaller 等生成的 lockdown 配对文件（.mobiledevicepairing / .plist）',
     'settings.about': '关于', 'settings.repo': 'GitHub 源代码', 'settings.author': '作者',

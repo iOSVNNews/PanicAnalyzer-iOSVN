@@ -852,3 +852,16 @@ body {
 .about-row:last-child { border-bottom: none; }
 .about-row b { color: var(--text-primary); font-weight: 600; text-align: right; word-break: break-all; }
 a.about-row b { color: var(--brand-bright); }
+
+/* ---- Nhãn máy JB đọc trực tiếp ---- */
+.jb-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--brand-dim);
+  color: var(--brand-bright);
+  border: 1px solid var(--brand-line);
+  vertical-align: middle;
+}

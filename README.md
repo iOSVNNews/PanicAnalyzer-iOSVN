@@ -73,6 +73,10 @@ Extension tự lưu log và đóng; mở PanicAnalyzer để xem kết quả.
 
 Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 
+### Máy đã jailbreak / TrollStore
+
+Trên máy JB hoặc cài bằng TrollStore (.tipa), app đọc thẳng log từ `/var/mobile/Library/Logs/CrashReporter/`, `DiagnosticReports`, `Retired` và `/var/db/CrashReporter` — quét cả thư mục con. Không cần LocalDevVPN, không cần ghép đôi: nút **Ghép đôi thiết bị này** tự ẩn và cạnh tên máy hiện nhãn **Đọc trực tiếp**.
+
 ### Quét tự động qua LocalDevVPN trên iOS 27
 
 1. Bật LocalDevVPN/StosVPN với Device IP mặc định `10.7.0.1`. Không cần cấu hình

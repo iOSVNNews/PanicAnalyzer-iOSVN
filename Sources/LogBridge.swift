@@ -36,16 +36,14 @@ final class LogBridge: NSObject {
     /// Trên non-JB các lệnh này thất bại im lặng và trả về mảng rỗng.
     private let searchDirs = [
         "/var/mobile/Library/Logs/CrashReporter",
-        "/var/mobile/Library/Logs/CrashReporter/Panics",
-        "/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
-        "/var/mobile/Library/Logs/CrashReporter/Retired",
         "/var/mobile/Library/Logs/DiagnosticReports",
-        "/private/var/mobile/Library/Logs/CrashReporter",
-        "/private/var/mobile/Library/Logs/CrashReporter/Panics",
-        "/private/var/mobile/Library/Logs/DiagnosticReports"
+        "/var/mobile/Library/Logs/CrashReporter/Retired",
+        "/var/db/CrashReporter",                       // panic-full ghi ở đây trên nhiều đời máy
+        "/var/mobile/Library/Logs/CrashReporter/Panics"
     ]
 
     /// Máy này có đọc được thư mục log hệ thống không (TrollStore/jailbreak thì có).
+    /// Trên non-JB các thư mục này nằm ngoài sandbox nên luôn trả về false.
     var canReadSystemLogs: Bool {
         let fm = FileManager.default
         for dir in searchDirs {
@@ -54,6 +52,40 @@ final class LogBridge: NSObject {
             }
         }
         return false
+    }
+
+    private let maxFilesystemLogs = 200
+    private let maxFilesystemBytes = 24 * 1024 * 1024
+    private let maxFileBytes = 12 * 1024 * 1024
+
+    /// Đọc thẳng log từ hệ thống (chỉ chạy được trên máy JB/TrollStore).
+    /// Quét cả thư mục con của CrashReporter (Panics, Retired, DiagnosticLogs…)
+    /// và bỏ trùng theo đường dẫn thật để không đọc lặp giữa /var và /private/var.
+    func readFilesystemLogs() -> [[String: String]] {
+        let fm = FileManager.default
+        var results: [[String: String]] = []
+        var seen = Set<String>()
+        var totalBytes = 0
+
+        for root in searchDirs {
+            guard let enumerator = fm.enumerator(atPath: root) else { continue }
+            for case let rel as String in enumerator {
+                if results.count >= maxFilesystemLogs || totalBytes >= maxFilesystemBytes { break }
+                let name = (rel as NSString).lastPathComponent
+                guard isLogFile(name) else { continue }
+                let path = (root as NSString).appendingPathComponent(rel)
+                // Bỏ trùng: /var là symlink của /private/var nên cùng một file.
+                let canonical = (try? URL(fileURLWithPath: path).resourceValues(
+                    forKeys: [.canonicalPathKey]))?.canonicalPath ?? path
+                guard seen.insert(canonical).inserted else { continue }
+                guard let attrs = try? fm.attributesOfItem(atPath: path),
+                      let size = attrs[.size] as? Int, size > 0, size <= maxFileBytes,
+                      let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+                totalBytes += size
+                results.append(["name": rel, "content": text])
+            }
+        }
+        return results
     }
 
     // MARK: - Nhận diện thiết bị THẬT
@@ -299,17 +331,8 @@ final class LogBridge: NSObject {
 
     func scanLogs() {
         DispatchQueue.global(qos: .userInitiated).async {
-            var results: [[String: String]] = []
-            let fm = FileManager.default
-            for dir in self.searchDirs {
-                guard let names = try? fm.contentsOfDirectory(atPath: dir) else { continue }
-                for n in names where self.isLogFile(n) {
-                    let path = (dir as NSString).appendingPathComponent(n)
-                    guard let text = try? String(contentsOfFile: path, encoding: .utf8)
-                    else { continue }
-                    results.append(["name": n, "content": text])
-                }
-            }
+            // Trên máy JB / TrollStore đọc thẳng file log, không cần ghép đôi.
+            let results = self.readFilesystemLogs()
             if !results.isEmpty {
                 self.deliver(results, autoScan: true, source: "filesystem")
                 return

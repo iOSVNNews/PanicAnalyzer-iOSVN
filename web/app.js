@@ -21,15 +21,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyStaticI18n();
   await loadDatabases();
   updateDetectedModel();
+  applyJailbreakMode();
   updatePairingButton(!!window.__PAIRING_CONFIGURED__);
 
   const hasBridge = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge);
   if (hasBridge && (window.__CAN_READ_LOGS__ || window.__PAIRING_CONFIGURED__ || window.__AUTO_PAIRING__)) {
-    updateScanStatus(window.__PAIRING_CONFIGURED__
-      ? t('s.connecting')
-      : (window.__AUTO_PAIRING__
-        ? t('s.checkingPair')
-        : t('s.readingSystem')), true);
+    updateScanStatus(window.__CAN_READ_LOGS__
+      ? t('s.readingDirect')
+      : (window.__PAIRING_CONFIGURED__
+        ? t('s.connecting')
+        : (window.__AUTO_PAIRING__
+          ? t('s.checkingPair')
+          : t('s.readingSystem'))), true);
     armScanTimeout();
     try {
       window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
@@ -49,7 +52,7 @@ function showEmptyState() {
   setDemoBanner(false);
   updateDashboardStats();
   renderIncidentList();
-  updateScanStatus(t('s.sandboxHint'), false);
+  updateScanStatus(t(window.__CAN_READ_LOGS__ ? 's.noLogsJB' : 's.sandboxHint'), false);
 }
 
 // Banner cảnh báo khi đang xem dữ liệu mẫu
@@ -163,6 +166,7 @@ function onLanguageChanged() {
   const banner = document.getElementById('demoBanner');
   if (banner) banner.innerText = t('s.sampleBanner');
   updateDetectedModel();
+  applyJailbreakMode();
   updatePairingButton(!!window.__PAIRING_CONFIGURED__);
   renderRulesInfo(window.__RULES_INFO__);
   populateSampleLogsModal();
@@ -170,7 +174,7 @@ function onLanguageChanged() {
     reanalyzeStoredLogs();
   } else {
     renderIncidentList();
-    updateScanStatus(t('s.sandboxHint'), false);
+    updateScanStatus(t(window.__CAN_READ_LOGS__ ? 's.noLogsJB' : 's.sandboxHint'), false);
   }
 }
 
@@ -973,6 +977,8 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
     showEmptyState();
     if (source === 'pairing') {
       showToast(t('s.noPairingLogs'), 4000);
+    } else if (window.__CAN_READ_LOGS__ || source === 'filesystem') {
+      showToast(t('s.noLogsJB'), 4500);
     } else {
       showToast(t('s.sandboxBlocked'), 4500);
     }
@@ -982,6 +988,22 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
 function updatePairingButton(configured) {
   const label = document.getElementById('pairingButtonLabel');
   if (label) label.innerText = t(configured ? 'btn.repair' : 'btn.pair');
+}
+
+// Máy JB / TrollStore đọc thẳng log nên không cần ghép đôi:
+// ẩn nút ghép đôi và gắn nhãn "Đọc trực tiếp" cạnh model.
+function applyJailbreakMode() {
+  if (!window.__CAN_READ_LOGS__) return;
+  const pairBtn = document.getElementById('btnPairing');
+  if (pairBtn) pairBtn.style.display = 'none';
+  const badge = document.getElementById('detectedModelBadge');
+  if (badge && !badge.querySelector('.jb-tag')) {
+    const tag = document.createElement('span');
+    tag.className = 'jb-tag';
+    tag.innerText = t('jb.tag');
+    badge.appendChild(document.createTextNode(' '));
+    badge.appendChild(tag);
+  }
 }
 
 window.onNativePairingStatus = function(status) {
