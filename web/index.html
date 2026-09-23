@@ -23,7 +23,7 @@
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
         </button>
-        <span class="version-badge">v2.6.5 Pro</span>
+        <span class="version-badge">v2.6.6 Pro</span>
       </div>
     </div>
   </header>
@@ -97,12 +97,12 @@
         <div class="pairing-pin" id="pairingPin" hidden></div>
         <ol class="pairing-steps">
           <li>Bật LocalDevVPN và Chế độ nhà phát triển.</li>
-          <li>Cài đặt › Quyền riêng tư &amp; Bảo mật › <b>Nhà phát triển</b> (cuối trang).</li>
+          <li>Mở Cài đặt, về trang chính › <b>Quyền riêng tư &amp; Bảo mật</b> › cuộn xuống cuối › <b>Nhà phát triển</b>. (iOS không cho app mở thẳng mục này.)</li>
           <li>Chọn đúng <b id="pairingHostName">PanicAnalyzer</b> — không chọn SideInstaller hay máy khác.</li>
           <li>Nhập mã PIN ở trên (đã sao chép sẵn, có cả trong thông báo).</li>
         </ol>
         <div class="pairing-card-actions">
-          <button class="action-btn primary" onclick="nativeAction('openPrivacySettings')">Mở Quyền riêng tư &amp; Bảo mật</button>
+          <button class="action-btn primary" onclick="nativeAction('openPrivacySettings')">Mở Cài đặt</button>
           <button class="action-btn secondary" onclick="nativeAction('cancelPairing')">Huỷ ghép đôi</button>
         </div>
       </div>

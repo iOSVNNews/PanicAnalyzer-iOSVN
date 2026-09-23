@@ -544,26 +544,22 @@ final class LogBridge: NSObject {
         DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
     }
 
-    /// Opens Settings > Privacy & Security (Developer is near the bottom).
-    /// openSettingsURLString would open PanicAnalyzer's own page instead.
+    /// Opens the Settings app itself. Since iOS 18 Apple ignores the old
+    /// "App-prefs:Privacy…" paths and lands on PanicAnalyzer's own page instead,
+    /// so no link can reach Privacy & Security > Developer directly; the bare
+    /// scheme opens Settings where the user last was (usually the root).
     private func openPrivacySettings() {
-        let candidates = ["App-prefs:Privacy&path=DEVELOPER_MODE", "App-prefs:Privacy", "prefs:root=Privacy"]
-            .compactMap(URL.init(string:))
-        func attempt(_ index: Int) {
-            guard index < candidates.count else {
-                if let url = URL(string: "App-prefs:") { UIApplication.shared.open(url) }
-                return
-            }
-            UIApplication.shared.open(candidates[index], options: [:]) { opened in
-                if !opened { attempt(index + 1) }
+        guard let url = URL(string: "App-prefs:") else { return }
+        UIApplication.shared.open(url, options: [:]) { opened in
+            if !opened, let fallback = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(fallback)
             }
         }
-        attempt(0)
     }
 
     private func presentPairingInstructions(pin: String?) {
         let steps = "1. Bật LocalDevVPN và Chế độ nhà phát triển.\n"
-            + "2. Mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển (cuộn xuống cuối).\n"
+            + "2. Trong Cài đặt (trang chính) chọn Quyền riêng tư & Bảo mật, cuộn xuống cuối, chọn Nhà phát triển.\n"
             + "3. Chọn đúng \"\(PairableHostService.hostName)\" — không chọn SideInstaller hay máy khác.\n"
             + "4. Nhập mã PIN hiện trên màn hình app và trong thông báo (đã sao chép sẵn)."
         let message = pin.map { "Mã PIN: \($0)\n\n" + steps } ?? steps
@@ -580,7 +576,7 @@ final class LogBridge: NSObject {
         alert.addAction(UIAlertAction(title: "Huỷ ghép đôi", style: .destructive) { _ in
             PairingLogService.shared.cancelPairing()
         })
-        alert.addAction(UIAlertAction(title: "Mở Quyền riêng tư & Bảo mật", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { [weak self] _ in
             // Pairing keeps running in the background; the PIN arrives as a notification.
             self?.openPrivacySettings()
         })

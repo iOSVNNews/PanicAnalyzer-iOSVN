@@ -516,6 +516,11 @@ function computeSignature(rec) {
   if (rec.logType === 'app_crash') {
     return `AppCrash::${rec.processName || 'unknown'}::${rec.exceptionType || ''}`;
   }
+  // Log không phải kernel panic (nhiệt, SpringBoard, watchdog…): phần đầu file
+  // chứa id/giờ/đếm riêng từng lần nên không dùng làm chữ ký, gom theo luật.
+  if (!rec.panicString && rec.ruleId) {
+    return `Rule::${rec.ruleId}::${rec.processName || ''}`;
+  }
   let s = rec.panicString || rec.rawText.slice(0, 600);
   s = s.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, 'UUID')
        .replace(/0x[0-9a-fA-F]+/g, 'ADDR')
