@@ -222,6 +222,33 @@ function parseTimestamp(raw) {
   return isNaN(d2.getTime()) ? null : d2.getTime();
 }
 
+// Ngày giờ theo múi giờ của máy, ví dụ "20/09/2026 10:15:30".
+function formatLogTime(ms) {
+  if (!ms) return 'Không rõ thời gian';
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// "3 giờ trước", "2 ngày trước"… để biết lỗi còn mới hay đã cũ.
+function formatAgo(ms) {
+  if (!ms) return '';
+  const diff = Date.now() - ms;
+  if (diff < 0) return '';
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'vừa xong';
+  if (min < 60) return `${min} phút trước`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} giờ trước`;
+  const day = Math.floor(h / 24);
+  if (day < 60) return `${day} ngày trước`;
+  return `${Math.floor(day / 30)} tháng trước`;
+}
+
+function sortedOccurrences(g) {
+  return g.allRecords.slice().sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
+}
+
 function normalizeI2CError(m) {
   if (!m) return 'không rõ';
   const raw = m[1].toLowerCase();
@@ -322,6 +349,11 @@ function parseLogContent(rawText, filename = "log.ips") {
   if (!record.timestampMs) {
     const tm = rawText.match(/\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}[^"\n]*/);
     if (tm) record.timestampMs = parseTimestamp(tm[0]);
+  }
+  if (!record.timestampMs) {
+    // iOS đặt tên file theo thời điểm: panic-full-2026-09-20-101530.000.ips
+    const fm = String(filename).match(/(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/);
+    if (fm) record.timestampMs = parseTimestamp(`${fm[1]}-${fm[2]}-${fm[3]} ${fm[4]}:${fm[5]}:${fm[6]}`);
   }
 
   // CHỈ khớp luật trong panicString + panicInitiator + 4KB đầu file.
@@ -670,6 +702,12 @@ function renderIncidentList() {
           <span class="suspect-highlight">${escapeHtml(g.suspectedComponent)}</span>
         </div>
 
+        <div class="time-line">
+          <span>Lần gần nhất:</span>
+          <b>${formatLogTime(rec.timestampMs)}</b>
+          ${rec.timestampMs ? `<span class="time-ago">${formatAgo(rec.timestampMs)}</span>` : ''}
+        </div>
+
         <div class="meta-row">
           <span class="meta-item">${escapeHtml(rec.product || "iPhone")}</span>
           <span class="meta-item">${escapeHtml(rec.build || rec.osVersion || "iOS 15+")}</span>
@@ -728,6 +766,23 @@ function openDetailModal(index) {
     ? `<div class="detail-section"><div class="detail-label">Số lần panic gần đây</div><div class="detail-text">Máy đã ghi nhận <b>${rcMatch[1]}</b> lần panic (theo bộ đếm của hệ thống)</div></div>`
     : '';
 
+  const occurrences = sortedOccurrences(g);
+  const shown = occurrences.slice(0, 30);
+  const timelineRows = shown.map(r => `
+      <div class="timeline-row">
+        <span class="timeline-time">${formatLogTime(r.timestampMs)}</span>
+        <span class="timeline-file">${escapeHtml(r.filename || '')}</span>
+      </div>`).join('');
+  const stamped = occurrences.filter(r => r.timestampMs);
+  const span = stamped.length > 1
+    ? `Từ <b>${formatLogTime(stamped[stamped.length - 1].timestampMs)}</b> đến <b>${formatLogTime(stamped[0].timestampMs)}</b><br>`
+    : '';
+  const timelineHtml = `
+      <div class="detail-section">
+        <div class="detail-label">Thời gian xảy ra trên máy (${occurrences.length} lần)</div>
+        <div class="detail-text">${span}${timelineRows}${occurrences.length > shown.length ? `<div class="timeline-more">… và ${occurrences.length - shown.length} lần cũ hơn</div>` : ''}</div>
+      </div>`;
+
   let sensorHtml = '';
   if (rec.missingSensors && rec.missingSensors.length > 0) {
     sensorHtml = `
@@ -759,6 +814,8 @@ function openDetailModal(index) {
       ${sensorHtml}
       ${resetCountHtml}
       ${i2cHtml}
+
+      ${timelineHtml}
 
       <div class="detail-section">
         <div class="detail-label">Thông số thiết bị & Tần suất</div>
@@ -809,7 +866,12 @@ function exportSanitizedReport() {
   report += ` - Mức độ: ${g.severity.toUpperCase()}\n`;
   report += ` - Linh kiện nghi ngờ: ${g.suspectedComponent}\n`;
   report += ` - Độ tin cậy: ${g.confidence}\n`;
-  report += ` - Tần suất xuất hiện: ${g.count} lần\n\n`;
+  report += ` - Tần suất xuất hiện: ${g.count} lần\n`;
+  report += ` - Lần gần nhất: ${formatLogTime(rec.timestampMs)}\n`;
+  const times = sortedOccurrences(g).filter(r => r.timestampMs).slice(0, 20)
+    .map(r => `   • ${formatLogTime(r.timestampMs)}`).join('\n');
+  if (times) report += ` - Các thời điểm:\n${times}\n`;
+  report += `\n`;
   report += `2. HƯỚNG DẪN XỬ LÝ:\n${g.repairAdvice}\n\n`;
   report += `3. RAW LOG (ĐÃ SANITIZE):\n`;
   

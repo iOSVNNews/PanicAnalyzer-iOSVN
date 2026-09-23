@@ -786,3 +786,26 @@ body {
 }
 .pairing-steps b { color: var(--text-primary); }
 .pairing-card-actions { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---- Ngày giờ log ---- */
+.time-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin: 6px 0 2px;
+}
+.time-line b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.time-ago { color: var(--brand-soft); }
+.timeline-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+.timeline-row:last-child { border-bottom: none; }
+.timeline-time { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.timeline-file { color: var(--text-muted); font-size: 11.5px; word-break: break-all; }
+.timeline-more { color: var(--text-muted); font-size: 12px; padding-top: 6px; }
