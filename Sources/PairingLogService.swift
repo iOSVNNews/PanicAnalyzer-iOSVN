@@ -16,6 +16,7 @@ final class PairingLogService {
 
     enum PairingError: LocalizedError {
         case missingFile
+        case notPaired
         case invalidFile(String)
         case bridge(String)
 
@@ -23,6 +24,9 @@ final class PairingLogService {
             switch self {
             case .missingFile:
                 return "Thiết bị này chưa hỗ trợ tự ghép đôi. Hãy dùng Share Sheet hoặc nhập pairing file."
+            case .notPaired:
+                return "Chưa ghép đôi. Bấm \"Ghép đôi thiết bị này\", rồi vào Cài đặt > Quyền riêng tư & Bảo mật > "
+                    + "Nhà phát triển, chọn \(PairableHostService.hostName) và nhập mã PIN app hiển thị."
             case .invalidFile(let detail):
                 return "Remote Pairing file không hợp lệ: \(detail)"
             case .bridge(let detail):
@@ -102,6 +106,46 @@ final class PairingLogService {
 
     }
 
+    private var activeHost: PairableHostService?
+
+    /// iOS 27: advertise this app as a pairable host and wait until the user
+    /// pairs it from Settings > Privacy & Security > Developer. Blocks; call
+    /// from a worker queue. The previous record stays until the new one is saved.
+    func pairOnDevice(timeout: TimeInterval = 300,
+                      onAdvertising: @escaping () -> Void,
+                      onPin: @escaping (String) -> Void) throws {
+        guard supportsOnDevicePairing else { throw PairingError.missingFile }
+        guard let directory = pairingDirectory, let working = workingPairingFileURL else {
+            throw PairingError.invalidFile("không mở được Application Support")
+        }
+        let host = PairableHostService()
+        operationLock.lock()
+        activeHost = host
+        defer {
+            activeHost = nil
+            operationLock.unlock()
+        }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        try? FileManager.default.removeItem(at: working)
+        defer { try? FileManager.default.removeItem(at: working) }
+        try host.pair(pairingPath: working, timeout: timeout, onAdvertising: onAdvertising, onPin: onPin)
+        guard nativePairingFileIsValid(working) else {
+            throw PairingError.invalidFile("iOS trả về pairing record không đọc được")
+        }
+        try promoteWorkingPairingFile(working)
+        // A new pairing may come with a restarted remotepairingd: rediscover.
+        LocalVPNConnection.forgetWorkingPort()
+    }
+
+    /// Stops a pairing wait started by pairOnDevice (e.g. the user tapped Huỷ).
+    func cancelPairing() {
+        activeHost?.cancel()
+    }
+
     func removePairingFile() throws {
         operationLock.lock()
         defer { operationLock.unlock() }
@@ -118,7 +162,9 @@ final class PairingLogService {
         operationLock.lock()
         defer { operationLock.unlock() }
 
-        guard isConfigured || supportsOnDevicePairing else { throw PairingError.missingFile }
+        guard isConfigured else {
+            throw supportsOnDevicePairing ? PairingError.notPaired : PairingError.missingFile
+        }
         let deviceIP = LocalVPNConnection.deviceAddress
         var port = try LocalVPNConnection.remotePairingPort(address: deviceIP)
         let pairingURL = try prepareWorkingPairingFile()

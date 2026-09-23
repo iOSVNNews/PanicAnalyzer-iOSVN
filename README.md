@@ -39,10 +39,11 @@ chia sẻ.
 một hoặc nhiều log rồi dùng **Chia sẻ → PanicAnalyzer**. Share Extension chuyển
 log thẳng vào app, không cần mở trình chọn Tệp.
 
-**Tự ghép đôi trên iOS 27.** Khi LocalDevVPN đang bật, app tự tạo khóa Remote
-Pairing ngay trên thiết bị, yêu cầu iOS xác nhận, lưu pairing record được bảo vệ
-và quét CrashReportCopyMobile qua RSD. Không cần tạo hoặc chép pairing file từ
-máy tính, không cần jailbreak.
+**Tự ghép đôi trên iOS 27.** App tự phát mình thành một "máy tính có thể ghép
+đôi". Bạn chọn nó trong **Cài đặt → Quyền riêng tư & Bảo mật → Nhà phát triển**,
+nhập mã PIN app hiển thị, rồi app lưu pairing record được bảo vệ và quét
+CrashReportCopyMobile qua LocalDevVPN + RSD. Không cần máy tính, không cần
+jailbreak.
 
 **Tự cập nhật bộ luật.** Mỗi lần mở, app tải bộ luật mới nhất từ kho mã — không
 cần cài lại ứng dụng. Mất mạng thì dùng bản đã tải trước đó.
@@ -79,14 +80,17 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
    Mặc định là `10.7.0.1`; có thể dán cả `10.7.0.1/32`. Ô cổng để trống: app tự
    tìm cổng RemotePairing (dịch vụ `remotepairingd` không cố định ở `49152`, iOS có
    thể đổi sang `49153`, `49154`… sau khi khởi động lại).
-2. Cho phép **Mạng cục bộ** nếu iOS hỏi. App chờ cổng VPN sẵn sàng (có giới hạn
-   thời gian và thử lại một lần), rồi tạo Remote Pairing record và bắt đầu
-   ghép đôi. Chấp nhận yêu cầu xác nhận nếu iOS hiển thị.
-3. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
+2. Bấm **Ghép đôi thiết bị này**, cho phép **Mạng cục bộ** và **Thông báo** nếu
+   iOS hỏi. App bắt đầu quảng bá `_remotepairing-pairable-host._tcp` tên
+   **PanicAnalyzer** (tối đa 5 phút, vẫn chạy khi bạn chuyển sang Cài đặt).
+3. Mở **Cài đặt → Quyền riêng tư & Bảo mật → Nhà phát triển** (cần bật Chế độ nhà
+   phát triển), chọn **PanicAnalyzer** và nhập mã PIN 6 số. Mã hiện trong thông
+   báo và đã được sao chép sẵn.
+4. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
    lần sau chỉ cần bật LocalDevVPN; không phải ghép đôi lại.
 
-Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này**. App xác minh lại record đã lưu
-và thử ghép đôi khi record hết hiệu lực; lỗi mạng không xóa khóa cũ. Có thể nhập
+Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này** để ghép đôi lại. Record cũ chỉ
+bị thay khi ghép đôi mới thành công; lỗi mạng không xóa khóa cũ. Có thể nhập
 Remote Pairing file có sẵn qua **Cấu hình LocalDevVPN → Nhập pairing file**.
 
 Lỗi `Connection refused` (NWError 61) nghĩa là VPN đã chạy nhưng cổng đã lưu

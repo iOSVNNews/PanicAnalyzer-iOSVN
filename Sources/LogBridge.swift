@@ -331,10 +331,12 @@ final class LogBridge: NSObject {
                 }
                 self.deliver(pairedLogs, autoScan: true, source: "pairing")
             } catch {
+                let notPaired: Bool
+                if case PairingLogService.PairingError.notPaired = error { notPaired = true } else { notPaired = false }
                 self.notifyPairingStatus(
                     configured: PairingLogService.shared.isConfigured,
                     message: error.localizedDescription,
-                    isError: true
+                    isError: !notPaired
                 )
             }
         }
@@ -404,10 +406,12 @@ final class LogBridge: NSObject {
                 )
                 self.scanLogs()
             } catch {
+                let notPaired: Bool
+                if case PairingLogService.PairingError.notPaired = error { notPaired = true } else { notPaired = false }
                 self.notifyPairingStatus(
                     configured: PairingLogService.shared.isConfigured,
                     message: error.localizedDescription,
-                    isError: true
+                    isError: !notPaired
                 )
             }
         }
@@ -428,10 +432,104 @@ final class LogBridge: NSObject {
         }
     }
 
+    private var pairingInProgress = false
+
+    /// iOS 27: the iPhone pairs with PanicAnalyzer itself. The app advertises a
+    /// pairable host; the user picks it in Settings > Privacy & Security >
+    /// Developer and types the PIN. The last working record is kept until the
+    /// new one is saved.
     private func pairThisDevice() {
-        // The bridge verifies existing credentials and repairs stale ones. A
-        // disconnected VPN is never a reason to delete the last working record.
-        scanLogs()
+        guard PairingLogService.shared.supportsOnDevicePairing else {
+            presentPairingPicker()
+            return
+        }
+        guard !pairingInProgress else {
+            presentPairingInstructions(pin: nil)
+            return
+        }
+        pairingInProgress = true
+        PairingKeepAlive.shared.start()
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try PairingLogService.shared.pairOnDevice(
+                    onAdvertising: {
+                        self.notifyPairingStatus(
+                            configured: PairingLogService.shared.isConfigured,
+                            message: "Đang chờ ghép đôi: mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển, "
+                                + "chọn \(PairableHostService.hostName).",
+                            isError: false
+                        )
+                        DispatchQueue.main.async { self.presentPairingInstructions(pin: nil) }
+                    },
+                    onPin: { pin in
+                        DispatchQueue.main.async {
+                            PairingKeepAlive.shared.showPin(pin)
+                            self.presentPairingInstructions(pin: pin)
+                        }
+                        self.notifyPairingStatus(
+                            configured: PairingLogService.shared.isConfigured,
+                            message: "Nhập mã \(pin) trong Cài đặt (đã sao chép mã).",
+                            isError: false
+                        )
+                    }
+                )
+                DispatchQueue.main.async {
+                    self.finishPairingUI()
+                    self.notifyPairingStatus(
+                        configured: true,
+                        message: "Đã ghép đôi và lưu pairing record. Đang đọc CrashReporter qua LocalDevVPN…",
+                        isError: false
+                    )
+                    self.scanLogs()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.finishPairingUI()
+                    self.notifyPairingStatus(
+                        configured: PairingLogService.shared.isConfigured,
+                        message: error.localizedDescription,
+                        isError: true
+                    )
+                }
+            }
+        }
+    }
+
+    private weak var pairingAlert: UIAlertController?
+
+    private func finishPairingUI() {
+        pairingInProgress = false
+        PairingKeepAlive.shared.stop()
+        pairingAlert?.dismiss(animated: true)
+    }
+
+    private func presentPairingInstructions(pin: String?) {
+        let steps = "1. Bật LocalDevVPN và Chế độ nhà phát triển.\n"
+            + "2. Mở Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển.\n"
+            + "3. Chọn \"\(PairableHostService.hostName)\" để ghép đôi.\n"
+            + "4. Nhập mã PIN app gửi qua thông báo (mã cũng được sao chép sẵn)."
+        let message = pin.map { "Mã PIN: \($0)\n\n" + steps } ?? steps
+        if let alert = pairingAlert {
+            alert.message = message
+            if let pin { alert.title = "Mã ghép đôi: \(pin)" }
+            return
+        }
+        let alert = UIAlertController(
+            title: pin.map { "Mã ghép đôi: \($0)" } ?? "Ghép đôi iPhone này",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Huỷ ghép đôi", style: .destructive) { _ in
+            PairingLogService.shared.cancelPairing()
+        })
+        alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { _ in
+            // Pairing keeps running in the background; the PIN arrives as a notification.
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+        pairingAlert = alert
+        topViewController()?.present(alert, animated: true)
     }
 
     private func presentVPNSettings() {

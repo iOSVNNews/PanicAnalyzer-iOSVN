@@ -23,6 +23,9 @@ targets:
         NSLocalNetworkUsageDescription: Kết nối tới LocalDevVPN trên chính thiết bị để đọc crash report bằng Remote Pairing.
         NSBonjourServices:
         - _remotepairing._tcp
+        - _remotepairing-pairable-host._tcp
+        UIBackgroundModes:
+        - audio
         UILaunchScreen: {}
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

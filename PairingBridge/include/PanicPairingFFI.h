@@ -36,6 +36,33 @@ char *pa_session_pull(
     size_t *out_length
 );
 
+/*
+ * iOS 27 device-initiated pairing. Publish `_remotepairing-pairable-host._tcp`
+ * with the returned service id and TXT plist (XML dictionary), accept the TCP
+ * connection iOS opens, then call pa_host_accept on that socket. The PIN
+ * callback receives the 6-digit code the user types in Settings.
+ */
+typedef struct PaPairingHost PaPairingHost;
+typedef void (*pa_pin_callback)(const char *pin, void *context);
+
+char *pa_host_prepare(
+    const char *name,
+    PaPairingHost **out_host,
+    char **out_service_id,
+    uint8_t **out_txt_plist,
+    size_t *out_txt_length
+);
+
+char *pa_host_accept(
+    PaPairingHost *host,
+    int32_t socket_fd,
+    pa_pin_callback pin_callback,
+    void *pin_context,
+    const char *pairing_path
+);
+
+void pa_host_free(PaPairingHost *host);
+
 void pa_session_free(PaLogSession *session);
 void pa_string_array_free(char **entries, size_t count);
 void pa_bytes_free(uint8_t *data, size_t length);

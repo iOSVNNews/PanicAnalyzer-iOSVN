@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateScanStatus(window.__PAIRING_CONFIGURED__
       ? "Đang kết nối CrashReporter qua pairing..."
       : (window.__AUTO_PAIRING__
-        ? "Đang tự ghép đôi qua LocalDevVPN..."
+        ? "Đang kiểm tra ghép đôi qua LocalDevVPN..."
         : "Đang đọc log hệ thống..."), true);
     armScanTimeout();
     try {

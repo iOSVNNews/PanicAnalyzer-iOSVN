@@ -1,6 +1,6 @@
 use std::alloc::{dealloc, Layout};
 use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_void};
 use std::net::Ipv4Addr;
 use std::ptr::null_mut;
 
@@ -10,13 +10,15 @@ use idevice_ffi::crashreportcopymobile::{
     CrashReportCopyMobileHandle,
 };
 use idevice_ffi::rp_pairing_file::{
-    rp_pairing_file_free, rp_pairing_file_generate, rp_pairing_file_read,
-    rp_pairing_file_write, RpPairingFileHandle,
+    rp_pairing_file_free, rp_pairing_file_read, rp_pairing_file_write, RpPairingFileHandle,
 };
 use idevice_ffi::rsd::{rsd_handshake_free, RsdHandshakeHandle};
 use idevice_ffi::tunnel_provider::tunnel_create_rppairing;
 use idevice_ffi::util::idevice_sockaddr;
-use idevice_ffi::{idevice_data_free, idevice_error_free, IdeviceFfiError};
+use idevice_ffi::pairing_host::{
+    pairable_host_accept_fd, pairable_host_free, pairable_host_prepare, PairableHostHandle,
+};
+use idevice_ffi::{idevice_data_free, idevice_error_free, idevice_string_free, IdeviceFfiError};
 
 /// Owns the complete read-only crash-report connection. Swift serializes use.
 #[repr(C)]
@@ -127,16 +129,13 @@ pub unsafe extern "C" fn pa_session_connect(
     let mut pairing: *mut RpPairingFileHandle = null_mut();
     let read_error = rp_pairing_file_read(pairing_path, &mut pairing);
     if !read_error.is_null() {
-        // No usable record yet: create the keys locally. iOS completes the
-        // first pair-setup over LocalDevVPN and asks the user for consent.
-        idevice_error_free(read_error);
-        let generate_error = rp_pairing_file_generate(hostname.as_ptr(), &mut pairing);
-        if !generate_error.is_null() {
-            return consume_idevice_error(
-                generate_error,
-                "Không tạo được Remote Pairing record trên thiết bị",
-            );
-        }
+        // iOS 27 pairs device-initiated (Settings > Privacy & Security >
+        // Developer) through pa_host_*; never start a host-initiated
+        // pair-setup the iPhone would reject.
+        return consume_idevice_error(
+            read_error,
+            "Chưa có pairing record. Bấm Ghép đôi thiết bị này rồi chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển",
+        );
     }
     let mut adapter: *mut AdapterHandle = null_mut();
     let mut handshake: *mut RsdHandshakeHandle = null_mut();
@@ -293,8 +292,145 @@ mod tests {
             assert!(!error.is_null());
             pa_error_free(error);
             pa_session_free(null_mut());
+            pa_host_free(null_mut());
+            let error = pa_host_accept(null_mut(), -1, None, null_mut(), null_mut());
+            assert!(!error.is_null());
+            pa_error_free(error);
         }
     }
+
+    #[test]
+    fn host_prepare_returns_identity_and_txt_records() {
+        unsafe {
+            let name = CString::new("PanicAnalyzer").unwrap();
+            let mut host = null_mut();
+            let mut service = null_mut();
+            let mut txt = null_mut();
+            let mut length = 0usize;
+            let error = pa_host_prepare(name.as_ptr(), &mut host, &mut service, &mut txt, &mut length);
+            assert!(error.is_null());
+            assert!(!host.is_null() && !service.is_null() && !txt.is_null() && length > 0);
+            let plist = std::str::from_utf8(std::slice::from_raw_parts(txt, length)).unwrap();
+            for key in ["authTag", "identifier", "model", "name"] {
+                assert!(plist.contains(key), "{key}");
+            }
+            assert!(plist.contains("PanicAnalyzer"));
+            pa_bytes_free(txt, length);
+            pa_error_free(service);
+            pa_host_free(host);
+        }
+    }
+}
+
+/// Device-initiated pairing host (iOS 27): identity + Bonjour TXT data. The
+/// caller publishes `_remotepairing-pairable-host._tcp` with the platform
+/// Bonjour API (apps cannot send raw multicast) and hands accepted sockets to
+/// `pa_host_accept`.
+pub struct PaPairingHost {
+    handle: *mut PairableHostHandle,
+}
+
+pub type PaPinCallback = Option<extern "C" fn(pin: *const c_char, context: *mut c_void)>;
+
+#[no_mangle]
+pub unsafe extern "C" fn pa_host_prepare(
+    name: *const c_char,
+    out_host: *mut *mut PaPairingHost,
+    out_service_id: *mut *mut c_char,
+    out_txt_plist: *mut *mut u8,
+    out_txt_length: *mut usize,
+) -> *mut c_char {
+    if out_host.is_null() || out_service_id.is_null() || out_txt_plist.is_null() || out_txt_length.is_null() {
+        return owned_message("Tham số máy chủ ghép đôi không hợp lệ");
+    }
+    *out_host = null_mut();
+    *out_service_id = null_mut();
+    *out_txt_plist = null_mut();
+    *out_txt_length = 0;
+    if let Err(error) = c_string(name, "name") {
+        return error;
+    }
+
+    let mut handle: *mut PairableHostHandle = null_mut();
+    let mut service_id: *mut c_char = null_mut();
+    let mut txt: *mut u8 = null_mut();
+    let mut txt_length: usize = 0;
+    let error = pairable_host_prepare(
+        name,
+        std::ptr::null(),
+        false,
+        &mut handle,
+        &mut service_id,
+        &mut txt,
+        &mut txt_length,
+        null_mut(),
+    );
+    if !error.is_null() {
+        return consume_idevice_error(error, "Không tạo được danh tính máy chủ ghép đôi");
+    }
+    // Re-own both buffers so Swift frees them with this library's functions.
+    let service = CStr::from_ptr(service_id).to_string_lossy().into_owned();
+    idevice_string_free(service_id);
+    let mut bytes = std::slice::from_raw_parts(txt, txt_length).to_vec().into_boxed_slice();
+    idevice_data_free(txt, txt_length);
+
+    *out_host = Box::into_raw(Box::new(PaPairingHost { handle }));
+    *out_service_id = owned_message(service);
+    *out_txt_length = bytes.len();
+    *out_txt_plist = bytes.as_mut_ptr();
+    std::mem::forget(bytes);
+    null_mut()
+}
+
+/// Runs pair-setup on a socket the device opened to our advertised port and
+/// writes the resulting record to `pairing_path`. Blocks until done.
+#[no_mangle]
+pub unsafe extern "C" fn pa_host_accept(
+    host: *mut PaPairingHost,
+    socket_fd: i32,
+    pin_callback: PaPinCallback,
+    pin_context: *mut c_void,
+    pairing_path: *const c_char,
+) -> *mut c_char {
+    if host.is_null() || (*host).handle.is_null() || socket_fd < 0 {
+        return owned_message("Phiên ghép đôi không hợp lệ");
+    }
+    if let Err(error) = c_string(pairing_path, "pairing_path") {
+        return error;
+    }
+    let mut pairing: *mut RpPairingFileHandle = null_mut();
+    let error = pairable_host_accept_fd(
+        (*host).handle,
+        socket_fd,
+        pin_callback,
+        pin_context,
+        null_mut(),
+        &mut pairing,
+    );
+    if !error.is_null() {
+        return consume_idevice_error(
+            error,
+            "Ghép đôi bị huỷ hoặc sai mã PIN. Hãy thử lại và nhập đúng mã app hiển thị",
+        );
+    }
+    if pairing.is_null() {
+        return owned_message("iOS không trả về pairing record");
+    }
+    let write_error = rp_pairing_file_write(pairing, pairing_path);
+    rp_pairing_file_free(pairing);
+    if !write_error.is_null() {
+        return consume_idevice_error(write_error, "Đã ghép đôi nhưng không lưu được pairing record");
+    }
+    null_mut()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn pa_host_free(host: *mut PaPairingHost) {
+    if host.is_null() {
+        return;
+    }
+    let host = Box::from_raw(host);
+    pairable_host_free(host.handle);
 }
 
 #[no_mangle]
