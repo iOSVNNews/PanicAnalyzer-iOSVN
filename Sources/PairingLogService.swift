@@ -153,11 +153,12 @@ final class PairingLogService {
         var result = ImportResult()
         var problems: [String] = []
 
-        // Half 1: RPPairing keys.
+        // Half 1: RPPairing. Ghi NGUYÊN file (như StikDebug) thay vì tách 4 khoá:
+        // rp_pairing_file_read chỉ đọc các khoá RP và bỏ qua phần lockdown thừa,
+        // nên tránh mọi khác biệt do tách/ghi lại dữ liệu.
         if Self.isRemotePairingDictionary(root) {
-            let remote = root.filter { Self.remoteKeys.contains($0.key) }
             do {
-                try install(remote, to: remoteURL, in: directory, validate: pa_pairing_validate)
+                try install(root, to: remoteURL, in: directory, validate: pa_pairing_validate)
                 result.remote = true
             } catch {
                 problems.append("Remote Pairing: \(error.localizedDescription)")
