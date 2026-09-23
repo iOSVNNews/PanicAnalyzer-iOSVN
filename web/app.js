@@ -729,7 +729,10 @@ function pickPartsHistoryScreenshot() {
 
 window.onNativePartsHistory = function (result) {
   partInspectionError = String(result?.error || '');
-  if (!partInspectionError) settingsPartInspection = PartsHistory.fromSettings(result?.lines);
+  if (!partInspectionError) {
+    settingsPartInspection = PartsHistory.fromSettings(result?.lines);
+    if (settingsPartInspection.findings.length) setPartsScanState('photoFound');
+  }
   renderPartsHistory();
 };
 

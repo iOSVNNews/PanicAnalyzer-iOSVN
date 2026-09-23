@@ -207,8 +207,8 @@ jobs:
           - Ghép đôi iOS 27 ngay trên máy: chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển
           - Tự chuyển sang CoreDeviceProxy (lockdown 62078) khi tunnel RPPairing tới chính máy bị đóng; nhận cả lockdown pairing file
           - Ba tab Panic / Linh kiện / Cài đặt, hỗ trợ Tiếng Việt / English / 中文
-          - Tab Linh kiện đọc dấu hiệu từ log qua pairing trên máy non-JB; ảnh Cài đặt iOS dùng để xác nhận nhãn linh kiện đã thay
-          - Sau khi quét, tab Linh kiện báo kết quả và nêu rõ khi log chưa đủ để kết luận
+          - Tab Linh kiện tự đọc dấu hiệu từ log qua pairing trên máy non-JB; báo rõ khi CrashReporter không đủ dữ liệu để xác định tình trạng linh kiện
+          - Ảnh Cài đặt iOS là tùy chọn; nhận cả màn Lịch sử linh kiện và màn chi tiết Linh kiện không xác định
           - Máy JB/TrollStore đọc thẳng log hệ thống (quét đệ quy), không cần ghép đôi
           - Nhận diện panic do màn hình thay/lỗi: DCP, MIPI/DSI, IC cảm ứng
           - Commit: \`${GITHUB_SHA::7}\`

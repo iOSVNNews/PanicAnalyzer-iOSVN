@@ -22,10 +22,29 @@ const PartsHistory = (() => {
   ];
   const match = (text, choices) => choices.find(([, pattern]) => pattern.test(normalize(text)))?.[0] || null;
 
+  // Settings opens a separate detail page for an Unknown Part. Its title is
+  // above the component name, and the Parts & Service History heading is gone.
+  function fromUnknownPartDetail(rows) {
+    const title = /^(?:linh kien khong xac dinh|unknown part|未知部件|未知零件)$/;
+    const heading = rows.findIndex((line, index) =>
+      title.test(normalize(line)) || title.test(normalize(line + ' ' + (rows[index + 1] || ''))));
+    if (heading < 0) return null;
+
+    const body = normalize(rows.slice(heading + 1, heading + 9).join(' '));
+    // The part must occur in Apple's verification explanation, not in an
+    // unrelated status-bar label or a link elsewhere in the screenshot.
+    const verification = /khong the xac dinh xem|unable to (?:verify|determine)|无法确定|无法验证/;
+    const appleContext = /apple|iphone|苹果/;
+    const part = verification.test(body) && appleContext.test(body)
+      ? match(body, parts) : null;
+    return { sectionFound: true, findings: part
+      ? [{ part, status: 'unknown', source: 'settings' }] : [] };
+  }
+
   function fromSettings(lines) {
     const rows = (Array.isArray(lines) ? lines : []).map(s => String(s).trim()).filter(Boolean);
     const heading = rows.findIndex(line => section.test(normalize(line)));
-    if (heading < 0) return { sectionFound: false, findings: [] };
+    if (heading < 0) return fromUnknownPartDetail(rows) || { sectionFound: false, findings: [] };
     const findings = [];
     for (let index = heading + 1; index < Math.min(rows.length, heading + 30); index++) {
       const part = match(rows[index], parts);

@@ -900,8 +900,9 @@ a.about-row b { color: var(--brand-bright); }
 .parts-scan-summary strong { display: block; font-size: 14px; line-height: 1.3; }
 .parts-scan-summary p { margin-top: 4px; color: var(--text-secondary);
   font-size: 12px; line-height: 1.45; }
-.parts-scan-summary.found { border-color: var(--brand-line); background: var(--brand-dim); }
+.parts-scan-summary.found, .parts-scan-summary.photoFound { border-color: var(--brand-line); background: var(--brand-dim); }
 .parts-scan-summary.found .parts-scan-indicator,
+.parts-scan-summary.photoFound .parts-scan-indicator,
 .parts-scan-summary.cable .parts-scan-indicator,
 .parts-scan-summary.error .parts-scan-indicator { background: var(--brand-bright); }
 .parts-scan-summary.scanning .parts-scan-indicator { background: var(--brand-bright);

@@ -53,13 +53,15 @@ và LocalDevVPN trên máy non-JB; chưa ghép đôi thì nút kiểm tra mở b
 Bản JB/TrollStore đọc log trực tiếp. Nếu log chứa trạng thái linh kiện rõ ràng,
 ứng dụng hiển thị nó như dấu hiệu riêng. Lỗi cảm biến, I2C, DCP hoặc socket/cáp
 được ghi là nghi ngờ lỗi cáp, không được khẳng định là đã "sàng cáp" hay thay.
-Sau mỗi lần tự quét, tab Linh kiện báo rõ khi có dấu hiệu, không thấy bằng chứng,
-không có log để đánh giá hoặc kết nối bị lỗi. Không thấy bằng chứng trong log
-không đồng nghĩa mọi linh kiện còn nguyên bản.
+Sau mỗi lần tự quét, tab Linh kiện báo rõ khi có dấu hiệu, không đủ dữ liệu
+để xác định hoặc kết nối bị lỗi. Pairing hiện chỉ đọc CrashReporter, không đọc
+được nhãn **Linh kiện không xác định** trong Cài đặt iOS. Vì vậy app không thể
+tự kết luận tình trạng pin hay các linh kiện khác chỉ từ lần quét log, kể cả
+khi máy đã ghép đôi thành công.
 
-**Xác nhận linh kiện đã thay.** Chụp phần **Cài đặt → Cài đặt chung → Giới thiệu
-→ Lịch sử linh kiện và dịch vụ**, rồi chọn ảnh trong tab Linh kiện. Ứng dụng nhận
-chữ trên ảnh ngay trên máy và hiển thị nhãn Chính hãng, Đã qua sử dụng, Không
+**Kiểm tra thêm bằng ảnh (tùy chọn).** Chụp phần **Cài đặt → Cài đặt chung → Giới thiệu
+→ Lịch sử linh kiện và dịch vụ**, hoặc mở màn chi tiết của một linh kiện, rồi
+chọn ảnh trong tab Linh kiện. Ứng dụng nhận chữ trên ảnh ngay trên máy và hiển thị nhãn Chính hãng, Đã qua sử dụng, Không
 xác định, Chưa xác minh hoặc Hoàn tất sửa chữa cho linh kiện đọc được. Dữ liệu
 CrashReporter qua pairing không bao gồm toàn bộ màn hình Lịch sử linh kiện;
 không có dấu hiệu trong log hoặc không có mục lịch sử trong ảnh cũng không chứng
