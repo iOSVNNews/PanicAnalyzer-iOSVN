@@ -439,8 +439,13 @@
       "regexAny": [
         "DCP PANIC",
         "AppleDCP",
-        "\\bDCP\\b.*(PANIC|RTKit)",
-        "dpIrq\\("
+        "\\bDCP\\b.*(PANIC|RTKit|swap|timeout|assert)",
+        "dpIrq\\(",
+        "DCPAV",
+        "IOMobileFramebuffer.*(assert|panic|timeout)",
+        "AppleCLCD",
+        "AppleMobileDispH\\d",
+        "com\\.apple\\.driver\\.AppleDCP"
       ]
     },
     "title": "DCP Panic - Lỗi bộ đồng xử lý màn hình",
@@ -454,6 +459,62 @@
     "advice_en": "DCP is the dedicated processor driving the display. Timing element errors are usually an incompatible screen, a loose/broken display flex, or a poor aftermarket screen. Try another screen before suspecting the CPU.",
     "advice_zh": "DCP 是驱动屏幕的专用处理器。时序错误通常由不兼容的屏幕、排线松动/断裂或劣质副厂屏引起。怀疑 CPU 之前先换一块屏幕测试。",
     "confidence": "Cao"
+  },
+  {
+    "id": "display-mipi-panic",
+    "family": "DisplayCamera",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "mipi[_\\s-]?dsi.*(panic|error|timeout|fault)",
+        "AppleDisplayPipe.*(panic|error|underrun)",
+        "disp0.*(swap|underrun|timeout).*(fail|error|panic)",
+        "AppleARMDisplay.*(panic|assert)"
+      ]
+    },
+    "title": "Lỗi tín hiệu màn hình (MIPI/DSI) - hay gặp sau khi thay màn",
+    "title_en": "Display signal error (MIPI/DSI) - common after a screen swap",
+    "title_zh": "显示信号错误（MIPI/DSI）- 换屏后常见",
+    "suspected": "Màn hình thay không tương thích, cáp/socket màn hình, hoặc đường tín hiệu MIPI trên main",
+    "suspected_en": "An incompatible replacement screen, the display flex/connector, or the MIPI signal lines on the board",
+    "suspected_zh": "不兼容的更换屏幕、屏幕排线/座子，或主板上的 MIPI 信号线",
+    "subsystem": "Display MIPI/DSI",
+    "advice": "Đường truyền hình ảnh tới màn (MIPI/DSI) báo lỗi. Rất hay gặp khi màn thay lô kém, cáp màn lỏng/đứt hoặc socket cong chân. Thử lắp lại đúng màn zin hoặc một màn tốt trước khi nghi đường mạch trên main.",
+    "advice_en": "The image link to the panel (MIPI/DSI) reported an error. Very common with a poor aftermarket screen, a loose/broken display flex, or a bent connector pin. Refit the original screen or a known-good one before suspecting the board traces.",
+    "advice_zh": "到屏幕的图像链路（MIPI/DSI）报错。劣质副厂屏、排线松动/断裂或座子针脚变形时非常常见。怀疑主板走线前，先装回原装屏或一块好屏测试。",
+    "confidence": "Trung bình",
+    "source": "Heuristic sửa chữa (màn thay). Kiểm chứng bằng cách thử màn khác."
+  },
+  {
+    "id": "multitouch-panic",
+    "family": "DisplayCamera",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "AppleMultitouch.*(panic|timeout|fault|assert)",
+        "\\bMultitouch\\b.*(panic|timeout|not responding|watchdog)",
+        "AppleInputDeviceComponents.*(panic|timeout)",
+        "touch.*controller.*(timeout|not responding|panic)"
+      ]
+    },
+    "title": "Lỗi IC cảm ứng màn hình (Multi-touch)",
+    "title_en": "Touch controller (Multi-touch) error",
+    "title_zh": "触摸控制 IC（Multi-touch）错误",
+    "suspected": "IC cảm ứng trên màn hình hoặc cáp cảm ứng — hay gặp sau khi thay màn",
+    "suspected_en": "The touch controller on the screen or the touch flex — common after a screen swap",
+    "suspected_zh": "屏幕上的触摸控制 IC 或触摸排线——换屏后常见",
+    "subsystem": "Multi-touch controller",
+    "advice": "IC cảm ứng không phản hồi đúng hạn. Thường do màn thay kém hoặc cáp cảm ứng lỏng. Thử màn khác; nếu vẫn lỗi mới nghi đường cảm ứng/IC trên main.",
+    "advice_en": "The touch controller did not respond in time. Usually a poor replacement screen or a loose touch flex. Try another screen; only if it persists suspect the touch lines/IC on the board.",
+    "advice_zh": "触摸控制 IC 未按时响应。通常是劣质更换屏或触摸排线松动。换一块屏测试；仍有问题才怀疑主板上的触摸线路/IC。",
+    "confidence": "Trung bình",
+    "source": "Heuristic sửa chữa (màn thay). Kiểm chứng bằng cách thử màn khác."
   },
   {
     "id": "ane-power-panic",

@@ -151,6 +151,7 @@ jobs:
           - Tự chuyển sang CoreDeviceProxy (lockdown 62078) khi tunnel RPPairing tới chính máy bị đóng; nhận cả lockdown pairing file
           - Tiếng Việt / English / 中文, màn Cài đặt (ngôn ngữ, nhập file pairing, thông tin tác giả)
           - Máy JB/TrollStore đọc thẳng log hệ thống (quét đệ quy), không cần ghép đôi
+          - Nhận diện panic do màn hình thay/lỗi: DCP, MIPI/DSI, IC cảm ứng
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

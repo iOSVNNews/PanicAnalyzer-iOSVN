@@ -23,5 +23,20 @@
     "name": "JetsamEvent-2026-09-08.ips",
     "type": "Jetsam Event (Có thể bỏ qua)",
     "content": "{\"bug_type\":\"298\",\"timestamp\":\"2026-09-08 22:15:00.00 +0700\",\"os_version\":\"iPhone OS 17.5.1 (21F90)\",\"incident_id\":\"12345678-9ABC-DEF0-1234-56789ABCDEF0\"}\n{\n  \"build\" : \"iPhone OS 17.5.1 (21F90)\",\n  \"product\" : \"iPhone14,2\",\n  \"reason\" : \"highwater\",\n  \"largestProcess\" : \"TikTok\",\n  \"processes\" : [\n    {\"pid\": 4521, \"name\": \"TikTok\", \"rpages\": 128450, \"states\": [\"frontmost\"]},\n    {\"pid\": 1204, \"name\": \"Safari\", \"rpages\": 45210}\n  ]\n}"
+  },
+  {
+    "name": "panic-full-2026-09-18-DCP-screen.ips",
+    "type": "Kernel Panic (DCP / màn hình)",
+    "content": "{\"bug_type\":\"210\",\"timestamp\":\"2026-09-18 09:12:44.00 +0700\",\"os_version\":\"iPhone OS 17.5.1 (21F90)\",\"incident_id\":\"A1B2C3D4-1111-2222-3333-444455556666\"}\n{\"build\": \"iPhone OS 17.5.1 (21F90)\", \"product\": \"iPhone14,2\", \"panicString\": \"panic(cpu 2 caller 0xfffffff0245abed0): DCP PANIC: dpIrq() timing element swap timeout on disp0\\\\nAppleDCP RTKit fault\\\\nTarget: AppleARMPE\"}"
+  },
+  {
+    "name": "panic-full-2026-09-17-MIPI-display.ips",
+    "type": "Kernel Panic (MIPI màn hình)",
+    "content": "{\"bug_type\":\"210\",\"timestamp\":\"2026-09-18 09:12:44.00 +0700\",\"os_version\":\"iPhone OS 17.5.1 (21F90)\",\"incident_id\":\"A1B2C3D4-1111-2222-3333-444455556666\"}\n{\"build\": \"iPhone OS 17.5.1 (21F90)\", \"product\": \"iPhone14,2\", \"panicString\": \"panic(cpu 0 caller 0xfffffff0246ccaa0): AppleDisplayPipe underrun error; mipi_dsi link timeout\\\\nTarget: AppleARMPE\"}"
+  },
+  {
+    "name": "panic-full-2026-09-16-Multitouch.ips",
+    "type": "Kernel Panic (IC cảm ứng)",
+    "content": "{\"bug_type\":\"210\",\"timestamp\":\"2026-09-18 09:12:44.00 +0700\",\"os_version\":\"iPhone OS 17.5.1 (21F90)\",\"incident_id\":\"A1B2C3D4-1111-2222-3333-444455556666\"}\n{\"build\": \"iPhone OS 17.5.1 (21F90)\", \"product\": \"iPhone14,2\", \"panicString\": \"panic(cpu 1 caller 0xfffffff0247aa010): AppleMultitouch watchdog timeout; touch controller not responding\\\\nTarget: AppleARMPE\"}"
   }
 ]
