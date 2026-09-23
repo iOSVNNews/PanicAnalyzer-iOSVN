@@ -312,18 +312,43 @@ pub unsafe extern "C" fn pa_session_connect_lockdown(
     };
     let result = idevice_ffi::run_sync_local(async move {
         use idevice::IdeviceService;
+        // Preflight: có tới được lockdownd 62078 qua VPN không? Tách bạch
+        // "VPN chưa định tuyến" khỏi lỗi bắt tay bên trong CoreDeviceProxy.
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(6),
+            tokio::net::TcpStream::connect((ip, LOCKDOWN_PORT)),
+        )
+        .await
+        {
+            Err(_) => return Err(format!(
+                "B1 socket lockdownd {ip}:{LOCKDOWN_PORT} quá thời gian — LocalDevVPN chưa định tuyến tới thiết bị. Bật/kết nối lại VPN rồi thử lại."
+            )),
+            Ok(Err(e)) => return Err(format!(
+                "B1 không mở được lockdownd {ip}:{LOCKDOWN_PORT}: {e} — kiểm tra LocalDevVPN và quyền Mạng cục bộ của PanicAnalyzer."
+            )),
+            Ok(Ok(_)) => {}
+        }
         let proxy = tokio::time::timeout(
-            std::time::Duration::from_secs(20),
+            std::time::Duration::from_secs(25),
             idevice::core_device_proxy::CoreDeviceProxy::connect(&provider),
         )
         .await
-        .map_err(|_| "CoreDeviceProxy quá thời gian".to_string())?
-        .map_err(|e| format!("CoreDeviceProxy lỗi: {e}"))?;
+        .map_err(|_| "B2 CoreDeviceProxy::connect quá thời gian (StartService tunnelservice)".to_string())?
+        .map_err(|e| format!(
+            "B2 CoreDeviceProxy::connect: {e} — bắt tay lockdown / StartService untrusted.tunnelservice thất bại. Pairing file có thể thiếu phần Remote Pairing hoặc thiết bị chưa Tin cậy."
+        ))?;
         let rsd_port = proxy.tunnel_info().server_rsd_port;
-        let adapter = proxy.create_software_tunnel().map_err(|e| e.to_string())?;
+        let adapter = proxy
+            .create_software_tunnel()
+            .map_err(|e| format!("B3 tạo software tunnel: {e}"))?;
         let mut adapter = adapter.to_async_handle();
-        let stream = adapter.connect(rsd_port).await.map_err(|e| e.to_string())?;
-        let handshake = idevice::rsd::RsdHandshake::new(stream).await.map_err(|e| e.to_string())?;
+        let stream = adapter
+            .connect(rsd_port)
+            .await
+            .map_err(|e| format!("B4 nối RSD cổng {rsd_port}: {e}"))?;
+        let handshake = idevice::rsd::RsdHandshake::new(stream)
+            .await
+            .map_err(|e| format!("B5 bắt tay RSD: {e}"))?;
         Ok::<_, String>((adapter, handshake))
     });
     match result {
