@@ -1,58 +1,37 @@
 const assert = require('node:assert/strict');
 const PartsHistory = require('../web/parts.js');
 
-const vietnamese = PartsHistory.fromSettings([
-  'Giới thiệu', 'Lịch sử linh kiện và dịch vụ',
-  'Màn hình', 'Không xác định', 'Pin Chính hãng',
-  'Camera trước', 'Đã qua sử dụng'
-]);
-assert.equal(vietnamese.sectionFound, true);
-assert.deepEqual(vietnamese.findings.map(({ part, status }) => [part, status]), [
-  ['display', 'unknown'], ['battery', 'genuine'], ['front_camera', 'used']
-]);
-
-const english = PartsHistory.fromSettings([
-  'Parts & Service History', 'Logic Board', 'Unverified', 'Rear Camera', 'Finish Repair'
-]);
-assert.deepEqual(english.findings.map(({ part, status }) => [part, status]), [
-  ['logic_board', 'unverified'], ['rear_camera', 'finish_repair']
-]);
-
-assert.deepEqual(PartsHistory.fromSettings(['Settings', 'Battery', 'Genuine']),
-  { sectionFound: false, findings: [] });
-assert.deepEqual(PartsHistory.fromSettings(['Parts and Service History', 'Display', 'Battery', 'Genuine'])
-  .findings.map(({ part, status }) => [part, status]), [['battery', 'genuine']]);
-
-const unknownBatteryDetail = PartsHistory.fromSettings([
-  'Linh kiện không xác định',
-  'Không thể xác định xem pin iPhone của bạn có',
-  'phải là linh kiện Apple chính hãng hay không.',
-  'Việc này có thể do linh kiện không chính hãng',
-  'hoặc không hoạt động như dự kiến.',
-  'Tìm hiểu thêm về linh kiện và sửa chữa...'
-]);
-assert.deepEqual(unknownBatteryDetail, { sectionFound: true,
-  findings: [{ part: 'battery', status: 'unknown', source: 'settings' }] });
-assert.deepEqual(PartsHistory.fromSettings([
-  'Linh kiện', 'không xác định',
-  'Không thể xác định xem màn hình iPhone của bạn có phải là',
-  'linh kiện Apple chính hãng hay không.'
-]).findings.map(({ part, status }) => [part, status]), [['display', 'unknown']]);
-assert.deepEqual(PartsHistory.fromSettings([
-  'Unknown Part', 'Unable to verify this iPhone has a genuine Apple battery.'
-]).findings.map(({ part, status }) => [part, status]), [['battery', 'unknown']]);
-assert.deepEqual(PartsHistory.fromSettings([
-  'Unknown Part', 'Battery level is unknown', 'Learn more about Apple parts'
-]), { sectionFound: true, findings: [] });
-
+// fromLogs đọc dấu hiệu linh kiện TỪ LOG THIẾT BỊ (không dùng ảnh/OCR).
+// Cùng dòng ưu tiên; dòng kế chỉ dùng khi không phải một part khác.
 const logs = PartsHistory.fromLogs([
+  // Triệu chứng panic KHÔNG được tính là "đã thay linh kiện".
   { name: 'panic-full.ips', content: 'DCP display timing element\nBattery voltage unknown\n' },
+  // File lịch sử linh kiện: cả file là ngữ cảnh xác thực.
   { name: 'parts_history.ips', content: 'Display: Unknown\nBattery: Genuine\n' },
-  { name: 'other.ips', content: 'Front Camera: Unknown Part\n' }
+  // Nhãn "Unknown Part" ngay trên dòng là ngữ cảnh đủ dù tên file trung tính.
+  { name: 'other.ips', content: 'Front Camera: Unknown Part\n' },
+  // Nhãn không chính hãng.
+  { name: 'analytics.ips', content: 'Battery non-genuine part detected\n' }
 ]);
 assert.deepEqual(logs.map(({ part, status }) => [part, status]), [
-  ['display', 'unknown'], ['battery', 'genuine'], ['front_camera', 'unknown']
+  ['display', 'unknown'], ['battery', 'genuine'], ['front_camera', 'unknown'], ['battery', 'nongenuine']
 ]);
+assert.ok(logs.every(f => f.source === 'log'));
+
+// Không có ngữ cảnh xác thực -> không nhận (tránh dương tính giả).
+assert.deepEqual(
+  PartsHistory.fromLogs([{ name: 'crash.ips', content: 'display driver started\nbattery level low\n' }]),
+  []);
+
+// Serial mismatch + genuine trên máy JB đọc thẳng.
+const jb = PartsHistory.fromLogs([
+  { name: 'com.apple.MobileGestalt.log', content: 'display serial mismatch\ntouch id genuine apple part\n' }
+]);
+assert.deepEqual(jb.map(({ part, status }) => [part, status]), [
+  ['display', 'serial_mismatch'], ['touch_id', 'genuine']
+]);
+
+// cableClues: chỉ gợi ý cáp/socket, KHÔNG khẳng định đã thay.
 const cable = PartsHistory.cableClues([
   { filename: 'panic.ips', panicFamily: 'SMC', missingSensors: ['Prs0'],
     suspectedComponent: 'Cáp cổng sạc', confidence: 'Trung bình' },
@@ -62,8 +41,13 @@ const cable = PartsHistory.cableClues([
     suspectedComponent: 'Socket màn hình', confidence: 'Thấp' }
 ]);
 assert.deepEqual(cable.map(item => item.file), ['panic.ips', 'i2c.ips']);
+
 assert.equal(PartsHistory.assessScan(0, [], []), 'noLogs');
 assert.equal(PartsHistory.assessScan(3, logs, []), 'found');
 assert.equal(PartsHistory.assessScan(3, [], cable), 'cable');
 assert.equal(PartsHistory.assessScan(3, [], []), 'noEvidence');
-console.log('Parts history: explicit Settings labels and cautious log signals passed');
+
+// Không còn API đọc ảnh/OCR.
+assert.equal(typeof PartsHistory.fromSettings, 'undefined');
+
+console.log('Parts history: log-only signals, cautious, no OCR — passed');
