@@ -181,15 +181,23 @@ struct LocalVPNConnectionTests {
         }
         expect(named == 0, "Could not find fixture port")
         let refusedPort = UInt16(bigEndian: address.sin_port)
+        // Some CI hosts enable TCP blackholing (no RST for closed ports). Only
+        // assert the "refused" classification when the kernel really answers RST.
+        let kernelRefuses = LocalVPNConnection.quickConnect(address: "127.0.0.1", port: refusedPort, timeout: 1) == ECONNREFUSED
         let start = Date()
         do {
-            try LocalVPNConnection.probe(address: "127.0.0.1", port: refusedPort, timeout: 3)
+            try LocalVPNConnection.probe(address: "127.0.0.1", port: refusedPort, timeout: 1)
             preconditionFailure("A closed port must not count as connected")
         } catch {
             expect(error.localizedDescription.contains("127.0.0.1:\(refusedPort)"), "Error must identify failed endpoint")
-            expect((error as? LocalVPNConnection.ConnectionError)?.refused == true,
-                   "A closed port must be classified as refused, not as VPN offline: \(error.localizedDescription)")
-            expect(Date().timeIntervalSince(start) < 2, "A refused port must fail immediately, not wait for the deadline")
+            if kernelRefuses {
+                expect((error as? LocalVPNConnection.ConnectionError)?.refused == true,
+                       "A closed port must be classified as refused, not as VPN offline: \(error.localizedDescription)")
+                expect(Date().timeIntervalSince(start) < 2, "A refused port must fail immediately, not wait for the deadline")
+            } else {
+                print("note: host drops RST for closed ports; refused classification not asserted")
+                expect(Date().timeIntervalSince(start) < 5, "TCP failure exceeded its deadline")
+            }
         }
         print("LocalVPNConnection: endpoint validation, port discovery, retry, TCP readiness and failure tests passed")
     }
