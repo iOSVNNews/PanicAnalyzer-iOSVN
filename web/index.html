@@ -29,13 +29,14 @@
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
-        <span class="version-badge">v2.7.3 Pro</span>
+        <span class="version-badge">v2.7.4 Pro</span>
       </div>
     </div>
   </header>
 
   <main class="main-container">
     <div class="update-banner" id="updateBanner" onclick="openAppUpdate()" style="display:none"></div>
+    <section class="tab-panel" id="panicTab" role="tabpanel" aria-labelledby="tabPanic">
     <section class="card health-card" id="healthOverview">
       <div class="health-header">
         <div class="health-title-wrap">
@@ -70,15 +71,6 @@
         </svg>
         <span id="scanStatusText">Sẵn sàng nhận log qua Chia sẻ, tệp hoặc Remote Pairing.</span>
       </div>
-    </section>
-
-    <section class="card parts-card" id="partsHistoryCard">
-      <h2 class="card-title" data-i18n="parts.title">LỊCH SỬ LINH KIỆN</h2>
-      <p class="parts-hint" data-i18n="parts.hint">Chụp Cài đặt → Cài đặt chung → Giới thiệu và chọn ảnh để đọc mục Lịch sử linh kiện và dịch vụ. Log chỉ cung cấp dấu hiệu khi có trạng thái linh kiện rõ ràng.</p>
-      <button class="action-btn secondary" onclick="pickPartsHistoryScreenshot()">
-        <span data-i18n="parts.pick">Chọn ảnh Lịch sử linh kiện</span>
-      </button>
-      <div class="parts-results" id="partsHistoryResults" aria-live="polite"></div>
     </section>
 
     <section class="action-grid">
@@ -170,7 +162,73 @@
         </div>
       </div>
     </section>
+    </section>
+
+    <section class="tab-panel" id="partsTab" role="tabpanel" aria-labelledby="tabParts" hidden>
+      <section class="card parts-card" id="partsHistoryCard">
+        <h2 class="card-title" data-i18n="parts.title">LỊCH SỬ LINH KIỆN</h2>
+        <p class="parts-hint" data-i18n="parts.hint">Kiểm tra dữ liệu linh kiện từ log hoặc ảnh Lịch sử linh kiện và dịch vụ.</p>
+        <p class="parts-note" id="partsPairingRequirement" data-i18n="parts.pairRequired">Quét tự động trên máy non-JB bắt buộc có pairing file và LocalDevVPN.</p>
+        <button class="action-btn primary" onclick="scanPartsThroughPairing()">
+          <span id="partsScanLabel" data-i18n="parts.scan">Tự kiểm tra qua pairing</span>
+        </button>
+        <button class="action-btn secondary" onclick="pickPartsHistoryScreenshot()">
+          <span data-i18n="parts.pick">Chọn ảnh Lịch sử linh kiện</span>
+        </button>
+        <div class="parts-results" id="partsHistoryResults" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <section class="tab-panel" id="settingsTab" role="tabpanel" aria-labelledby="tabSettings" hidden>
+      <h2 class="section-heading" data-i18n="settings.title">Cài đặt</h2>
+      <div class="settings-page-content">
+        <div class="settings-group">
+          <div class="settings-label" data-i18n="settings.language">Ngôn ngữ</div>
+          <div class="lang-options">
+            <button class="lang-option" data-lang="vi" onclick="setLang('vi')">Tiếng Việt</button>
+            <button class="lang-option" data-lang="en" onclick="setLang('en')">English</button>
+            <button class="lang-option" data-lang="zh" onclick="setLang('zh')">中文</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-label" data-i18n="settings.pairing">Ghép đôi</div>
+          <button class="action-btn secondary" onclick="triggerPairingFileImport()">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span data-i18n="btn.importPairing">Nhập file pairing thủ công</span>
+          </button>
+          <p class="settings-hint" data-i18n="settings.importHint">Nhận Remote Pairing record (.plist) hoặc lockdown pairing file (.mobiledevicepairing / .plist) tạo từ máy tính, iLoader, SideInstaller…</p>
+        </div>
+
+        <div class="settings-group">
+          <div class="settings-label" data-i18n="settings.about">Thông tin</div>
+          <div class="about-list">
+            <a class="about-row" href="#" onclick="openLink('https://github.com/iOSVNNews/PanicAnalyzer-iOSVN'); return false;">
+              <span data-i18n="settings.repo">Mã nguồn GitHub</span><b>PanicAnalyzer-iOSVN</b>
+            </a>
+            <div class="about-row"><span data-i18n="settings.author">Tác giả</span><b>iOSVN</b></div>
+            <a class="about-row" href="#" onclick="openLink('https://t.me/longdzqua'); return false;">
+              <span data-i18n="settings.telegram">Telegram tác giả</span><b>@longdzqua</b>
+            </a>
+            <a class="about-row" href="#" onclick="openLink('https://iosvn.com.vn'); return false;">
+              <span data-i18n="settings.website">Website</span><b>iosvn.com.vn</b>
+            </a>
+            <div class="about-row"><span data-i18n="settings.version">Phiên bản</span><b id="settingsVersion"></b></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <nav class="bottom-tabs" role="tablist" aria-label="Main navigation">
+    <button id="tabPanic" type="button" role="tab" aria-controls="panicTab" aria-selected="true" onclick="setActiveTab('panic')" data-i18n="tab.panic">Panic</button>
+    <button id="tabParts" type="button" role="tab" aria-controls="partsTab" aria-selected="false" onclick="setActiveTab('parts')" data-i18n="tab.parts">Linh kiện</button>
+    <button id="tabSettings" type="button" role="tab" aria-controls="settingsTab" aria-selected="false" onclick="setActiveTab('settings')" data-i18n="tab.settings">Cài đặt</button>
+  </nav>
 
   <div class="modal-overlay" id="detailModal" onclick="closeModalOnOverlay(event)">
     <div class="modal-card">
@@ -218,57 +276,6 @@
         <p class="sample-intro" data-i18n="sample.intro">Chọn một mẫu log thực tế dưới đây để kiểm tra ngay khả năng nhận diện lỗi:</p>
         <button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="loadAllSamples()" data-i18n="btn.loadAllSamples">Nạp tất cả mẫu để xem thử</button>
         <div class="sample-list" id="sampleListContainer"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-overlay" id="settingsModal" onclick="if (event.target.id === 'settingsModal') closeSettingsModal()">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div class="modal-title-wrap">
-          <h3 data-i18n="settings.title">Cài đặt</h3>
-        </div>
-        <button class="modal-close-btn" onclick="closeSettingsModal()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="settings-group">
-          <div class="settings-label" data-i18n="settings.language">Ngôn ngữ</div>
-          <div class="lang-options">
-            <button class="lang-option" data-lang="vi" onclick="setLang('vi')">Tiếng Việt</button>
-            <button class="lang-option" data-lang="en" onclick="setLang('en')">English</button>
-            <button class="lang-option" data-lang="zh" onclick="setLang('zh')">中文</button>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <div class="settings-label" data-i18n="settings.pairing">Ghép đôi</div>
-          <button class="action-btn secondary" onclick="triggerPairingFileImport()">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span data-i18n="btn.importPairing">Nhập file pairing thủ công</span>
-          </button>
-          <p class="settings-hint" data-i18n="settings.importHint">Nhận Remote Pairing record (.plist) hoặc lockdown pairing file (.mobiledevicepairing / .plist) tạo từ máy tính, iLoader, SideInstaller…</p>
-        </div>
-
-        <div class="settings-group">
-          <div class="settings-label" data-i18n="settings.about">Thông tin</div>
-          <div class="about-list">
-            <a class="about-row" href="#" onclick="openLink('https://github.com/iOSVNNews/PanicAnalyzer-iOSVN'); return false;">
-              <span data-i18n="settings.repo">Mã nguồn GitHub</span><b>PanicAnalyzer-iOSVN</b>
-            </a>
-            <div class="about-row"><span data-i18n="settings.author">Tác giả</span><b>iOSVN</b></div>
-            <a class="about-row" href="#" onclick="openLink('https://t.me/longdzqua'); return false;">
-              <span data-i18n="settings.telegram">Telegram tác giả</span><b>@longdzqua</b>
-            </a>
-            <a class="about-row" href="#" onclick="openLink('https://iosvn.com.vn'); return false;">
-              <span data-i18n="settings.website">Website</span><b>iosvn.com.vn</b>
-            </a>
-            <div class="about-row"><span data-i18n="settings.version">Phiên bản</span><b id="settingsVersion"></b></div>
-          </div>
-        </div>
       </div>
     </div>
   </div>

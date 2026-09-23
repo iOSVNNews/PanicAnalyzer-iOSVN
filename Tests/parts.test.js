@@ -31,4 +31,13 @@ const logs = PartsHistory.fromLogs([
 assert.deepEqual(logs.map(({ part, status }) => [part, status]), [
   ['display', 'unknown'], ['battery', 'genuine'], ['front_camera', 'unknown']
 ]);
+const cable = PartsHistory.cableClues([
+  { filename: 'panic.ips', panicFamily: 'SMC', missingSensors: ['Prs0'],
+    suspectedComponent: 'Cáp cổng sạc', confidence: 'Trung bình' },
+  { filename: 'watchdog.ips', panicFamily: 'Watchdog', missingSensors: [], i2cEvents: [],
+    suspectedComponent: 'Cáp cổng sạc' },
+  { filename: 'i2c.ips', panicFamily: 'I2C', i2cEvents: [{}],
+    suspectedComponent: 'Socket màn hình', confidence: 'Thấp' }
+]);
+assert.deepEqual(cable.map(item => item.file), ['panic.ips', 'i2c.ips']);
 console.log('Parts history: explicit Settings labels and cautious log signals passed');

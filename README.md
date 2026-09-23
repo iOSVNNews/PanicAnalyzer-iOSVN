@@ -48,13 +48,19 @@ chia sẻ.
 một hoặc nhiều log rồi dùng **Chia sẻ → PanicAnalyzer**. Share Extension chuyển
 log thẳng vào app, không cần mở trình chọn Tệp.
 
-**Kiểm tra linh kiện đã thay.** Chụp phần **Cài đặt → Cài đặt chung → Giới thiệu
-→ Lịch sử linh kiện và dịch vụ**, rồi chọn ảnh trong app. Ứng dụng nhận chữ trên
-ảnh ngay trên máy và hiển thị nhãn Chính hãng, Đã qua sử dụng, Không xác định,
-Chưa xác minh hoặc Hoàn tất sửa chữa cho linh kiện đọc được. Nếu log có trạng
-thái linh kiện rõ ràng, ứng dụng hiển thị riêng là dấu hiệu trong log. DCP,
-MIPI, I2C hay panic khác chỉ nói về lỗi hoạt động, không chứng minh linh kiện
-đã thay. Ảnh không có mục lịch sử cũng không chứng minh máy còn nguyên bản.
+**Ba tab Panic / Linh kiện / Cài đặt.** Tab Linh kiện tự đọc log qua pairing file
+và LocalDevVPN trên máy non-JB; chưa ghép đôi thì nút kiểm tra mở bước ghép đôi.
+Bản JB/TrollStore đọc log trực tiếp. Nếu log chứa trạng thái linh kiện rõ ràng,
+ứng dụng hiển thị nó như dấu hiệu riêng. Lỗi cảm biến, I2C, DCP hoặc socket/cáp
+được ghi là nghi ngờ lỗi cáp, không được khẳng định là đã "sàng cáp" hay thay.
+
+**Xác nhận linh kiện đã thay.** Chụp phần **Cài đặt → Cài đặt chung → Giới thiệu
+→ Lịch sử linh kiện và dịch vụ**, rồi chọn ảnh trong tab Linh kiện. Ứng dụng nhận
+chữ trên ảnh ngay trên máy và hiển thị nhãn Chính hãng, Đã qua sử dụng, Không
+xác định, Chưa xác minh hoặc Hoàn tất sửa chữa cho linh kiện đọc được. Dữ liệu
+CrashReporter qua pairing không bao gồm toàn bộ màn hình Lịch sử linh kiện;
+không có dấu hiệu trong log hoặc không có mục lịch sử trong ảnh cũng không chứng
+minh máy còn nguyên bản.
 Xem [giải thích của Apple](https://support.apple.com/vi-vn/102658) về phạm vi
 và ý nghĩa từng nhãn. Ảnh và chữ nhận diện không được lưu hay gửi đi.
 

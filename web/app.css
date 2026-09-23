@@ -143,6 +143,20 @@ body {
   flex: 1;
 }
 
+.tab-panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.tab-panel[hidden] { display: none; }
+.settings-page-content { display: flex; flex-direction: column; gap: 16px; }
+.settings-page-content .settings-group { padding: 16px; background: var(--card-bg);
+  border: 1px solid var(--card-border); border-radius: var(--radius-lg); }
+.bottom-tabs { position: sticky; bottom: 0; z-index: 100; display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px;
+  padding: 8px 12px var(--safe-bottom); background: #101012;
+  border-top: 1px solid var(--card-border); }
+.bottom-tabs button { appearance: none; border: 0; border-radius: var(--radius-md);
+  background: transparent; color: var(--text-secondary); padding: 11px 4px;
+  font: 600 13px var(--font-system); cursor: pointer; }
+.bottom-tabs button[aria-selected="true"] { color: var(--brand-bright); background: var(--brand-dim); }
+
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
@@ -867,7 +881,7 @@ a.about-row b { color: var(--brand-bright); }
 }
 
 /* Parts & Service History is separate from panic severity. */
-.parts-card { margin: 0 0 20px; padding: 18px; }
+.parts-card { padding: 18px; }
 .parts-card .card-title { margin-bottom: 10px; }
 .parts-hint, .parts-note { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .parts-card .action-btn { margin-top: 12px; width: 100%; }

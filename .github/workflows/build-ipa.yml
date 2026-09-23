@@ -138,10 +138,24 @@ jobs:
             --rootless --output PanicAnalyzer-rootless.deb
           python3 scripts/package_deb.py --app "$SIGNED_APP" \
             --output PanicAnalyzer-rootful.deb
-          for package in PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb; do
-            ar t "$package" | grep -qx 'control.tar.gz'
-            ar t "$package" | grep -qx 'data.tar.gz'
-          done
+          python3 - PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb <<'PY'
+          from pathlib import Path
+          import sys
+
+          for filename in sys.argv[1:]:
+              data = Path(filename).read_bytes()
+              assert data.startswith(b'!<arch>\n'), filename
+              cursor, names = 8, []
+              while cursor < len(data):
+                  header = data[cursor:cursor + 60]
+                  assert len(header) == 60 and header[-2:] == b'`\n', filename
+                  names.append(header[:16].decode().strip().rstrip('/'))
+                  size = int(header[48:58].decode().strip())
+                  cursor += 60 + size + size % 2
+              assert cursor == len(data), filename
+              assert names == ['debian-binary', 'control.tar.gz', 'data.tar.gz'], (filename, names)
+              print(f'{filename}: {", ".join(names)}')
+          PY
           unzip -tq PanicAnalyzer-TrollStore.tipa
 
       - uses: actions/upload-artifact@v4
@@ -192,7 +206,8 @@ jobs:
           - Tự dò cổng RemotePairing qua Bonjour khi 49152 bị từ chối (NWError 61)
           - Ghép đôi iOS 27 ngay trên máy: chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển
           - Tự chuyển sang CoreDeviceProxy (lockdown 62078) khi tunnel RPPairing tới chính máy bị đóng; nhận cả lockdown pairing file
-          - Tiếng Việt / English / 中文, màn Cài đặt (ngôn ngữ, nhập file pairing, thông tin tác giả)
+          - Ba tab Panic / Linh kiện / Cài đặt, hỗ trợ Tiếng Việt / English / 中文
+          - Tab Linh kiện đọc dấu hiệu từ log qua pairing trên máy non-JB; ảnh Cài đặt iOS dùng để xác nhận nhãn linh kiện đã thay
           - Máy JB/TrollStore đọc thẳng log hệ thống (quét đệ quy), không cần ghép đôi
           - Nhận diện panic do màn hình thay/lỗi: DCP, MIPI/DSI, IC cảm ứng
           - Commit: \`${GITHUB_SHA::7}\`

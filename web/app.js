@@ -22,6 +22,11 @@ let ruleDatabases = {
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
   applyStaticI18n();
+  setActiveTab('panic');
+  updatePartsPairingRequirement();
+  const settingsVersion = document.getElementById('settingsVersion');
+  if (settingsVersion) settingsVersion.textContent = window.__APP_VERSION__
+    || document.querySelector('.version-badge')?.textContent?.replace(/^v| Pro$/g, '') || '';
   await loadDatabases();
   updateDetectedModel();
   applyJailbreakMode();
@@ -137,21 +142,43 @@ function triggerPairingImport() {
   showToast(t('s.iosOnly'), 3500);
 }
 
-// Cài đặt ứng dụng: ngôn ngữ, nhập file pairing thủ công, thông tin tác giả
-function openSettingsModal() {
-  applyStaticI18n();
-  const modal = document.getElementById('settingsModal');
-  if (modal) modal.classList.add('open');
+function setActiveTab(name) {
+  for (const tab of ['panic', 'parts', 'settings']) {
+    const selected = tab === name;
+    const panel = document.getElementById(tab + 'Tab');
+    const button = document.getElementById('tab' + tab[0].toUpperCase() + tab.slice(1));
+    if (panel) panel.hidden = !selected;
+    if (button) button.setAttribute('aria-selected', String(selected));
+  }
+  window.scrollTo(0, 0);
 }
 
-function closeSettingsModal() {
-  const modal = document.getElementById('settingsModal');
-  if (modal) modal.classList.remove('open');
+// Giữ nút bánh răng ở đầu trang như lối tắt đến tab Cài đặt.
+function openSettingsModal() {
+  setActiveTab('settings');
+}
+
+function updatePartsPairingRequirement() {
+  const hint = document.getElementById('partsPairingRequirement');
+  const label = document.getElementById('partsScanLabel');
+  const key = window.__CAN_READ_LOGS__ ? 'parts.directScan'
+    : (window.__PAIRING_CONFIGURED__ ? 'parts.paired' : 'parts.pairRequired');
+  if (hint) hint.textContent = t(key);
+  if (label) label.textContent = t(window.__CAN_READ_LOGS__ ? 'parts.scanDirect' : 'parts.scan');
+}
+
+function scanPartsThroughPairing() {
+  if (!window.__CAN_READ_LOGS__ && !window.__PAIRING_CONFIGURED__) {
+    setActiveTab('panic');
+    triggerPairingImport();
+    return;
+  }
+  triggerAutoScan();
+  showToast(t('parts.scanning'), 3500);
 }
 
 function triggerPairingFileImport() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    closeSettingsModal();
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'importPairing' });
     return;
   }
@@ -169,6 +196,7 @@ function openLink(url) {
 // Đổi ngôn ngữ: dịch lại giao diện và phân tích lại log đang xem theo ngôn ngữ mới
 function onLanguageChanged() {
   renderPartsHistory();
+  updatePartsPairingRequirement();
   const banner = document.getElementById('demoBanner');
   if (banner) banner.innerText = t('s.sampleBanner');
   updateDetectedModel();
@@ -648,7 +676,6 @@ function groupDiagnosticRecords(records) {
 function parseAndIngestLogs(rawLogsArray) {
   diagnosticRecords = [];
   logPartSignals = PartsHistory.fromLogs(rawLogsArray);
-  renderPartsHistory();
   rawLogsArray.forEach((item, idx) => {
     const content = typeof item === 'string' ? item : (item.content || item.rawText || "");
     const name = item.name || item.fileName || `log_${idx + 1}.ips`;
@@ -659,6 +686,7 @@ function parseAndIngestLogs(rawLogsArray) {
   });
 
   incidentGroups = groupDiagnosticRecords(diagnosticRecords);
+  renderPartsHistory();
   updateDashboardStats();
   renderIncidentList();
 }
@@ -715,7 +743,23 @@ function renderPartsHistory() {
     logPartSignals.forEach(row);
     paragraph(t('parts.logCaution'));
   }
-  if (!settingsPartInspection && !logPartSignals.length && !partInspectionError) {
+  const cableClues = PartsHistory.cableClues(diagnosticRecords);
+  if (cableClues.length) {
+    paragraph(t('parts.cableSource'), 'parts-source');
+    for (const clue of cableClues) {
+      const node = document.createElement('div');
+      node.className = 'parts-row';
+      const component = document.createElement('b');
+      component.textContent = clue.component;
+      const file = document.createElement('span');
+      file.className = 'parts-status';
+      file.textContent = clue.file;
+      node.append(component, file);
+      host.appendChild(node);
+    }
+    paragraph(t('parts.cableCaution'));
+  }
+  if (!settingsPartInspection && !logPartSignals.length && !cableClues.length && !partInspectionError) {
     paragraph(t('parts.noEvidence'));
   }
 }
@@ -1075,6 +1119,7 @@ window.onNativePairingStatus = function(status) {
   clearScanTimeout();
   window.__PAIRING_CONFIGURED__ = !!status.configured;
   updatePairingButton(!!status.configured);
+  updatePartsPairingRequirement();
   if (status.message) updateScanStatus(status.message, false);
   showToast(status.error ? `Pairing: ${status.message}` : `✓ ${status.message}`,
     status.error ? 6000 : 4000);

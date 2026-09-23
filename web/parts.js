@@ -67,7 +67,24 @@ const PartsHistory = (() => {
     return findings;
   }
 
-  return { fromSettings, fromLogs };
+  function cableClues(records) {
+    const clues = [];
+    for (const record of Array.isArray(records) ? records : []) {
+      const component = String(record?.suspectedComponent || '').trim();
+      const advice = String(record?.repairAdvice || '');
+      const mentionsCable = /\bcap\b|\bflex\b|\bconnector\b|\bsocket\b|ribbon cable|排线|连接器/.test(normalize(component + ' ' + advice));
+      const hasTransportEvidence = (record?.missingSensors?.length || 0) > 0 ||
+        (record?.i2cEvents?.length || 0) > 0 ||
+        /dcp|display|touch/i.test(String(record?.panicFamily || ''));
+      if (!component || !mentionsCable || !hasTransportEvidence) continue;
+      clues.push({ component, file: String(record.filename || '').slice(0, 120),
+        confidence: String(record.confidence || '') });
+      if (clues.length >= 20) break;
+    }
+    return clues;
+  }
+
+  return { fromSettings, fromLogs, cableClues };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;
