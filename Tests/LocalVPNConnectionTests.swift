@@ -188,7 +188,7 @@ struct LocalVPNConnectionTests {
         } catch {
             expect(error.localizedDescription.contains("127.0.0.1:\(refusedPort)"), "Error must identify failed endpoint")
             expect((error as? LocalVPNConnection.ConnectionError)?.refused == true,
-                   "A closed port must be classified as refused, not as VPN offline")
+                   "A closed port must be classified as refused, not as VPN offline: \(error.localizedDescription)")
             expect(Date().timeIntervalSince(start) < 2, "A refused port must fail immediately, not wait for the deadline")
         }
         print("LocalVPNConnection: endpoint validation, port discovery, retry, TCP readiness and failure tests passed")

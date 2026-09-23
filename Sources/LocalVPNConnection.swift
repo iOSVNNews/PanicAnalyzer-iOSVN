@@ -185,6 +185,20 @@ enum LocalVPNConnection {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
             throw ConnectionError(message: "Cổng LocalDevVPN không hợp lệ.")
         }
+        // Fast, deterministic answer first: a plain TCP connect reports RST as
+        // ECONNREFUSED at once, while Network.framework may keep retrying a
+        // refused endpoint in .waiting until the deadline.
+        switch quickConnect(address: address, port: port, timeout: min(timeout, 2)) {
+        case 0:
+            return
+        case ECONNREFUSED:
+            throw ConnectionError(
+                message: "LocalDevVPN đã chạy nhưng cổng RemotePairing \(address):\(port) đang đóng (Connection refused).",
+                refused: true
+            )
+        default:
+            break // No route yet / permission pending: let NWConnection wait for it.
+        }
         let queue = DispatchQueue(label: "com.iosvn.panicanalyzer.vpn-probe")
         let done = DispatchSemaphore(value: 0)
         let connection = NWConnection(host: NWEndpoint.Host(address), port: endpointPort, using: .tcp)
@@ -247,6 +261,35 @@ enum LocalVPNConnection {
                 + "Bật hoặc kết nối lại LocalDevVPN, kiểm tra quyền Mạng cục bộ và vào Cấu hình LocalDevVPN "
                 + "để nhập đúng Device IP (không phải Tunnel IP). \(result.1)")
         }
+    }
+
+    /// Non-blocking BSD connect with a deadline. Returns 0 on success or an errno.
+    static func quickConnect(address: String, port: UInt16, timeout: TimeInterval) -> Int32 {
+        var socketAddress = sockaddr_in()
+        socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        socketAddress.sin_family = sa_family_t(AF_INET)
+        socketAddress.sin_port = port.bigEndian
+        guard inet_pton(AF_INET, address, &socketAddress.sin_addr) == 1 else { return EINVAL }
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return errno }
+        defer { close(fd) }
+        var one: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK)
+        let result = withUnsafePointer(to: &socketAddress) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if result == 0 { return 0 }
+        guard errno == EINPROGRESS else { return errno }
+        var descriptor = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+        let ready = poll(&descriptor, 1, Int32(max(1, timeout * 1000)))
+        guard ready > 0 else { return ETIMEDOUT }
+        var socketError: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &socketError, &length) == 0 else { return errno }
+        return socketError
     }
 
     // MARK: - Bonjour discovery
