@@ -376,9 +376,9 @@ final class LogBridge: NSObject {
                     self.notifyPairingStatus(
                         configured: PairingLogService.shared.isConfigured,
                         message: Loc.s(
-                            "Bản JB/TrollStore chưa đọc được thư mục CrashReporter. Máy jailbreak cần cấp quyền cho app trong /Applications; TrollStore hãy bật đủ quyền rồi cài lại .tipa. Có thể dùng ghép đôi thay thế.",
-                            "The JB/TrollStore build cannot read CrashReporter yet. On a jailbreak the app in /Applications needs filesystem access; on TrollStore grant the entitlements and reinstall the .tipa. Pairing still works as a fallback.",
-                            "JB/TrollStore 版本暂时无法读取 CrashReporter。越狱设备需要为 /Applications 中的应用授予文件访问权限；TrollStore 请授予权限后重新安装 .tipa。也可改用配对。"),
+                            "Chưa đọc được thư mục log (\(direct.accessibleRoots) thư mục mở được, \(direct.unreadableLogs) file bị chặn). Đây là quyền gắn sẵn trong bản build, không có mục nào trong Cài đặt để bật. Hãy cài bản .deb/.tipa mới nhất (gỡ bản cũ trước), hoặc chia sẻ file .ips vào app.",
+                            "Cannot read the log folders (\(direct.accessibleRoots) folders opened, \(direct.unreadableLogs) files blocked). This permission is built into the app, there is no setting to turn on. Install the latest .deb/.tipa (remove the old one first), or share the .ips file into the app.",
+                            "无法读取日志文件夹（可打开 \(direct.accessibleRoots) 个文件夹，\(direct.unreadableLogs) 个文件被阻止）。此权限内置于应用中，设置里没有可开启的选项。请安装最新的 .deb/.tipa（先删除旧版），或将 .ips 文件分享到应用。"),
                         isError: true
                     )
                 }

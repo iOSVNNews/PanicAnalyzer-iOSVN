@@ -8,4 +8,17 @@
   <key>com.apple.private.security.storage.AppDataContainers</key><true/>
   <key>com.apple.security.application-groups</key>
   <array><string>group.com.iosvn.panicanalyzer</string></array>
+  <!-- Ngoại lệ sandbox CHỈ ĐỌC cho thư mục log: app vẫn sandbox (WebView chạy)
+       nhưng liệt kê/đọc được CrashReporter, DiagnosticReports, Panics. -->
+  <key>com.apple.security.exception.files.absolute-path.read-only</key>
+  <array>
+    <string>/private/var/mobile/Library/Logs/</string>
+    <string>/var/mobile/Library/Logs/</string>
+    <string>/private/var/db/CrashReporter/</string>
+    <string>/var/db/CrashReporter/</string>
+  </array>
+  <key>com.apple.security.exception.files.home-relative-path.read-only</key>
+  <array>
+    <string>/Library/Logs/</string>
+  </array>
 </dict></plist>

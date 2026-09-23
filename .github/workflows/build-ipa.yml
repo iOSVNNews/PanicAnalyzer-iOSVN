@@ -130,6 +130,8 @@ jobs:
               entitlements = plistlib.load(source)
           assert entitlements.get('platform-application') is True
           assert 'group.com.iosvn.panicanalyzer' in entitlements.get('com.apple.security.application-groups', [])
+          assert '/var/mobile/Library/Logs/' in entitlements.get('com.apple.security.exception.files.absolute-path.read-only', [])
+          assert 'com.apple.private.security.no-sandbox' not in entitlements
           PY
           mkdir -p "$RUNNER_TEMP/tipa/Payload"
           ditto "$SIGNED_APP" "$RUNNER_TEMP/tipa/Payload/PanicAnalyzer.app"
