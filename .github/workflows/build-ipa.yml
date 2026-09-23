@@ -147,6 +147,7 @@ jobs:
           - Cấu hình Device IP, chờ VPN sẵn sàng và giữ khóa ghép đôi khi mất kết nối
           - Tự dò cổng RemotePairing qua Bonjour khi 49152 bị từ chối (NWError 61)
           - Ghép đôi iOS 27 ngay trên máy: chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển
+          - Tự chuyển sang CoreDeviceProxy (lockdown 62078) khi tunnel RPPairing tới chính máy bị đóng; nhận cả lockdown pairing file
           - Commit: \`${GITHUB_SHA::7}\`
 
           File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.

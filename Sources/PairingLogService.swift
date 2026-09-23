@@ -48,14 +48,35 @@ final class PairingLogService {
         pairingDirectory?.appendingPathComponent(".rp_pairing_working.plist")
     }
 
+    /// Classic lockdown pair record for the CoreDeviceProxy route: imported
+    /// from a computer-made pairing file or minted on-device.
+    private var lockdownRecordURL: URL? {
+        pairingDirectory?.appendingPathComponent("lockdown_pair_record.plist")
+    }
+
+    private var hasRemotePairingRecord: Bool {
+        pairingFileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
+    private var hasLockdownRecord: Bool {
+        lockdownRecordURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
+
+    /// Stable lockdown host identity, so a minted record keeps matching.
+    private static func storedIdentifier(_ key: String) -> String {
+        if let value = UserDefaults.standard.string(forKey: key), !value.isEmpty { return value }
+        let value = UUID().uuidString.uppercased()
+        UserDefaults.standard.set(value, forKey: key)
+        return value
+    }
+
     /// iOS 27 can complete Remote Pairing on-device through LocalDevVPN.
     var supportsOnDevicePairing: Bool {
         ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
     }
 
     var isConfigured: Bool {
-        guard let url = pairingFileURL else { return false }
-        return FileManager.default.fileExists(atPath: url.path)
+        hasRemotePairingRecord || hasLockdownRecord
     }
 
     /// Copies only the credential bytes into Application Support. The file is
@@ -70,9 +91,8 @@ final class PairingLogService {
         guard data.count <= 1024 * 1024 else {
             throw PairingError.invalidFile("file lớn hơn 1 MB")
         }
-        try validatePlist(data)
-
-        guard let directory = pairingDirectory, let destination = pairingFileURL else {
+        guard let directory = pairingDirectory,
+              let destination = isRemotePairingPlist(data) ? pairingFileURL : lockdownRecordURL else {
             throw PairingError.invalidFile("không mở được Application Support")
         }
         try FileManager.default.createDirectory(
@@ -84,7 +104,18 @@ final class PairingLogService {
         try data.write(to: staging, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         do {
             try staging.path.withCString { path in
-                try check(pa_pairing_validate(path))
+                if destination == pairingFileURL {
+                    try check(pa_pairing_validate(path))
+                } else {
+                    do {
+                        try check(pa_lockdown_validate(path))
+                    } catch {
+                        throw PairingError.invalidFile(
+                            "không phải Remote Pairing record (public_key/private_key/identifier) "
+                                + "cũng không phải lockdown pairing file (HostID, certificates…)"
+                        )
+                    }
+                }
             }
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
@@ -149,7 +180,7 @@ final class PairingLogService {
     func removePairingFile() throws {
         operationLock.lock()
         defer { operationLock.unlock() }
-        for url in [pairingFileURL, workingPairingFileURL].compactMap({ $0 }) {
+        for url in [pairingFileURL, workingPairingFileURL, lockdownRecordURL].compactMap({ $0 }) {
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }
@@ -166,40 +197,31 @@ final class PairingLogService {
             throw supportsOnDevicePairing ? PairingError.notPaired : PairingError.missingFile
         }
         let deviceIP = LocalVPNConnection.deviceAddress
-        var port = try LocalVPNConnection.remotePairingPort(address: deviceIP)
-        let pairingURL = try prepareWorkingPairingFile()
-        defer { try? FileManager.default.removeItem(at: pairingURL) }
 
         var session: OpaquePointer?
-        do {
+        var remoteError: Error?
+        if hasRemotePairingRecord {
             do {
-                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
-            } catch let error as PairingError where Self.isRefusedBeforePairing(error) {
-                // remotepairingd moved between the probe and the real connection
-                // (daemon restart). Nothing was sent yet, so one retry on a freshly
-                // discovered port cannot repeat a consent prompt.
-                LocalVPNConnection.forgetWorkingPort()
-                guard LocalVPNConnection.portOverride == nil else { throw error }
-                port = try LocalVPNConnection.resolvePort(
-                    address: deviceIP, manualPort: nil, cachedPort: nil, excluding: [port]
-                )
-                LocalVPNConnection.rememberWorkingPort(port)
-                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
+                session = try openRemotePairingSession(deviceIP: deviceIP)
+            } catch {
+                remoteError = error
+                // The VPN itself is down: the lockdown route needs it as well.
+                if let vpn = error as? LocalVPNConnection.ConnectionError, !vpn.refused { throw error }
             }
-        } catch {
-            // Pair-setup may have completed even if opening CrashReporter then
-            // failed. Preserve only a record the native bridge can parse.
-            if FileManager.default.fileExists(atPath: pairingURL.path),
-               nativePairingFileIsValid(pairingURL) {
-                try? promoteWorkingPairingFile(pairingURL)
+        }
+        if session == nil {
+            do {
+                session = try openLockdownSession(deviceIP: deviceIP)
+            } catch {
+                guard let remoteError else { throw error }
+                throw PairingError.bridge(remoteError.localizedDescription
+                    + "\n\nĐường dự phòng CoreDeviceProxy cũng lỗi: " + error.localizedDescription)
             }
-            throw error
         }
         guard let session else {
             throw PairingError.bridge("RSD tunnel không trả về phiên làm việc hợp lệ.")
         }
         defer { pa_session_free(session) }
-        try promoteWorkingPairingFile(pairingURL)
 
         struct PendingDirectory {
             let path: String
@@ -248,6 +270,123 @@ final class PairingLogService {
             }
         }
         return results
+    }
+
+    /// Route 1 (iOS 27 record from Settings > Developer): RPPairing tunnel.
+    private func openRemotePairingSession(deviceIP: String) throws -> OpaquePointer {
+        var port = try LocalVPNConnection.remotePairingPort(address: deviceIP)
+        let pairingURL = try prepareWorkingPairingFile()
+        defer { try? FileManager.default.removeItem(at: pairingURL) }
+
+        var session: OpaquePointer?
+        do {
+            do {
+                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
+            } catch let error as PairingError where Self.isRefusedBeforePairing(error) {
+                // remotepairingd moved between the probe and the real connection
+                // (daemon restart). Nothing was sent yet, so one retry on a freshly
+                // discovered port cannot repeat a consent prompt.
+                LocalVPNConnection.forgetWorkingPort()
+                guard LocalVPNConnection.portOverride == nil else { throw error }
+                port = try LocalVPNConnection.resolvePort(
+                    address: deviceIP, manualPort: nil, cachedPort: nil, excluding: [port]
+                )
+                LocalVPNConnection.rememberWorkingPort(port)
+                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
+            }
+        } catch {
+            // Pair-verify may have refreshed the record before a later step
+            // failed. Preserve only a record the native bridge can parse.
+            if FileManager.default.fileExists(atPath: pairingURL.path),
+               nativePairingFileIsValid(pairingURL) {
+                try? promoteWorkingPairingFile(pairingURL)
+            }
+            throw error
+        }
+        guard let session else {
+            throw PairingError.bridge("RSD tunnel không trả về phiên làm việc hợp lệ.")
+        }
+        try? promoteWorkingPairingFile(pairingURL)
+        return session
+    }
+
+    /// Route 2 (learned from SideInstaller): CoreDeviceProxy over a lockdown
+    /// session on 62078. Needs no inbound tunnel listener, which on-device
+    /// RPPairing lacks. Uses the stored/imported classic record, otherwise asks
+    /// lockdownd for one (iOS shows "Tin cậy máy tính này?").
+    private func openLockdownSession(deviceIP: String) throws -> OpaquePointer {
+        guard let directory = pairingDirectory, let recordURL = lockdownRecordURL else {
+            throw PairingError.invalidFile("không mở được Application Support")
+        }
+        var lastError: Error?
+        if hasLockdownRecord {
+            do {
+                return try connectLockdown(recordURL: recordURL, deviceIP: deviceIP)
+            } catch {
+                lastError = error
+            }
+        }
+
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        let staging = directory.appendingPathComponent(".lockdown-mint.plist")
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let hostID = Self.storedIdentifier("lockdownHostID")
+        let systemBUID = Self.storedIdentifier("lockdownSystemBUID")
+        var minted = false
+        for host in [deviceIP, "127.0.0.1"] where !minted {
+            do {
+                try host.withCString { ip in
+                    try hostID.withCString { h in
+                        try systemBUID.withCString { b in
+                            try staging.path.withCString { out in
+                                try check(pa_lockdown_mint(ip, h, b, out))
+                            }
+                        }
+                    }
+                }
+                minted = true
+            } catch {
+                lastError = error
+            }
+        }
+        guard minted else {
+            throw lastError ?? PairingError.bridge("Không tạo được lockdown pair record.")
+        }
+        if FileManager.default.fileExists(atPath: recordURL.path) {
+            _ = try FileManager.default.replaceItemAt(recordURL, withItemAt: staging)
+        } else {
+            try FileManager.default.moveItem(at: staging, to: recordURL)
+        }
+        try protect(recordURL)
+        return try connectLockdown(recordURL: recordURL, deviceIP: deviceIP)
+    }
+
+    private func connectLockdown(recordURL: URL, deviceIP: String) throws -> OpaquePointer {
+        var opened: OpaquePointer?
+        try recordURL.path.withCString { path in
+            try deviceIP.withCString { ip in
+                try check(pa_session_connect_lockdown(path, ip, &opened))
+            }
+        }
+        guard let opened else {
+            throw PairingError.bridge("CoreDeviceProxy không trả về phiên làm việc hợp lệ.")
+        }
+        return opened
+    }
+
+    private func protect(_ url: URL) throws {
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: url.path
+        )
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutable = url
+        try mutable.setResourceValues(values)
     }
 
     private func connect(pairingURL: URL, deviceIP: String, port: UInt16,
@@ -318,16 +457,15 @@ final class PairingLogService {
         return false
     }
 
-    private func validatePlist(_ data: Data) throws {
-        let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-        guard let dictionary = plist as? [String: Any],
+    private func isRemotePairingPlist(_ data: Data) -> Bool {
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let dictionary = plist as? [String: Any],
               let publicKey = dictionary["public_key"] as? Data, publicKey.count == 32,
               let privateKey = dictionary["private_key"] as? Data, privateKey.count == 32,
               let identifier = dictionary["identifier"] as? String, !identifier.isEmpty else {
-            throw PairingError.invalidFile(
-                "cần public_key/private_key 32 byte và identifier (đây không phải pairing record kiểu cũ)"
-            )
+            return false
         }
+        return true
     }
 
     private func list(session: OpaquePointer, directory: String) throws -> [String] {

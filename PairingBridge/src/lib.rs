@@ -170,6 +170,16 @@ pub unsafe extern "C" fn pa_session_connect(
         );
     }
 
+    open_crash_reports(adapter, handshake, out_session)
+}
+
+/// Opens CrashReportCopyMobile over an RSD tunnel and hands ownership of all
+/// three handles to a new session.
+unsafe fn open_crash_reports(
+    adapter: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    out_session: *mut *mut PaLogSession,
+) -> *mut c_char {
     let mut client: *mut CrashReportCopyMobileHandle = null_mut();
     let client_error = crash_report_client_connect_rsd(adapter, handshake, &mut client);
     if !client_error.is_null() {
@@ -186,6 +196,146 @@ pub unsafe extern "C" fn pa_session_connect(
         client,
     }));
     null_mut()
+}
+
+// MARK: - CoreDeviceProxy route (classic lockdown pair record)
+//
+// On-device, the RPPairing tunnel can fail after pair-verify: the tunnel
+// listener iOS opens binds to Wi-Fi only and the device closes a tunnel to
+// itself (close_notify). CoreDeviceProxy needs no inbound listener: it rides a
+// lockdown session on 62078 through LocalDevVPN (the StikDebug recipe). Its
+// classic pair record comes from an imported pairing file or is minted here.
+
+const LOCKDOWN_PORT: u16 = 62078;
+
+fn parse_ipv4(value: *const c_char) -> Result<Ipv4Addr, *mut c_char> {
+    unsafe { c_string(value, "device_ip") }.and_then(|s| {
+        s.to_str().ok().and_then(|s| s.parse::<Ipv4Addr>().ok())
+            .ok_or_else(|| owned_message("Địa chỉ VPN không hợp lệ"))
+    })
+}
+
+fn read_lockdown_record(path: *const c_char) -> Result<idevice::pairing_file::PairingFile, *mut c_char> {
+    let path = unsafe { c_string(path, "record_path") }?;
+    let bytes = std::fs::read(path.to_string_lossy().as_ref())
+        .map_err(|e| owned_message(format!("Không đọc được lockdown pair record: {e}")))?;
+    idevice::pairing_file::PairingFile::from_bytes(&bytes)
+        .map_err(|e| owned_message(format!("Lockdown pair record không hợp lệ: {e}")))
+}
+
+/// Accepts classic lockdown records (.mobiledevicepairing / .plist from a
+/// computer, iLoader, jitterbugpair…).
+#[no_mangle]
+pub unsafe extern "C" fn pa_lockdown_validate(record_path: *const c_char) -> *mut c_char {
+    match read_lockdown_record(record_path) {
+        Ok(_) => null_mut(),
+        Err(error) => error,
+    }
+}
+
+/// Runs lockdown Pair on `device_ip:62078` (blocks while iOS shows Trust) and
+/// writes the classic record to `out_path`.
+#[no_mangle]
+pub unsafe extern "C" fn pa_lockdown_mint(
+    device_ip: *const c_char,
+    host_id: *const c_char,
+    system_buid: *const c_char,
+    out_path: *const c_char,
+) -> *mut c_char {
+    let ip = match parse_ipv4(device_ip) {
+        Ok(ip) => ip,
+        Err(error) => return error,
+    };
+    let (host_id, system_buid, out_path) = match (
+        c_string(host_id, "host_id"),
+        c_string(system_buid, "system_buid"),
+        c_string(out_path, "out_path"),
+    ) {
+        (Ok(a), Ok(b), Ok(c)) => (
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+            c.to_string_lossy().into_owned(),
+        ),
+        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => return e,
+    };
+    let result = idevice_ffi::run_sync_local(async move {
+        let stream = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            tokio::net::TcpStream::connect((ip, LOCKDOWN_PORT)),
+        )
+        .await
+        .map_err(|_| format!("lockdownd {ip}:{LOCKDOWN_PORT} không phản hồi"))?
+        .map_err(|e| format!("không kết nối được lockdownd {ip}:{LOCKDOWN_PORT}: {e}"))?;
+        let device = idevice::Idevice::new(Box::new(stream), "PanicAnalyzer");
+        let mut client = idevice::lockdown::LockdownClient::new(device);
+        let record = tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            client.pair(host_id, system_buid, Some("PanicAnalyzer")),
+        )
+        .await
+        .map_err(|_| "Hết thời gian chờ bấm Tin cậy".to_string())?
+        .map_err(|e| format!("lockdownd từ chối ghép đôi: {e}"))?;
+        let bytes = record.serialize().map_err(|e| e.to_string())?;
+        std::fs::write(&out_path, bytes).map_err(|e| format!("không lưu được record: {e}"))
+    });
+    match result {
+        Ok(()) => null_mut(),
+        Err(error) => owned_message(error),
+    }
+}
+
+/// Opens CoreDeviceProxy with a classic record over LocalDevVPN, then
+/// CrashReportCopyMobile over the resulting RSD tunnel.
+#[no_mangle]
+pub unsafe extern "C" fn pa_session_connect_lockdown(
+    record_path: *const c_char,
+    device_ip: *const c_char,
+    out_session: *mut *mut PaLogSession,
+) -> *mut c_char {
+    if out_session.is_null() {
+        return owned_message("out_session is null");
+    }
+    *out_session = null_mut();
+    let record = match read_lockdown_record(record_path) {
+        Ok(record) => record,
+        Err(error) => return error,
+    };
+    let ip = match parse_ipv4(device_ip) {
+        Ok(ip) => ip,
+        Err(error) => return error,
+    };
+    let provider = idevice::provider::TcpProvider {
+        addr: std::net::IpAddr::V4(ip),
+        scope_id: None,
+        pairing_file: record,
+        label: "PanicAnalyzer".to_string(),
+    };
+    let result = idevice_ffi::run_sync_local(async move {
+        use idevice::IdeviceService;
+        let proxy = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            idevice::core_device_proxy::CoreDeviceProxy::connect(&provider),
+        )
+        .await
+        .map_err(|_| "CoreDeviceProxy quá thời gian".to_string())?
+        .map_err(|e| format!("CoreDeviceProxy lỗi: {e}"))?;
+        let rsd_port = proxy.tunnel_info().server_rsd_port;
+        let adapter = proxy.create_software_tunnel().map_err(|e| e.to_string())?;
+        let mut adapter = adapter.to_async_handle();
+        let stream = adapter.connect(rsd_port).await.map_err(|e| e.to_string())?;
+        let handshake = idevice::rsd::RsdHandshake::new(stream).await.map_err(|e| e.to_string())?;
+        Ok::<_, String>((adapter, handshake))
+    });
+    match result {
+        Ok((adapter, handshake)) => {
+            let adapter = Box::into_raw(Box::new(AdapterHandle(adapter)));
+            let handshake = Box::into_raw(Box::new(RsdHandshakeHandle(handshake)));
+            open_crash_reports(adapter, handshake, out_session)
+        }
+        Err(error) => owned_message(format!(
+            "Không mở được tunnel CoreDeviceProxy qua LocalDevVPN ({error})"
+        )),
+    }
 }
 
 #[no_mangle]
@@ -295,6 +445,27 @@ mod tests {
             pa_host_free(null_mut());
             let error = pa_host_accept(null_mut(), -1, None, null_mut(), null_mut());
             assert!(!error.is_null());
+            pa_error_free(error);
+        }
+    }
+
+    #[test]
+    fn lockdown_route_reports_errors_instead_of_crashing() {
+        unsafe {
+            let missing = CString::new("/nonexistent/lockdown.plist").unwrap();
+            let error = pa_lockdown_validate(missing.as_ptr());
+            assert!(!error.is_null());
+            pa_error_free(error);
+
+            let bad_ip = CString::new("not-an-ip").unwrap();
+            let id = CString::new("ID").unwrap();
+            let error = pa_lockdown_mint(bad_ip.as_ptr(), id.as_ptr(), id.as_ptr(), missing.as_ptr());
+            assert!(!error.is_null());
+            pa_error_free(error);
+
+            let mut session = null_mut();
+            let error = pa_session_connect_lockdown(missing.as_ptr(), bad_ip.as_ptr(), &mut session);
+            assert!(!error.is_null() && session.is_null());
             pa_error_free(error);
         }
     }

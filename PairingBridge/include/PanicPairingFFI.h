@@ -22,6 +22,26 @@ char *pa_session_connect(
     PaLogSession **out_session
 );
 
+/*
+ * CoreDeviceProxy route: a classic lockdown pair record (from a computer, or
+ * minted on-device with pa_lockdown_mint on 62078) opens the RSD tunnel
+ * through LocalDevVPN without the RPPairing tunnel listener.
+ */
+char *pa_lockdown_validate(const char *record_path);
+
+char *pa_lockdown_mint(
+    const char *device_ip,
+    const char *host_id,
+    const char *system_buid,
+    const char *out_path
+);
+
+char *pa_session_connect_lockdown(
+    const char *record_path,
+    const char *device_ip,
+    PaLogSession **out_session
+);
+
 char *pa_session_list(
     PaLogSession *session,
     const char *directory,

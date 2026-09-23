@@ -89,6 +89,13 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 4. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
    lần sau chỉ cần bật LocalDevVPN; không phải ghép đôi lại.
 
+**Hai đường kết nối.** Sau khi ghép đôi, app thử tunnel RPPairing trước. Trên
+chính iPhone, tunnel này có thể bị iOS đóng ngay sau TLS (listener chỉ mở trên
+Wi-Fi — SideInstaller đã ghi nhận). Khi đó app tự chuyển sang **CoreDeviceProxy**
+qua lockdownd cổng `62078` (cách StikDebug dùng): dùng lockdown pairing file bạn
+đã nhập (`.mobiledevicepairing`/`.plist` tạo từ máy tính, iLoader…) hoặc xin
+lockdownd tạo mới — iOS có thể hỏi **Tin cậy máy tính này?**, hãy chọn Tin cậy.
+
 Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này** để ghép đôi lại. Record cũ chỉ
 bị thay khi ghép đôi mới thành công; lỗi mạng không xóa khóa cũ. Có thể nhập
 Remote Pairing file có sẵn qua **Cấu hình LocalDevVPN → Nhập pairing file**.
