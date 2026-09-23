@@ -865,3 +865,17 @@ a.about-row b { color: var(--brand-bright); }
   border: 1px solid var(--brand-line);
   vertical-align: middle;
 }
+
+/* Parts & Service History is separate from panic severity. */
+.parts-card { margin: 0 0 20px; padding: 18px; }
+.parts-card .card-title { margin-bottom: 10px; }
+.parts-hint, .parts-note { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.parts-card .action-btn { margin-top: 12px; width: 100%; }
+.parts-results { margin-top: 12px; }
+.parts-source { color: var(--text-primary); font-size: 13px; font-weight: 700; margin: 12px 0 8px; }
+.parts-error { color: var(--brand-bright); }
+.parts-row { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--card-border); font-size: 13px; }
+.parts-row b { font-weight: 600; }
+.parts-status { text-align: right; color: var(--text-secondary); }
+.parts-status.unknown, .parts-status.unverified, .parts-status.finish_repair { color: var(--brand-bright); }

@@ -32,7 +32,10 @@ jobs:
           swiftc Sources/Localization.swift Sources/LocalVPNConnection.swift Tests/LocalVPNConnectionTests.swift -o "$RUNNER_TEMP/vpn-tests"
           "$RUNNER_TEMP/vpn-tests"
           node --check web/i18n.js
+          node --check web/parts.js
           node --check web/app.js
+          node Tests/parts.test.js
+          python3 Tests/test_package_deb.py
 
       - name: Dựng cầu nối Remote Pairing
         run: |
@@ -107,10 +110,48 @@ jobs:
             exit 1
           fi
 
+      - name: Đóng gói TrollStore và jailbreak
+        run: |
+          set -euo pipefail
+          APP=$(find build/Build/Products -maxdepth 2 -name "PanicAnalyzer.app" | head -1)
+          SIGNED_APP="$RUNNER_TEMP/PanicAnalyzer.app"
+          ditto "$APP" "$SIGNED_APP"
+          /usr/libexec/PlistBuddy -c 'Add :PanicPrivilegedMode bool true' "$SIGNED_APP/Info.plist"
+          codesign --force --sign - --timestamp=none \
+            --entitlements packaging/ShareExtension.entitlements \
+            "$SIGNED_APP/PlugIns/PanicAnalyzerShare.appex"
+          codesign --force --sign - --timestamp=none \
+            --entitlements packaging/Privileged.entitlements "$SIGNED_APP"
+          codesign --verify --deep --strict "$SIGNED_APP"
+          codesign -d --entitlements :- "$SIGNED_APP" > "$RUNNER_TEMP/app-entitlements.plist" 2>/dev/null
+          python3 - "$RUNNER_TEMP/app-entitlements.plist" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], 'rb') as source:
+              entitlements = plistlib.load(source)
+          assert entitlements.get('com.apple.private.security.no-sandbox') is True
+          assert 'group.com.iosvn.panicanalyzer' in entitlements.get('com.apple.security.application-groups', [])
+          PY
+          mkdir -p "$RUNNER_TEMP/tipa/Payload"
+          ditto "$SIGNED_APP" "$RUNNER_TEMP/tipa/Payload/PanicAnalyzer.app"
+          (cd "$RUNNER_TEMP/tipa" && zip -qry "$GITHUB_WORKSPACE/PanicAnalyzer-TrollStore.tipa" Payload)
+          python3 scripts/package_deb.py --app "$SIGNED_APP" \
+            --rootless --output PanicAnalyzer-rootless.deb
+          python3 scripts/package_deb.py --app "$SIGNED_APP" \
+            --output PanicAnalyzer-rootful.deb
+          for package in PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb; do
+            ar t "$package" | grep -qx 'control.tar.gz'
+            ar t "$package" | grep -qx 'data.tar.gz'
+          done
+          unzip -tq PanicAnalyzer-TrollStore.tipa
+
       - uses: actions/upload-artifact@v4
         with:
-          name: PanicAnalyzer-unsigned-ipa
-          path: PanicAnalyzer-unsigned.ipa
+          name: PanicAnalyzer-installers
+          path: |
+            PanicAnalyzer-unsigned.ipa
+            PanicAnalyzer-TrollStore.tipa
+            PanicAnalyzer-rootless.deb
+            PanicAnalyzer-rootful.deb
 
       - name: Ghi phiên bản cho tính năng tự kiểm tra cập nhật
         run: |
@@ -137,8 +178,10 @@ jobs:
           RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
           gh release delete latest --yes 2>/dev/null || true
           git push --delete origin latest 2>/dev/null || true
-          gh release create latest PanicAnalyzer-unsigned.ipa \
-            --title "PanicAnalyzer $APP_VERSION (chưa ký)" \
+          gh release create latest \
+            PanicAnalyzer-unsigned.ipa PanicAnalyzer-TrollStore.tipa \
+            PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb \
+            --title "PanicAnalyzer $APP_VERSION" \
             --notes "Bản dựng tự động từ nhánh main.
 
           - Phiên bản: $APP_VERSION
@@ -154,6 +197,9 @@ jobs:
           - Nhận diện panic do màn hình thay/lỗi: DCP, MIPI/DSI, IC cảm ứng
           - Commit: \`${GITHUB_SHA::7}\`
 
-          File \`.ipa\` chưa ký — hãy ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) trước khi cài.
+          - IPA chưa ký: ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…)
+          - TIPA: cài bằng TrollStore, có quyền đọc trực tiếp log hệ thống
+          - DEB rootless: cài bằng Sileo/Zebra trên jailbreak rootless
+          - DEB rootful: cài bằng Sileo/Zebra trên jailbreak rootful
 
-          Tải trực tiếp: [PanicAnalyzer-unsigned.ipa](https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/PanicAnalyzer-unsigned.ipa)"
+          Tải tại: https://github.com/${GITHUB_REPOSITORY}/releases/latest"

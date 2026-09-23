@@ -7,10 +7,19 @@ Dành cho kỹ thuật viên sửa iPhone và người dùng muốn biết máy 
 
 ## Tải về
 
-**[Tải PanicAnalyzer-unsigned.ipa](../../releases/latest/download/PanicAnalyzer-unsigned.ipa)**
+[Tải các bản cài mới nhất](../../releases/latest):
 
-File chưa ký — ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…) rồi cài
-như bình thường. Không cần jailbreak để nhập log bằng Share Sheet.
+| File | Cách cài |
+|---|---|
+| [PanicAnalyzer-unsigned.ipa](../../releases/latest/download/PanicAnalyzer-unsigned.ipa) | Ký bằng ESign/Sideloadly/AltStore; đọc log qua Share Sheet hoặc LocalDevVPN |
+| [PanicAnalyzer-TrollStore.tipa](../../releases/latest/download/PanicAnalyzer-TrollStore.tipa) | Mở bằng TrollStore; bản ký với quyền đọc log ngoài sandbox |
+| [PanicAnalyzer-rootless.deb](../../releases/latest/download/PanicAnalyzer-rootless.deb) | Cài bằng Sileo/Zebra trên jailbreak rootless |
+| [PanicAnalyzer-rootful.deb](../../releases/latest/download/PanicAnalyzer-rootful.deb) | Cài bằng Sileo/Zebra trên jailbreak rootful |
+
+Các gói `.tipa`/`.deb` là bản dành riêng cho môi trường có quyền đọc ngoài
+sandbox. Nếu đã cài IPA thường cùng bundle ID, hãy gỡ bản đó trước khi cài gói
+JB/TrollStore. Ứng dụng sẽ báo lỗi quyền đọc CrashReporter thay vì báo máy không
+có log khi bản đặc quyền không truy cập được thư mục.
 
 ## Chức năng
 
@@ -39,6 +48,16 @@ chia sẻ.
 một hoặc nhiều log rồi dùng **Chia sẻ → PanicAnalyzer**. Share Extension chuyển
 log thẳng vào app, không cần mở trình chọn Tệp.
 
+**Kiểm tra linh kiện đã thay.** Chụp phần **Cài đặt → Cài đặt chung → Giới thiệu
+→ Lịch sử linh kiện và dịch vụ**, rồi chọn ảnh trong app. Ứng dụng nhận chữ trên
+ảnh ngay trên máy và hiển thị nhãn Chính hãng, Đã qua sử dụng, Không xác định,
+Chưa xác minh hoặc Hoàn tất sửa chữa cho linh kiện đọc được. Nếu log có trạng
+thái linh kiện rõ ràng, ứng dụng hiển thị riêng là dấu hiệu trong log. DCP,
+MIPI, I2C hay panic khác chỉ nói về lỗi hoạt động, không chứng minh linh kiện
+đã thay. Ảnh không có mục lịch sử cũng không chứng minh máy còn nguyên bản.
+Xem [giải thích của Apple](https://support.apple.com/vi-vn/102658) về phạm vi
+và ý nghĩa từng nhãn. Ảnh và chữ nhận diện không được lưu hay gửi đi.
+
 **Tự ghép đôi trên iOS 27.** App tự phát mình thành một "máy tính có thể ghép
 đôi". Bạn chọn nó trong **Cài đặt → Quyền riêng tư & Bảo mật → Nhà phát triển**,
 nhập mã PIN app hiển thị, rồi app lưu pairing record được bảo vệ và quét
@@ -62,8 +81,8 @@ Chạy từ **iOS 15.0 trở lên**. Việc đọc log *tự động* phụ thu�
 |---|---|---|
 | `.ipa` ký chứng chỉ thường | 15.0 trở lên | Có — qua Share Sheet |
 | `.ipa` + LocalDevVPN | iOS 27 trở lên | Tự ghép đôi và quét CrashReporter |
-| `.tipa` qua TrollStore | 15.0 – 16.6.1, 16.7 RC, 17.0 | Có |
-| Máy đã jailbreak | tuỳ công cụ | Có |
+| `.tipa` qua TrollStore | Theo phiên bản TrollStore hỗ trợ | Đọc thư mục log khi quyền ngoài sandbox có hiệu lực |
+| `.deb` trên máy jailbreak | Theo bản jailbreak rootless/rootful | Đọc thư mục log khi quyền và đường dẫn hệ thống cho phép |
 
 ## Cách nạp log
 

@@ -6,6 +6,7 @@ import UIKit
 import Darwin
 import WebKit
 import UniformTypeIdentifiers
+import PhotosUI
 
 final class LogBridge: NSObject {
 
@@ -46,12 +47,14 @@ final class LogBridge: NSObject {
     /// Trên non-JB các thư mục này nằm ngoài sandbox nên luôn trả về false.
     var canReadSystemLogs: Bool {
         let fm = FileManager.default
-        for dir in searchDirs {
-            if let names = try? fm.contentsOfDirectory(atPath: dir), !names.isEmpty {
-                return true
-            }
+        return isPrivilegedBuild || searchDirs.contains {
+            (try? fm.contentsOfDirectory(atPath: $0)) != nil
         }
-        return false
+    }
+
+    /// Set only in the separately signed TrollStore/JB installers.
+    private var isPrivilegedBuild: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "PanicPrivilegedMode") as? Bool == true
     }
 
     private let maxFilesystemLogs = 200
@@ -61,16 +64,24 @@ final class LogBridge: NSObject {
     /// Đọc thẳng log từ hệ thống (chỉ chạy được trên máy JB/TrollStore).
     /// Quét cả thư mục con của CrashReporter (Panics, Retired, DiagnosticLogs…)
     /// và bỏ trùng theo đường dẫn thật để không đọc lặp giữa /var và /private/var.
-    func readFilesystemLogs() -> [[String: String]] {
+    private struct FilesystemScan {
+        var logs: [[String: String]] = []
+        var accessibleRoots = 0
+        var unreadableLogs = 0
+    }
+
+    private func readFilesystemLogs() -> FilesystemScan {
         let fm = FileManager.default
-        var results: [[String: String]] = []
+        var scan = FilesystemScan()
         var seen = Set<String>()
         var totalBytes = 0
 
         for root in searchDirs {
+            guard (try? fm.contentsOfDirectory(atPath: root)) != nil else { continue }
+            scan.accessibleRoots += 1
             guard let enumerator = fm.enumerator(atPath: root) else { continue }
             for case let rel as String in enumerator {
-                if results.count >= maxFilesystemLogs || totalBytes >= maxFilesystemBytes { break }
+                if scan.logs.count >= maxFilesystemLogs || totalBytes >= maxFilesystemBytes { break }
                 let name = (rel as NSString).lastPathComponent
                 guard isLogFile(name) else { continue }
                 let path = (root as NSString).appendingPathComponent(rel)
@@ -79,13 +90,23 @@ final class LogBridge: NSObject {
                     forKeys: [.canonicalPathKey]))?.canonicalPath ?? path
                 guard seen.insert(canonical).inserted else { continue }
                 guard let attrs = try? fm.attributesOfItem(atPath: path),
-                      let size = attrs[.size] as? Int, size > 0, size <= maxFileBytes,
-                      let text = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
-                totalBytes += size
-                results.append(["name": rel, "content": text])
+                      let size = attrs[.size] as? Int else {
+                    scan.unreadableLogs += 1
+                    continue
+                }
+                guard size > 0, size <= maxFileBytes,
+                      totalBytes + size <= maxFilesystemBytes else { continue }
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+                    scan.unreadableLogs += 1
+                    continue
+                }
+                guard data.count <= maxFileBytes,
+                      totalBytes + data.count <= maxFilesystemBytes else { continue }
+                totalBytes += data.count
+                scan.logs.append(["name": rel, "content": String(decoding: data, as: UTF8.self)])
             }
         }
-        return results
+        return scan
     }
 
     // MARK: - Nhận diện thiết bị THẬT
@@ -332,9 +353,23 @@ final class LogBridge: NSObject {
     func scanLogs() {
         DispatchQueue.global(qos: .userInitiated).async {
             // Trên máy JB / TrollStore đọc thẳng file log, không cần ghép đôi.
-            let results = self.readFilesystemLogs()
-            if !results.isEmpty {
-                self.deliver(results, autoScan: true, source: "filesystem")
+            let direct = self.readFilesystemLogs()
+            if !direct.logs.isEmpty {
+                self.deliver(direct.logs, autoScan: true, source: "filesystem")
+                return
+            }
+            if self.isPrivilegedBuild {
+                self.deliver([], autoScan: true, source: "filesystem")
+                if direct.accessibleRoots == 0 || direct.unreadableLogs > 0 {
+                    self.notifyPairingStatus(
+                        configured: PairingLogService.shared.isConfigured,
+                        message: Loc.s(
+                            "Bản JB/TrollStore chưa đọc được thư mục CrashReporter. Kiểm tra quyền no-sandbox của app và cài lại đúng file .deb/.tipa.",
+                            "The JB/TrollStore build cannot read CrashReporter. Check the app's no-sandbox entitlement and reinstall the .deb/.tipa package.",
+                            "JB/TrollStore 版本无法读取 CrashReporter。请检查应用的 no-sandbox 权限并重新安装 .deb/.tipa。"),
+                        isError: true
+                    )
+                }
                 return
             }
 
@@ -389,6 +424,26 @@ final class LogBridge: NSObject {
         picker.allowsMultipleSelection = true
         picker.delegate = self
         topViewController()?.present(picker, animated: true)
+    }
+
+    func presentPartsHistoryPicker() {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        topViewController()?.present(picker, animated: true)
+    }
+
+    private func publishPartsHistory(_ lines: [String], error: String? = nil) {
+        let payload: [String: Any] = ["lines": lines, "error": error ?? ""]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        DispatchQueue.main.async {
+            self.webView?.evaluateJavaScript(
+                "if (window.onNativePartsHistory) window.onNativePartsHistory(\(json));"
+            )
+        }
     }
 
     func presentPairingPicker() {
@@ -708,6 +763,7 @@ extension LogBridge: WKScriptMessageHandler {
         switch action {
         case "autoScanLogs": scanLogs()
         case "pickFiles":    presentPicker()
+        case "pickPartsHistory": presentPartsHistoryPicker()
         case "importPairing": presentPairingPicker()
         case "pairDevice":    pairThisDevice()
         case "openPrivacySettings": openPrivacySettings()
@@ -718,6 +774,34 @@ extension LogBridge: WKScriptMessageHandler {
         case "refreshRules": refreshRules()
         case "openURL":      openExternal(body["url"] as? String ?? "")
         default: break
+        }
+    }
+}
+
+extension LogBridge: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider else { return }
+        guard provider.canLoadObject(ofClass: UIImage.self) else {
+            publishPartsHistory([], error: Loc.s("Ảnh không được hỗ trợ.", "Unsupported image.", "不支持的图片。"))
+            return
+        }
+        provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    if let error { throw error }
+                    guard let image = object as? UIImage else {
+                        throw NSError(domain: "PanicAnalyzer.PartsHistory", code: 2,
+                                      userInfo: [NSLocalizedDescriptionKey: Loc.s(
+                                        "Không đọc được ảnh đã chọn.",
+                                        "Could not read the selected image.",
+                                        "无法读取所选图片。")])
+                    }
+                    self?.publishPartsHistory(try PartsHistoryService.recognize(image))
+                } catch {
+                    self?.publishPartsHistory([], error: error.localizedDescription)
+                }
+            }
         }
     }
 }

@@ -8,6 +8,9 @@ let diagnosticRecords = [];
 let incidentGroups = [];
 let currentFilter = 'all';
 let currentSearchQuery = '';
+let settingsPartInspection = null;
+let partInspectionError = '';
+let logPartSignals = [];
 let ruleDatabases = {
   panic_rules: [],
   i2c_rules: {},
@@ -49,6 +52,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 function showEmptyState() {
   diagnosticRecords = [];
   incidentGroups = [];
+  logPartSignals = [];
+  renderPartsHistory();
   setDemoBanner(false);
   updateDashboardStats();
   renderIncidentList();
@@ -163,6 +168,7 @@ function openLink(url) {
 
 // Đổi ngôn ngữ: dịch lại giao diện và phân tích lại log đang xem theo ngôn ngữ mới
 function onLanguageChanged() {
+  renderPartsHistory();
   const banner = document.getElementById('demoBanner');
   if (banner) banner.innerText = t('s.sampleBanner');
   updateDetectedModel();
@@ -641,6 +647,8 @@ function groupDiagnosticRecords(records) {
 // Ingest and Render logs
 function parseAndIngestLogs(rawLogsArray) {
   diagnosticRecords = [];
+  logPartSignals = PartsHistory.fromLogs(rawLogsArray);
+  renderPartsHistory();
   rawLogsArray.forEach((item, idx) => {
     const content = typeof item === 'string' ? item : (item.content || item.rawText || "");
     const name = item.name || item.fileName || `log_${idx + 1}.ips`;
@@ -653,6 +661,63 @@ function parseAndIngestLogs(rawLogsArray) {
   incidentGroups = groupDiagnosticRecords(diagnosticRecords);
   updateDashboardStats();
   renderIncidentList();
+}
+
+function pickPartsHistoryScreenshot() {
+  if (window.webkit?.messageHandlers?.nativeBridge) {
+    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'pickPartsHistory' });
+  } else {
+    showToast(t('parts.iosOnly'), 3500);
+  }
+}
+
+window.onNativePartsHistory = function (result) {
+  partInspectionError = String(result?.error || '');
+  if (!partInspectionError) settingsPartInspection = PartsHistory.fromSettings(result?.lines);
+  renderPartsHistory();
+};
+
+function renderPartsHistory() {
+  const host = document.getElementById('partsHistoryResults');
+  if (!host) return;
+  host.replaceChildren();
+  const paragraph = (text, className = 'parts-note') => {
+    const node = document.createElement('p');
+    node.className = className;
+    node.textContent = text;
+    host.appendChild(node);
+  };
+  const row = finding => {
+    const node = document.createElement('div');
+    node.className = 'parts-row';
+    const part = document.createElement('b');
+    part.textContent = t('parts.part.' + finding.part);
+    const detail = document.createElement('span');
+    detail.textContent = t('parts.status.' + finding.status)
+      + (finding.source === 'log' && finding.file ? ` (${finding.file})` : '');
+    detail.className = 'parts-status ' + finding.status;
+    node.append(part, detail);
+    host.appendChild(node);
+  };
+  if (partInspectionError) paragraph(partInspectionError, 'parts-note parts-error');
+  if (settingsPartInspection) {
+    if (!settingsPartInspection.sectionFound) {
+      paragraph(t('parts.noSection'));
+    } else if (!settingsPartInspection.findings.length) {
+      paragraph(t('parts.noStatus'));
+    } else {
+      paragraph(t('parts.settingsSource'), 'parts-source');
+      settingsPartInspection.findings.forEach(row);
+    }
+  }
+  if (logPartSignals.length) {
+    paragraph(t('parts.logSource'), 'parts-source');
+    logPartSignals.forEach(row);
+    paragraph(t('parts.logCaution'));
+  }
+  if (!settingsPartInspection && !logPartSignals.length && !partInspectionError) {
+    paragraph(t('parts.noEvidence'));
+  }
 }
 
 // ---------------------------------------------------------------------------
