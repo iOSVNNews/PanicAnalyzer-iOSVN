@@ -1,7 +1,7 @@
 {
-  "version": "2.6.2",
-  "build": "21",
-  "commit": "fdbfa50",
+  "version": "2.6.3",
+  "build": "22",
+  "commit": "95dcad2",
   "rules": 53,
   "url": "https://github.com/iOSVNNews/PanicAnalyzer-iOSVN/releases/latest",
   "notes": "Bộ luật 53 lỗi"
