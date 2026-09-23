@@ -334,10 +334,20 @@ final class PairingLogService {
         var session: OpaquePointer?
         var failures: [String] = []
 
+        // 0. iOS < 27 (y như StikDebug): Remote Pairing record → 10.7.0.1:49152.
+        let preferRemote = !supportsOnDevicePairing && hasRemotePairingRecord
+        if preferRemote {
+            do {
+                session = try openRemotePairingSession(deviceIP: deviceIP)
+            } catch {
+                failures.append("Remote Pairing: " + error.localizedDescription)
+            }
+        }
+
         // 1. A stored/imported lockdown record (iLoader, computer, or minted
         //    earlier) over CoreDeviceProxy: the route that works on-device,
         //    because it needs no inbound tunnel listener.
-        if hasLockdownRecord, let recordURL = lockdownRecordURL {
+        if session == nil, hasLockdownRecord, let recordURL = lockdownRecordURL {
             do {
                 session = try connectLockdown(recordURL: recordURL, deviceIP: deviceIP)
             } catch {
@@ -346,7 +356,7 @@ final class PairingLogService {
         }
         // 2. RPPairing tunnel (record from Settings > Developer on iOS 27, or the
         //    Remote Pairing half of an iLoader file).
-        if session == nil, hasRemotePairingRecord {
+        if session == nil, !preferRemote, hasRemotePairingRecord {
             do {
                 session = try openRemotePairingSession(deviceIP: deviceIP)
             } catch {
@@ -356,7 +366,9 @@ final class PairingLogService {
             }
         }
         // 3. Ask lockdownd for a new record (iOS shows "Tin cậy máy tính này?").
-        if session == nil {
+        //    Only when no lockdown record exists yet: with an imported record this
+        //    step only adds a sandbox error (127.0.0.1:62078) that hides the real one.
+        if session == nil, !hasLockdownRecord {
             do {
                 session = try openLockdownSession(deviceIP: deviceIP, reuseStored: false)
             } catch {
@@ -364,6 +376,9 @@ final class PairingLogService {
                 failures.append(Loc.s("Tạo record mới: ", "New record: ", "新建记录：") + error.localizedDescription)
                 throw PairingError.bridge(failures.joined(separator: "\n\n"))
             }
+        }
+        if session == nil, !failures.isEmpty {
+            throw PairingError.bridge(failures.joined(separator: "\n\n"))
         }
         guard let session else {
             throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
@@ -421,6 +436,31 @@ final class PairingLogService {
 
     /// Route 1 (iOS 27 record from Settings > Developer): RPPairing tunnel.
     private func openRemotePairingSession(deviceIP: String) throws -> OpaquePointer {
+        // iOS < 27: đi y hệt StikDebug — cổng RemotePairing cố định 49152, không dò
+        // Bonjour, không dùng cổng đã nhớ (có thể là cổng của thiết bị Apple khác
+        // trên Wi-Fi, nói nhầm dịch vụ nên iPhone reset kết nối).
+        if !supportsOnDevicePairing {
+            LocalVPNConnection.forgetWorkingPort()
+            let fixedPort = LocalVPNConnection.defaultPort
+            let pairingURL = try prepareWorkingPairingFile()
+            defer { try? FileManager.default.removeItem(at: pairingURL) }
+            var session: OpaquePointer?
+            do {
+                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: fixedPort, session: &session)
+            } catch {
+                if FileManager.default.fileExists(atPath: pairingURL.path),
+                   nativePairingFileIsValid(pairingURL) {
+                    try? promoteWorkingPairingFile(pairingURL)
+                }
+                throw PairingError.bridge("[\(deviceIP):\(fixedPort)] " + error.localizedDescription)
+            }
+            guard let session else {
+                throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
+            }
+            try? promoteWorkingPairingFile(pairingURL)
+            return session
+        }
+
         var port = try LocalVPNConnection.remotePairingPort(address: deviceIP)
         let pairingURL = try prepareWorkingPairingFile()
         defer { try? FileManager.default.removeItem(at: pairingURL) }
