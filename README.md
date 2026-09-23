@@ -75,11 +75,9 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 
 ### Quét tự động qua LocalDevVPN trên iOS 27
 
-1. Bật LocalDevVPN/StosVPN. Trong PanicAnalyzer, mở **Cấu hình LocalDevVPN** và
-   nhập đúng **Device IP** đang hiển thị trong VPN (không phải **Tunnel IP**).
-   Mặc định là `10.7.0.1`; có thể dán cả `10.7.0.1/32`. Ô cổng để trống: app tự
-   tìm cổng RemotePairing (dịch vụ `remotepairingd` không cố định ở `49152`, iOS có
-   thể đổi sang `49153`, `49154`… sau khi khởi động lại).
+1. Bật LocalDevVPN/StosVPN với Device IP mặc định `10.7.0.1`. Không cần cấu hình
+   gì trong app: cổng RemotePairing được tự tìm (dịch vụ `remotepairingd` không cố
+   định ở `49152`, iOS có thể đổi sang `49153`, `49154`… sau khi khởi động lại).
 2. Bấm **Ghép đôi thiết bị này**, cho phép **Mạng cục bộ** và **Thông báo** nếu
    iOS hỏi. App bắt đầu quảng bá `_remotepairing-pairable-host._tcp` tên
    **PanicAnalyzer** (tối đa 5 phút, vẫn chạy khi bạn chuyển sang Cài đặt).
@@ -92,20 +90,17 @@ Hoặc dùng nút **Chọn file .ips / .crash** trong app.
 **Hai đường kết nối.** Sau khi ghép đôi, app thử tunnel RPPairing trước. Trên
 chính iPhone, tunnel này có thể bị iOS đóng ngay sau TLS (listener chỉ mở trên
 Wi-Fi — SideInstaller đã ghi nhận). Khi đó app tự chuyển sang **CoreDeviceProxy**
-qua lockdownd cổng `62078` (cách StikDebug dùng): dùng lockdown pairing file bạn
-đã nhập (`.mobiledevicepairing`/`.plist` tạo từ máy tính, iLoader…) hoặc xin
-lockdownd tạo mới — iOS có thể hỏi **Tin cậy máy tính này?**, hãy chọn Tin cậy.
+qua lockdownd cổng `62078` (cách StikDebug dùng) và xin lockdownd tạo pair record
+— iOS có thể hỏi **Tin cậy máy tính này?**, hãy chọn Tin cậy.
 
 Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này** để ghép đôi lại. Record cũ chỉ
-bị thay khi ghép đôi mới thành công; lỗi mạng không xóa khóa cũ. Có thể nhập
-Remote Pairing file có sẵn qua **Cấu hình LocalDevVPN → Nhập pairing file**.
+bị thay khi ghép đôi mới thành công; lỗi mạng không xóa khóa cũ.
 
 Lỗi `Connection refused` (NWError 61) nghĩa là VPN đã chạy nhưng cổng đã lưu
 không còn mở. App tự dò lại cổng qua Bonjour `_remotepairing._tcp` (ưu tiên
-dịch vụ của chính máy), thử từng cổng rồi ghi nhớ cổng dùng được. Nếu vẫn không
-dò được, nhập cổng thủ công trong **Cấu hình LocalDevVPN**.
+dịch vụ của chính máy), thử từng cổng rồi ghi nhớ cổng dùng được.
 
-Nếu vẫn không đến được địa chỉ hiển thị trong lỗi, kiểm tra Device IP, quyền
+Nếu vẫn không đến được địa chỉ hiển thị trong lỗi, kiểm tra Device IP của VPN là `10.7.0.1`, quyền
 Mạng cục bộ của PanicAnalyzer trong Cài đặt iOS rồi ngắt/kết nối lại LocalDevVPN.
 VPN hiện trạng thái bật chưa bảo đảm cổng ghép đôi đã truy cập được. App không
 tự thay đổi cấu hình của ứng dụng VPN khác. Sau khi cổng mở được, nếu ghép đôi

@@ -287,7 +287,6 @@ final class PairingLogService {
                 // (daemon restart). Nothing was sent yet, so one retry on a freshly
                 // discovered port cannot repeat a consent prompt.
                 LocalVPNConnection.forgetWorkingPort()
-                guard LocalVPNConnection.portOverride == nil else { throw error }
                 port = try LocalVPNConnection.resolvePort(
                     address: deviceIP, manualPort: nil, cachedPort: nil, excluding: [port]
                 )

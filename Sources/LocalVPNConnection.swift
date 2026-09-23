@@ -27,31 +27,22 @@ enum LocalVPNConnection {
 
     // MARK: - Saved settings
 
+    /// LocalDevVPN's peer address. Fixed: the app no longer has a VPN settings
+    /// screen (the port is found automatically), so old saved values are dropped.
     static var deviceAddress: String {
-        (try? normalizedAddress(UserDefaults.standard.string(forKey: addressKey) ?? defaultAddress))
-            ?? defaultAddress
+        clearLegacySettings()
+        return defaultAddress
     }
 
-    static func saveDeviceAddress(_ input: String) throws {
-        UserDefaults.standard.set(try normalizedAddress(input), forKey: addressKey)
-    }
-
-    /// Port typed by the user in "Cấu hình LocalDevVPN"; nil means auto-detect.
-    static var portOverride: UInt16? {
-        storedPort(forKey: portOverrideKey)
+    /// Removes the Device IP / port a previous build let the user type in.
+    static func clearLegacySettings() {
+        UserDefaults.standard.removeObject(forKey: addressKey)
+        UserDefaults.standard.removeObject(forKey: portOverrideKey)
     }
 
     /// Port that worked last time (found by Bonjour or the default).
     static var lastWorkingPort: UInt16? {
         storedPort(forKey: lastPortKey)
-    }
-
-    static func savePortOverride(_ input: String) throws {
-        if let port = try normalizedPort(input) {
-            UserDefaults.standard.set(Int(port), forKey: portOverrideKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: portOverrideKey)
-        }
     }
 
     static func rememberWorkingPort(_ port: UInt16) {
@@ -101,12 +92,12 @@ enum LocalVPNConnection {
 
     // MARK: - Endpoint resolution
 
-    /// Finds a RemotePairing port that accepts TCP at `address`, using the saved
-    /// override, then the last working port, then Bonjour discovery.
+    /// Finds a RemotePairing port that accepts TCP at `address`: the last
+    /// working port, then 49152, then Bonjour discovery.
     static func remotePairingPort(address: String) throws -> UInt16 {
         let port = try resolvePort(
             address: address,
-            manualPort: portOverride,
+            manualPort: nil,
             cachedPort: lastWorkingPort
         )
         rememberWorkingPort(port)
@@ -157,8 +148,7 @@ enum LocalVPNConnection {
         throw ConnectionError(
             message: "LocalDevVPN đã chạy nhưng dịch vụ RemotePairing của iOS không mở tại \(address) "
                 + "(đã thử cổng \(triedPorts)) và không dò được cổng qua Bonjour \(remotePairingServiceType). "
-                + "Hãy tắt rồi bật lại LocalDevVPN, bật Wi-Fi, cho phép quyền Mạng cục bộ, rồi thử lại. "
-                + "Nếu biết cổng, nhập nó trong Cấu hình LocalDevVPN."
+                + "Hãy tắt rồi bật lại LocalDevVPN, bật Wi-Fi, cho phép quyền Mạng cục bộ, rồi thử lại."
                 + (lastError.map { " (\($0.localizedDescription))" } ?? ""),
             refused: true
         )
@@ -258,8 +248,8 @@ enum LocalVPNConnection {
                 )
             }
             throw ConnectionError(message: "Không kết nối được LocalDevVPN tại \(address):\(port). "
-                + "Bật hoặc kết nối lại LocalDevVPN, kiểm tra quyền Mạng cục bộ và vào Cấu hình LocalDevVPN "
-                + "để nhập đúng Device IP (không phải Tunnel IP). \(result.1)")
+                + "Bật hoặc kết nối lại LocalDevVPN (Device IP mặc định 10.7.0.1) và kiểm tra quyền "
+                + "Mạng cục bộ của PanicAnalyzer. \(result.1)")
         }
     }
 

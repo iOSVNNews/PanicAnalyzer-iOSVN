@@ -158,13 +158,6 @@ window.onNativePairingCard = function(info) {
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
-function triggerVPNSettings() {
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'vpnSettings' });
-    return;
-  }
-  showToast('Cấu hình LocalDevVPN chỉ có trong ứng dụng iOS.', 3500);
-}
 
 // Load JSON Databases
 async function loadDatabases() {
