@@ -345,6 +345,16 @@ enum LocalVPNConnection {
     /// advertise too, so callers must probe each port against the VPN address.
     /// Requires `_remotepairing._tcp` in NSBonjourServices.
     static func discoverRemotePairingPorts(timeout: TimeInterval) -> [UInt16] {
+        browseRemotePairingPorts(timeout: timeout, loopbackOnly: false)
+    }
+
+    /// Only this iPhone's own advertisement, never another Apple device on the
+    /// same Wi-Fi (whose port would reset our handshake).
+    static func discoverOwnRemotePairingPorts(timeout: TimeInterval) -> [UInt16] {
+        browseRemotePairingPorts(timeout: timeout, loopbackOnly: true)
+    }
+
+    private static func browseRemotePairingPorts(timeout: TimeInterval, loopbackOnly: Bool) -> [UInt16] {
         precondition(!Thread.isMainThread, "Bonjour discovery must not block the UI")
         let queue = DispatchQueue(label: "com.iosvn.panicanalyzer.rp-discovery")
         let done = DispatchSemaphore(value: 0)
@@ -417,6 +427,6 @@ enum LocalVPNConnection {
         browser.start(queue: queue)
         queue.asyncAfter(deadline: .now() + timeout) { finish() }
         done.wait()
-        return queue.sync { loopbackPorts + otherPorts }
+        return queue.sync { loopbackOnly ? loopbackPorts : loopbackPorts + otherPorts }
     }
 }

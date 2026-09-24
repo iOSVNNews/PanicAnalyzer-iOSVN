@@ -258,10 +258,25 @@ async fn open_rppairing_tunnel(
     })
     .await?;
     let mut rpc = RemotePairingClient::new(RpPairingSocket::new(stream), "PanicAnalyzer");
-    within(PAIR_VERIFY_SECS, "R2 pair-verify", async {
-        rpc.connect(&mut *pairing, || async { "000000".to_string() })
+    // R2a: RemotePairing handshake. A reset here means the listener refused
+    // this connection before any key was exchanged (wrong service on the port,
+    // or remotepairingd refusing network peers) — not a key problem.
+    within(STEP_SECS, "R2a bắt tay RemotePairing", async {
+        rpc.attempt_pair_verify()
             .await
-            .map_err(|e| format!("R2 pair-verify: {}", describe(&e)))
+            .map(|_| ())
+            .map_err(|e| format!("R2a bắt tay RemotePairing: {}", describe(&e)))
+    })
+    .await?;
+    // R2b: pair-verify with the stored keys. Never fall back to a host-started
+    // pair-setup (a PIN nobody sees); a rejected key needs a fresh file.
+    within(PAIR_VERIFY_SECS, "R2b xác minh khóa Remote Pairing", async {
+        rpc.validate_pairing(&mut *pairing).await.map_err(|e| {
+            format!(
+                "R2b xác minh khóa Remote Pairing: {} — iPhone không nhận khóa Remote Pairing trong pairing file. Trong iLoader vào Settings > Delete Stored Pairing, cắm cáp tạo lại pairing file rồi bấm Place cho PanicAnalyzer.",
+                describe(&e)
+            )
+        })
     })
     .await?;
     let tunnel_port = within(STEP_SECS, "R3 xin cổng tunnel", async {
@@ -771,47 +786,117 @@ pub unsafe extern "C" fn pa_hardware_query(
         })
         .await
         .map_err(|error| with_heartbeat_note(error, heartbeat_error))?;
-        let mut replies = Vec::with_capacity(queries.len());
-        let mut dead = false;
-        for query in &queries {
-            if dead {
-                replies.push(error_entry("bỏ qua: kết nối diagnostics_relay đã ngắt"));
-                continue;
-            }
-            let answer = tokio::time::timeout(
-                deadline(QUERY_SECS),
-                client.ioregistry(query.plane.as_deref(), query.name.as_deref(), query.class.as_deref()),
-            )
-            .await;
-            replies.push(match answer {
-                Err(_) => {
-                    dead = true;
-                    error_entry(format!("D2 IORegistry quá {QUERY_SECS} giây"))
-                }
-                Ok(Err(error)) => {
-                    dead = is_connection_error(&error);
-                    error_entry(format!("D2 IORegistry: {}", describe(&error)))
-                }
-                Ok(Ok(None)) => plist::Value::Dictionary(plist::Dictionary::new()),
-                Ok(Ok(Some(entry))) if query.names_only => {
-                    let mut names = Vec::new();
-                    tree_names(&plist::Value::Dictionary(entry), &mut names);
-                    let mut dict = plist::Dictionary::new();
-                    dict.insert("names".into(), plist::Value::Array(names));
-                    plist::Value::Dictionary(dict)
-                }
-                Ok(Ok(Some(entry))) => plist::Value::Dictionary(entry),
-            });
-        }
-        if !dead {
-            let _ = tokio::time::timeout(deadline(3), client.goodbye()).await;
-        }
+        let replies = run_hardware_queries(&mut client, &queries).await;
         drop(heartbeat);
         Ok::<_, String>(replies)
     });
+    finish_hardware_reply_to(result, out_data, out_length)
+}
+
+/// Same queries through the Remote Pairing tunnel (iOS 26+ refuses lockdown
+/// over the network: every service connection on 62078 ends in EPIPE).
+/// `pairing_path` is the RPPairing record, `rsd_port` the RemotePairing port.
+#[no_mangle]
+pub unsafe extern "C" fn pa_hardware_query_rp(
+    pairing_path: *const c_char,
+    device_ip: *const c_char,
+    rsd_port: u16,
+    request: *const u8,
+    request_length: usize,
+    out_data: *mut *mut u8,
+    out_length: *mut usize,
+) -> *mut c_char {
+    if request.is_null() || out_data.is_null() || out_length.is_null() {
+        return owned_message("Tham số đọc phần cứng không hợp lệ");
+    }
+    *out_data = null_mut();
+    *out_length = 0;
+    let queries = match parse_hardware_queries(std::slice::from_raw_parts(request, request_length)) {
+        Ok(queries) => queries,
+        Err(error) => return owned_message(error),
+    };
+    if let Err(error) = c_string(pairing_path, "pairing_path") {
+        return error;
+    }
+    let ip = match parse_ipv4(device_ip) {
+        Ok(ip) => ip,
+        Err(error) => return error,
+    };
+    let mut pairing: *mut RpPairingFileHandle = null_mut();
+    let read_error = rp_pairing_file_read(pairing_path, &mut pairing);
+    if !read_error.is_null() {
+        return consume_idevice_error(read_error, "Remote Pairing file không hợp lệ");
+    }
+    let address = SocketAddr::new(IpAddr::V4(ip), rsd_port);
+    let result = idevice_ffi::run_sync_local(async {
+        let (mut adapter, mut handshake) = open_rppairing_tunnel(address, &mut (*pairing).0).await?;
+        let mut client = within(SERVICE_SECS, "D1 diagnostics_relay qua RSD", async {
+            DiagnosticsRelayClient::connect_rsd(&mut adapter, &mut handshake)
+                .await
+                .map_err(|e| format!("D1 diagnostics_relay qua RSD: {}", describe(&e)))
+        })
+        .await?;
+        let replies = run_hardware_queries(&mut client, &queries).await;
+        drop(client);
+        drop((adapter, handshake));
+        Ok::<_, String>(replies)
+    });
+    rp_pairing_file_free(pairing);
+    finish_hardware_reply_to(result, out_data, out_length)
+}
+
+/// Runs the IORegistry queries on an open diagnostics_relay client.
+async fn run_hardware_queries(
+    client: &mut DiagnosticsRelayClient,
+    queries: &[HardwareQuery],
+) -> Vec<plist::Value> {
+    let mut replies = Vec::with_capacity(queries.len());
+    let mut dead = false;
+    for query in queries {
+        if dead {
+            replies.push(error_entry("bỏ qua: kết nối diagnostics_relay đã ngắt"));
+            continue;
+        }
+        let answer = tokio::time::timeout(
+            deadline(QUERY_SECS),
+            client.ioregistry(query.plane.as_deref(), query.name.as_deref(), query.class.as_deref()),
+        )
+        .await;
+        replies.push(match answer {
+            Err(_) => {
+                dead = true;
+                error_entry(format!("D2 IORegistry quá {QUERY_SECS} giây"))
+            }
+            Ok(Err(error)) => {
+                dead = is_connection_error(&error);
+                error_entry(format!("D2 IORegistry: {}", describe(&error)))
+            }
+            Ok(Ok(None)) => plist::Value::Dictionary(plist::Dictionary::new()),
+            Ok(Ok(Some(entry))) if query.names_only => {
+                let mut names = Vec::new();
+                tree_names(&plist::Value::Dictionary(entry), &mut names);
+                let mut dict = plist::Dictionary::new();
+                dict.insert("names".into(), plist::Value::Array(names));
+                plist::Value::Dictionary(dict)
+            }
+            Ok(Ok(Some(entry))) => plist::Value::Dictionary(entry),
+        });
+    }
+    if !dead {
+        let _ = tokio::time::timeout(deadline(3), client.goodbye()).await;
+    }
+    replies
+}
+
+/// Writes the replies as an XML plist for Swift (freed with pa_bytes_free).
+unsafe fn finish_hardware_reply_to(
+    result: Result<Vec<plist::Value>, String>,
+    out_data: *mut *mut u8,
+    out_length: *mut usize,
+) -> *mut c_char {
     let replies = match result {
         Ok(replies) => replies,
-        Err(error) => return owned_message(format!("Không đọc được phần cứng qua lockdown ({error})")),
+        Err(error) => return owned_message(format!("Không đọc được phần cứng ({error})")),
     };
     let mut bytes = Vec::new();
     if let Err(error) = plist::to_writer_xml(&mut bytes, &plist::Value::Array(replies)) {
@@ -1119,7 +1204,7 @@ mod tests {
         let error = unsafe { pa_session_connect(pairing.as_ptr(), ip.as_ptr(), port, &mut session) };
         assert!(session.is_null());
         let message = take_message(error);
-        assert!(message.contains("R2 pair-verify"), "{message}");
+        assert!(message.contains("R2a"), "{message}");
         assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
         drop(listener);
     }
@@ -1246,6 +1331,26 @@ mod tests {
             assert!(!error.is_null());
             pa_error_free(error);
         }
+    }
+
+    #[test]
+    fn remote_pairing_hardware_query_gives_up_on_a_silent_device() {
+        shrink_deadlines();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let pairing = temp_rp_pairing_file("hw-silent");
+        let ip = CString::new("127.0.0.1").unwrap();
+        let request = br#"<plist version="1.0"><array><dict><key>name</key><string>AppleSmartBattery</string></dict></array></plist>"#;
+        let mut data = null_mut();
+        let mut length = 0usize;
+        let started = std::time::Instant::now();
+        let error = unsafe {
+            pa_hardware_query_rp(pairing.as_ptr(), ip.as_ptr(), port, request.as_ptr(), request.len(), &mut data, &mut length)
+        };
+        assert!(data.is_null() && length == 0);
+        assert!(take_message(error).contains("R2a"));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        drop(listener);
     }
 
     #[test]

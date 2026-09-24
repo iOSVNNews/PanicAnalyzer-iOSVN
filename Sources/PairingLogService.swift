@@ -321,6 +321,16 @@ final class PairingLogService {
         }
     }
 
+    /// Route and port of the last successful scan; the hardware read reuses them.
+    private(set) var lastRoute = ""
+    private(set) var lastRemotePort = LocalVPNConnection.defaultPort
+
+    /// iOS 26+ refuses lockdown service connections from the network (EPIPE
+    /// right after StartSession); only Remote Pairing works there.
+    static var lockdownRefusedOverNetwork: Bool {
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+    }
+
     /// Connecting stops trying further routes after this long, so the UI always
     /// gets an answer (each route also has its own deadlines in the bridge).
     private let connectBudget: TimeInterval = 70
@@ -375,11 +385,14 @@ final class PairingLogService {
         if let recordURL = lockdownURL {
             proxy = ("CoreDeviceProxy", { try self.connectLockdown(recordURL: recordURL, deviceIP: deviceIP) })
         }
-        // iOS < 27: Remote Pairing at 49152 exactly like StikDebug, then
-        // CoreDeviceProxy. iOS 27: CoreDeviceProxy before the RPPairing tunnel,
-        // whose on-device listener iOS may close.
-        let ordered: [Route?] = supportsOnDevicePairing ? [proxy, remote] : [remote, proxy]
-        routes += ordered.compactMap { $0 }
+        // iOS 17.4–18: lockdown (+heartbeat) first, then Remote Pairing at 49152
+        // like StikDebug, then CoreDeviceProxy. iOS 26+: lockdown over the
+        // network is refused, so Remote Pairing goes first.
+        let lockdownRoute = routes.first
+        let ordered: [Route?] = Self.lockdownRefusedOverNetwork
+            ? [remote, lockdownRoute, proxy]
+            : [lockdownRoute, remote, proxy]
+        routes = ordered.compactMap { $0 }
 
         var rootEntries: [String] = []
         var connectedRoute = ""
@@ -391,6 +404,7 @@ final class PairingLogService {
                 rootEntries = try list(session: opened, directory: "")
                 session = opened
                 connectedRoute = name
+                lastRoute = name
             } catch {
                 pa_session_free(opened)
                 failures.append("\(name): "
@@ -413,14 +427,21 @@ final class PairingLogService {
                 let opened = try route.connect()
                 accept(opened, via: route.name)
             } catch {
-                failures.append("\(route.name): " + error.localizedDescription)
+                var text = "\(route.name): " + error.localizedDescription
+                if Self.lockdownRefusedOverNetwork, route.name != "Remote Pairing",
+                   text.contains("BrokenPipe") {
+                    text += Loc.s(" — iOS 26 trở lên chặn lockdown qua mạng, lỗi này là bình thường; chỉ Remote Pairing dùng được.",
+                                  " — iOS 26 and later block lockdown over the network, so this is expected; only Remote Pairing works.",
+                                  " —— iOS 26 及以上阻止通过网络连接 lockdown，此错误属正常；只能使用 Remote Pairing。")
+                }
+                failures.append(text)
             }
         }
 
         // Ask lockdownd for a new record (iOS shows "Tin cậy máy tính này?").
         // Only when no lockdown record exists yet: with an imported record this
         // step only adds a sandbox error (127.0.0.1:62078) that hides the real one.
-        if session == nil, !hasLockdownRecord, lockdownReachable {
+        if session == nil, !hasLockdownRecord, lockdownReachable, !Self.lockdownRefusedOverNetwork {
             progress(Loc.s("Đang xin iPhone tạo lockdown record mới…",
                            "Asking the iPhone for a new lockdown record…",
                            "正在请求 iPhone 创建新的 lockdown 记录…"))
@@ -508,8 +529,9 @@ final class PairingLogService {
 
     // MARK: - Hardware identity (Linh kiện tab)
 
-    /// diagnostics_relay needs the classic lockdown record (iLoader, computer).
-    var canReadHardware: Bool { hasLockdownRecord }
+    /// diagnostics_relay over lockdown (lockdown record) or over the Remote
+    /// Pairing tunnel (RPPairing record; the only way on iOS 26+).
+    var canReadHardware: Bool { hasLockdownRecord || hasRemotePairingRecord }
 
     /// Reads what the device states about its display authentication IC and
     /// battery, over lockdown + heartbeat. Two short connections: the first
@@ -517,19 +539,41 @@ final class PairingLogService {
     func readHardwareReport() throws -> [String: Any] {
         operationLock.lock()
         defer { operationLock.unlock() }
-        guard hasLockdownRecord, let recordURL = lockdownRecordURL else {
-            throw PairingError.bridge(Loc.s("Cần pairing file có phần lockdown (iLoader) để đọc phần cứng.",
-                                            "A pairing file with a lockdown record (iLoader) is needed to read hardware.",
-                                            "读取硬件需要包含 lockdown 记录的配对文件（iLoader）。"))
-        }
         let deviceIP = LocalVPNConnection.deviceAddress
+        // Same route as the scan that just worked: Remote Pairing when that is
+        // what connected (always on iOS 26+), otherwise lockdown.
+        let useRemote = hasRemotePairingRecord
+            && (lastRoute == "Remote Pairing" || !hasLockdownRecord || Self.lockdownRefusedOverNetwork)
+        let query: ([[String: Any]]) throws -> [[String: Any]]
+        if useRemote, let pairingURL = pairingFileURL {
+            let port = lastRemotePort
+            query = { queries in
+                try self.hardwareQuery(deviceIP: deviceIP, queries) { ip, request, length, bytes, count in
+                    pairingURL.path.withCString { path in
+                        pa_hardware_query_rp(path, ip, port, request, length, bytes, count)
+                    }
+                }
+            }
+        } else if hasLockdownRecord, let recordURL = lockdownRecordURL {
+            query = { queries in
+                try self.hardwareQuery(deviceIP: deviceIP, queries) { ip, request, length, bytes, count in
+                    recordURL.path.withCString { path in
+                        pa_hardware_query(path, ip, request, length, bytes, count)
+                    }
+                }
+            }
+        } else {
+            throw PairingError.bridge(Loc.s("Cần pairing file (iLoader) để đọc phần cứng.",
+                                            "A pairing file (iLoader) is needed to read hardware.",
+                                            "读取硬件需要配对文件（iLoader）。"))
+        }
         let started = Date()
-        let first = try hardwareQuery(recordURL: recordURL, deviceIP: deviceIP, HardwareIdentity.firstPass)
+        let first = try query(HardwareIdentity.firstPass)
         let names = (first.first?["names"] as? [String]) ?? []
         let candidates = HardwareIdentity.displayAuthCandidates(from: names)
         var second: [[String: Any]] = []
         if Date().timeIntervalSince(started) < 40 {
-            second = try hardwareQuery(recordURL: recordURL, deviceIP: deviceIP, candidates.map { ["name": $0] })
+            second = try query(candidates.map { ["name": $0] })
         }
         let pairs = zip(candidates, second).map { (name: $0, entry: $1) }
         var report: [String: Any] = [
@@ -541,17 +585,19 @@ final class PairingLogService {
         return report
     }
 
-    private func hardwareQuery(recordURL: URL, deviceIP: String,
-                               _ queries: [[String: Any]]) throws -> [[String: Any]] {
+    typealias HardwareCall = (UnsafePointer<CChar>, UnsafePointer<UInt8>?, Int,
+                              UnsafeMutablePointer<UnsafeMutablePointer<UInt8>?>,
+                              UnsafeMutablePointer<Int>) -> UnsafeMutablePointer<CChar>?
+
+    private func hardwareQuery(deviceIP: String, _ queries: [[String: Any]],
+                               call: HardwareCall) throws -> [[String: Any]] {
         let request = try PropertyListSerialization.data(fromPropertyList: queries, format: .xml, options: 0)
         var bytes: UnsafeMutablePointer<UInt8>?
         var length = 0
-        try recordURL.path.withCString { path in
-            try deviceIP.withCString { ip in
-                try request.withUnsafeBytes { raw in
-                    let base = raw.bindMemory(to: UInt8.self).baseAddress
-                    try check(pa_hardware_query(path, ip, base, raw.count, &bytes, &length))
-                }
+        try deviceIP.withCString { ip in
+            try request.withUnsafeBytes { raw in
+                let base = raw.bindMemory(to: UInt8.self).baseAddress
+                try check(call(ip, base, raw.count, &bytes, &length))
             }
         }
         guard let bytes, length > 0 else { return queries.map { _ in [:] } }
@@ -584,24 +630,37 @@ final class PairingLogService {
         // trên Wi-Fi, nói nhầm dịch vụ nên iPhone reset kết nối).
         if !supportsOnDevicePairing {
             LocalVPNConnection.forgetWorkingPort()
-            let fixedPort = LocalVPNConnection.defaultPort
             let pairingURL = try prepareWorkingPairingFile()
             defer { try? FileManager.default.removeItem(at: pairingURL) }
-            var session: OpaquePointer?
-            do {
-                try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: fixedPort, session: &session)
-            } catch {
-                if FileManager.default.fileExists(atPath: pairingURL.path),
-                   nativePairingFileIsValid(pairingURL) {
+            // 49152 first, like StikDebug. If that port refuses or resets the
+            // handshake before any key is used (R1/R2a), RemotePairing is on
+            // another port: try this iPhone's own Bonjour advertisement only.
+            var ports = [LocalVPNConnection.defaultPort]
+            var failures: [String] = []
+            var index = 0
+            while index < ports.count {
+                let port = ports[index]
+                index += 1
+                var session: OpaquePointer?
+                do {
+                    try connect(pairingURL: pairingURL, deviceIP: deviceIP, port: port, session: &session)
+                    guard let session else {
+                        throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
+                    }
                     try? promoteWorkingPairingFile(pairingURL)
+                    lastRemotePort = port
+                    return session
+                } catch {
+                    failures.append("[\(deviceIP):\(port)] " + error.localizedDescription)
+                    if index == 1, Self.isRejectedBeforeKeys(error) {
+                        let tried = Set(ports)
+                        let own = LocalVPNConnection.discoverOwnRemotePairingPorts(timeout: 4)
+                            .filter { !tried.contains($0) }
+                        ports.append(contentsOf: own.prefix(2))
+                    }
                 }
-                throw PairingError.bridge("[\(deviceIP):\(fixedPort)] " + error.localizedDescription)
             }
-            guard let session else {
-                throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
-            }
-            try? promoteWorkingPairingFile(pairingURL)
-            return session
+            throw PairingError.bridge(failures.joined(separator: "\n"))
         }
 
         var port = try LocalVPNConnection.remotePairingPort(address: deviceIP)
@@ -636,6 +695,7 @@ final class PairingLogService {
             throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
         }
         try? promoteWorkingPairingFile(pairingURL)
+        lastRemotePort = port
         return session
     }
 
@@ -729,6 +789,13 @@ final class PairingLogService {
             }
         }
         session = opened
+    }
+
+    /// Refused TCP (R1) or a reset of the RemotePairing handshake (R2a): the
+    /// port does not serve RemotePairing for us; no key has been used yet.
+    static func isRejectedBeforeKeys(_ error: Error) -> Bool {
+        if let pairing = error as? PairingError, isRefusedBeforePairing(pairing) { return true }
+        return error.localizedDescription.contains("R2a")
     }
 
     /// The Rust bridge reports the initial TCP connect as "connect: …". A refusal

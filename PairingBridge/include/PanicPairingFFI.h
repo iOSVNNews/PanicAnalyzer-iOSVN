@@ -75,6 +75,18 @@ char *pa_hardware_query(
     size_t *out_length
 );
 
+/* Same queries through the Remote Pairing tunnel (iOS 26+: lockdown over the
+ * network is refused). pairing_path is the RPPairing record. */
+char *pa_hardware_query_rp(
+    const char *pairing_path,
+    const char *device_ip,
+    uint16_t rsd_port,
+    const uint8_t *request,
+    size_t request_length,
+    uint8_t **out_data,
+    size_t *out_length
+);
+
 char *pa_session_list(
     PaLogSession *session,
     const char *directory,
