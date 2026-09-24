@@ -120,6 +120,24 @@ const comps = PartsHistory.fromHardware({ components: [
   { part: 'touch_id', nodes: 2, authPassed: false } ] });
 assert.deepEqual(comps.map(({ part, status }) => [part, status]), [['face_id', 'genuine'], ['touch_id', 'authfail']]);
 
+// Face ID bị iOS tắt và sê-ri khác sê-ri gốc SysCfg là dấu hiệu linh kiện.
+const local = PartsHistory.fromHardware({
+  biometrics: { part: 'face_id', state: 'not_available', code: -6 },
+  syscfg: [{ part: 'battery', key: 'Batt', factory: 'F8Y111', current: 'ABC999', match: false },
+           { part: 'touch_id', key: 'NSrN', factory: '0A0B0C0D', current: '0A0B0C0D', match: true },
+           { part: 'rear_camera', key: 'BCMS', factory: 'DN8XYZ' }] });
+assert.deepEqual(local.map(({ part, status }) => [part, status]), [['face_id', 'unavailable'], ['battery', 'replaced']]);
+assert.equal(PartsHistory.assessScan(0, [], [], local), 'found');
+assert.deepEqual(PartsHistory.fromHardware({ biometrics: { part: 'face_id', state: 'not_enrolled' } }), []);
+// Báo cáo tại chỗ (Face ID/SysCfg) và báo cáo pairing ghép vào nhau.
+const mergedLocal = PartsHistory.mergeHardwareReport(good, { biometrics: { part: 'face_id', state: 'ok' } });
+assert.equal(mergedLocal.display.authPassed, true);
+assert.equal(mergedLocal.biometrics.state, 'ok');
+assert.equal(mergedLocal.errors, undefined);
+const mergedPair = PartsHistory.mergeHardwareReport(mergedLocal, { display: { authPassed: false }, errors: ['x'] });
+assert.equal(mergedPair.biometrics.state, 'ok');
+assert.equal(mergedPair.display.authPassed, false);
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

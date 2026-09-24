@@ -917,6 +917,6 @@ a.about-row b { color: var(--brand-bright); }
 .parts-row b { font-weight: 600; flex-shrink: 0; white-space: nowrap; }
 .parts-status { text-align: right; color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .parts-status.unknown, .parts-status.unverified, .parts-status.finish_repair { color: var(--brand-bright); }
-.parts-status.authfail, .parts-status.nongenuine, .parts-status.auth_error { color: var(--brand-bright); font-weight: 700; }
+.parts-status.authfail, .parts-status.nongenuine, .parts-status.auth_error, .parts-status.unavailable, .parts-status.replaced { color: var(--brand-bright); font-weight: 700; }
 .parts-status.genuine { color: var(--text-primary); font-weight: 600; }
 .parts-scan-summary.verified .parts-scan-indicator { background: #30d158; }

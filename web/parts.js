@@ -160,6 +160,18 @@ const PartsHistory = (() => {
       findings.push({ part: item.part, status: item.authPassed ? 'genuine' : 'authfail',
         source: 'hardware', path: String(item.path || '') });
     }
+    // Face ID / Touch ID: iOS tắt khi cảm biến hỏng hoặc không khớp máy.
+    const bio = report.biometrics || {};
+    if (bio.part && bio.state === 'not_available' && !findings.some(f => f.part === bio.part)) {
+      findings.push({ part: bio.part, status: 'unavailable', source: 'hardware' });
+    }
+    // Sê-ri đang lắp khác sê-ri gốc ghi trong SysCfg: linh kiện đã được thay.
+    for (const item of Array.isArray(report.syscfg) ? report.syscfg : []) {
+      if (!item || item.match !== false || !item.part) continue;
+      if (findings.some(f => f.part === item.part)) continue;
+      findings.push({ part: item.part, status: 'replaced', source: 'hardware',
+        factory: String(item.factory || ''), current: String(item.current || '') });
+    }
     const flags = battery.authFlags || {};
     const values = Object.values(flags).filter(v => v === 0 || v === 1);
     if (values.length && !findings.some(f => f.part === 'battery')) {
@@ -193,19 +205,19 @@ const PartsHistory = (() => {
   // phần đã đọc được ở lần trước thay vì làm mục Pin/Màn hình biến mất.
   function mergeHardwareReport(previous, next) {
     const has = value => !!value && typeof value === 'object' && Object.keys(value).length > 0;
+    const filled = value => Array.isArray(value) && value.length > 0;
     if (!has(previous)) return next;
     if (!has(next)) return previous;
-    const merged = Object.assign({}, next);
+    // Mỗi nguồn (pairing, Face ID/Touch ID, SysCfg) gửi phần của mình: giữ phần
+    // còn lại của lần trước; lỗi chỉ thuộc về lần đọc mới nhất.
+    const merged = Object.assign({}, previous, next);
+    if (next.errors) merged.errors = next.errors; else delete merged.errors;
     if (!has(next.display) && has(previous.display)) merged.display = previous.display;
     if (has(previous.battery)) merged.battery = Object.assign({}, previous.battery, next.battery || {});
-    if (!(Array.isArray(next.parts) && next.parts.length) && Array.isArray(previous.parts)) merged.parts = previous.parts;
-    if (!(Array.isArray(next.components) && next.components.length) && Array.isArray(previous.components)) {
-      merged.components = previous.components;
+    for (const key of ['parts', 'components', 'raw', 'syscfg']) {
+      if (!filled(next[key]) && filled(previous[key])) merged[key] = previous[key];
     }
-    if (!(Array.isArray(next.raw) && next.raw.length) && Array.isArray(previous.raw)) {
-      merged.raw = previous.raw;
-      merged.probe = previous.probe;
-    }
+    if (!filled(next.raw) && previous.probe) merged.probe = previous.probe;
     return merged;
   }
 

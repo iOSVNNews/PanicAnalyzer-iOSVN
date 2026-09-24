@@ -412,6 +412,9 @@ final class LogBridge: NSObject {
                 self.scanRunning = false
                 self.scanStateLock.unlock()
             }
+            // Face ID / Touch ID (mọi bản) và sê-ri gốc SysCfg (bản TrollStore/JB):
+            // đọc ngay trên máy, không cần ghép đôi.
+            self.deliverHardwareReport(LocalHardware.report(privileged: self.isPrivilegedBuild))
             // Trên máy JB / TrollStore đọc thẳng file log, không cần ghép đôi.
             let direct = self.readFilesystemLogs()
             if !direct.logs.isEmpty {

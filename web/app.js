@@ -771,7 +771,45 @@ function renderHardwareReport(host, paragraph) {
     host.appendChild(node);
   };
   paragraph(t('parts.hwSource'), 'parts-source');
+  renderLocalHardware(addRow);
 
+  // Các dòng Màn hình/Pin chỉ có khi đã đọc qua pairing (bản TrollStore/JB
+  // chỉ có phần đọc ngay trên máy).
+  const pairedRead = !!(hardwareReport.probe || Object.keys(hardwareReport.display || {}).length
+    || Object.keys(hardwareReport.battery || {}).length || hardwareReport.errors);
+  if (pairedRead) renderPairedHardware(host, paragraph, addRow);
+  paragraph(t('parts.hwCaution'));
+  renderHardwareRaw(host, paragraph, addRow);
+}
+
+// Face ID / Touch ID (API công khai) và sê-ri gốc SysCfg (bản TrollStore/JB).
+function renderLocalHardware(addRow) {
+  const bio = hardwareReport.biometrics || {};
+  if (bio.part && bio.state) {
+    const status = bio.state === 'not_available' ? 'unavailable'
+      : (bio.state === 'ok' || bio.state === 'not_enrolled') ? 'genuine' : 'unverified';
+    addRow(t('parts.part.' + bio.part), t('parts.bio.' + bio.state), status);
+  }
+  for (const item of Array.isArray(hardwareReport.syscfg) ? hardwareReport.syscfg : []) {
+    if (!item || !item.part || item.part === 'syscfg') continue;
+    let text;
+    let status = '';
+    if (item.match === true) {
+      text = t('parts.sys.match', { s: item.factory });
+      status = 'genuine';
+    } else if (item.match === false) {
+      text = t('parts.sys.mismatch', { f: item.factory, c: item.current });
+      status = 'replaced';
+    } else if (item.factory) {
+      text = t('parts.sys.factory', { s: item.factory });
+    } else {
+      text = t('parts.sys.current', { s: item.current });
+    }
+    addRow(t('parts.part.' + item.part), text, status);
+  }
+}
+
+function renderPairedHardware(host, paragraph, addRow) {
   const support = PartsHistory.authSupport(window.__DEVICE_MODEL__);
   const display = hardwareReport.display || {};
   const panel = display.panelSerial ? ` · ${display.panelSerial}` : '';
@@ -813,8 +851,9 @@ function renderHardwareReport(host, paragraph) {
   }
   if (facts.length) addRow('', facts.join(' · '), '');
   // Linh kiện khác có cờ auth-passed (camera, Face ID, Touch ID…).
+  const bioPart = (hardwareReport.biometrics || {}).part;
   for (const finding of hardwarePartSignals) {
-    if (finding.part === 'display' || finding.part === 'battery') continue;
+    if (finding.part === 'display' || finding.part === 'battery' || finding.part === bioPart) continue;
     if (finding.status !== 'genuine' && finding.status !== 'authfail') continue;
     addRow(t('parts.part.' + finding.part),
       t(finding.status === 'genuine' ? 'parts.hw.partPass' : 'parts.hw.partFail'), finding.status);
@@ -829,8 +868,6 @@ function renderHardwareReport(host, paragraph) {
   if (Array.isArray(hardwareReport.errors) && hardwareReport.errors.length) {
     paragraph(t('parts.hw.error', { e: String(hardwareReport.errors[0]).slice(0, 200) }), 'parts-note parts-error');
   }
-  paragraph(t('parts.hwCaution'));
-  renderHardwareRaw(host, paragraph, addRow);
 }
 
 // Dữ liệu thô của các node xác thực: không hiện trong app (tên node dài, chỉ
@@ -846,7 +883,8 @@ function renderHardwareRaw(host, paragraph, addRow) {
       app: window.__APP_VERSION__ || '', model: window.__DEVICE_MODEL__ || '',
       ios: window.__IOS_VERSION__ || '', display: hardwareReport.display || {},
       battery: hardwareReport.battery || {}, parts: hardwareReport.parts || [],
-      components: hardwareReport.components || [], probe, raw,
+      components: hardwareReport.components || [], biometrics: hardwareReport.biometrics || {},
+      syscfg: hardwareReport.syscfg || [], probe, raw,
       errors: hardwareReport.errors || []
     };
     const text = JSON.stringify(payload, null, 1);
