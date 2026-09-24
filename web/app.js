@@ -746,14 +746,54 @@ function loadCachedHardwareReport() {
   } catch (_) { return null; }
 }
 
+// Sê-ri linh kiện lần trước (theo đời máy) để phát hiện linh kiện bị thay, và
+// các linh kiện đã đổi sê-ri (giữ 30 ngày) để tab Linh kiện còn hiện sau đó.
+const PARTS_BASELINE_KEY = 'panic.partsBaseline';
+const CHANGED_DAYS = 30;
+let changedPartsNow = [];
+
+function readStore(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; }
+}
+function writeStore(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+}
+
+function trackPartChanges(report) {
+  const model = window.__DEVICE_MODEL__ || '';
+  const saved = readStore(PARTS_BASELINE_KEY);
+  const baseline = saved && saved.model === model ? saved : { model, ids: {}, changed: {}, notified: '' };
+  const ids = PartsHistory.partIdentities(report);
+  const now = Date.now();
+  for (const part of PartsHistory.changedParts(baseline.ids, ids)) {
+    baseline.changed[part] = { from: baseline.ids[part], to: ids[part], at: now };
+  }
+  for (const [part, info] of Object.entries(baseline.changed)) {
+    if (!info || now - Number(info.at) > CHANGED_DAYS * 86400000) delete baseline.changed[part];
+  }
+  baseline.ids = Object.assign({}, baseline.ids, ids);
+  changedPartsNow = Object.keys(baseline.changed);
+  const overview = PartsHistory.partsOverview(report, logPartSignals, model, changedPartsNow);
+  const alerts = overview.filter(item => PartsHistory.isAlert(item.status));
+  const key = alerts.map(item => item.part + ':' + item.status).join('|');
+  if (key && key !== baseline.notified) notifyReplacedParts(alerts);
+  baseline.notified = key;
+  writeStore(PARTS_BASELINE_KEY, baseline);
+}
+
+// Thông báo iOS: "Phát hiện linh kiện đã thay" kèm danh sách.
+function notifyReplacedParts(alerts) {
+  const list = alerts.map(item => `${t('parts.part.' + item.part)}: ${t('parts.status.' + item.status)}`).join(' · ');
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge;
+  if (bridge) bridge.postMessage({ action: 'notifyParts', title: t('parts.alert.title'), body: list });
+}
+
 window.onNativeHardwareReport = function(report) {
   const incoming = report && typeof report === 'object' ? report : null;
   hardwareReport = PartsHistory.mergeHardwareReport(hardwareReport || loadCachedHardwareReport(), incoming);
-  try {
-    localStorage.setItem(HARDWARE_CACHE_KEY,
-      JSON.stringify({ model: window.__DEVICE_MODEL__ || '', report: hardwareReport }));
-  } catch (_) {}
+  writeStore(HARDWARE_CACHE_KEY, { model: window.__DEVICE_MODEL__ || '', report: hardwareReport });
   hardwarePartSignals = PartsHistory.fromHardware(hardwareReport);
+  trackPartChanges(hardwareReport);
   renderPartsHistory();
 };
 
@@ -770,104 +810,70 @@ function renderHardwareReport(host, paragraph) {
     node.append(part, detail);
     host.appendChild(node);
   };
-  paragraph(t('parts.hwSource'), 'parts-source');
-  renderLocalHardware(addRow);
-
-  // Các dòng Màn hình/Pin chỉ có khi đã đọc qua pairing (bản TrollStore/JB
-  // chỉ có phần đọc ngay trên máy).
-  const pairedRead = !!(hardwareReport.probe || Object.keys(hardwareReport.display || {}).length
-    || Object.keys(hardwareReport.battery || {}).length || hardwareReport.errors);
-  if (pairedRead) renderPairedHardware(host, paragraph, addRow);
+  const overview = PartsHistory.partsOverview(hardwareReport, logPartSignals,
+    window.__DEVICE_MODEL__, changedPartsNow);
+  const alerts = overview.filter(item => PartsHistory.isAlert(item.status));
+  if (alerts.length) {
+    const banner = document.createElement('div');
+    banner.className = 'parts-alert';
+    const title = document.createElement('b');
+    title.textContent = t('parts.alert.title');
+    const list = document.createElement('span');
+    list.textContent = alerts.map(item => t('parts.part.' + item.part)).join(', ');
+    banner.append(title, list);
+    host.appendChild(banner);
+  }
+  paragraph(t('parts.overviewTitle'), 'parts-source');
+  const battery = hardwareReport.battery || {};
+  for (const item of overview) {
+    addRow(t('parts.part.' + item.part), overviewText(item), item.status);
+    if (item.part === 'battery') {
+      const facts = batteryFacts(battery);
+      if (facts.length) addRow('', facts.join(' · '), '');
+    }
+  }
+  const authError = hardwarePartSignals.find(f => f.part === 'battery' && f.status === 'auth_error');
+  if (authError) paragraph(t('parts.hw.batteryAuthError', { n: authError.code || '?' }), 'parts-note parts-error');
+  const clue = PartsHistory.capacityClue(battery);
+  if (clue) paragraph(t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }), 'parts-note parts-error');
+  if (Array.isArray(hardwareReport.errors) && hardwareReport.errors.length) {
+    paragraph(t('parts.hw.error', { e: String(hardwareReport.errors[0]).slice(0, 200) }), 'parts-note parts-error');
+  }
   paragraph(t('parts.hwCaution'));
   renderHardwareRaw(host, paragraph, addRow);
 }
 
-// Face ID / Touch ID (API công khai) và sê-ri gốc SysCfg (bản TrollStore/JB).
-function renderLocalHardware(addRow) {
-  const bio = hardwareReport.biometrics || {};
-  if (bio.part && bio.state) {
-    const status = bio.state === 'not_available' ? 'unavailable'
-      : (bio.state === 'ok' || bio.state === 'not_enrolled') ? 'genuine' : 'unverified';
-    addRow(t('parts.part.' + bio.part), t('parts.bio.' + bio.state), status);
-  }
-  for (const item of Array.isArray(hardwareReport.syscfg) ? hardwareReport.syscfg : []) {
-    if (!item || !item.part || item.part === 'syscfg') continue;
-    let text;
-    let status = '';
-    if (item.match === true) {
-      text = t('parts.sys.match', { s: item.factory });
-      status = 'genuine';
-    } else if (item.match === false) {
-      text = t('parts.sys.mismatch', { f: item.factory, c: item.current });
-      status = 'replaced';
-    } else if (item.factory) {
-      text = t('parts.sys.factory', { s: item.factory });
-    } else {
-      text = t('parts.sys.current', { s: item.current });
-    }
-    addRow(t('parts.part.' + item.part), text, status);
-  }
-}
-
-function renderPairedHardware(host, paragraph, addRow) {
+// Chữ của một dòng tổng quan: trạng thái + chi tiết ngắn.
+function overviewText(item) {
   const support = PartsHistory.authSupport(window.__DEVICE_MODEL__);
   const display = hardwareReport.display || {};
-  const panel = display.panelSerial ? ` · ${display.panelSerial}` : '';
-  if (typeof display.authPassed === 'boolean') {
-    addRow(t('parts.part.display'),
-      t(display.authPassed ? 'parts.hw.displayPass' : 'parts.hw.displayFail') + panel,
-      display.authPassed ? 'genuine' : 'authfail');
-  } else if (support.display === false) {
-    // Đời máy này không có IC xác thực màn hình: không đọc được là đúng.
-    addRow(t('parts.part.display'), t('parts.hw.displayNotSupported'), '');
-  } else if (display.panelSerial || display.panelId) {
-    addRow(t('parts.part.display'), t('parts.hw.displayNoFlag') + panel, 'unverified');
-  } else {
-    addRow(t('parts.part.display'), t('parts.hw.displayUnread'), 'unknown');
+  if (item.status === 'no_flag' && item.part === 'display' && support.display === false) {
+    return t('parts.hw.displayNotSupported');
   }
+  if (item.status === 'no_flag' && item.part === 'battery' && support.battery === false) {
+    return t('parts.hw.batteryNotSupported');
+  }
+  if (item.status === 'working') return t('parts.bio.' + item.detail);
+  if (item.status === 'unavailable') return t('parts.bio.not_available');
+  let text = t('parts.status.' + item.status);
+  if (item.part === 'display' && display.panelSerial && item.status === 'genuine') text += ` · ${display.panelSerial}`;
+  if (item.status === 'replaced') {
+    const sys = (hardwareReport.syscfg || []).find(entry => entry && entry.part === item.part);
+    if (sys && sys.factory && sys.current) text = t('parts.sys.mismatch', { f: sys.factory, c: sys.current });
+  }
+  if (item.factory) text += ' · ' + t('parts.sys.factory', { s: item.factory });
+  if (item.source === 'log') text += ' ' + t('parts.fromLog');
+  return text;
+}
 
-  const battery = hardwareReport.battery || {};
-  const batteryFinding = hardwarePartSignals.find(f => f.part === 'battery' && f.status !== 'capacity_anomaly');
-  const clue = PartsHistory.capacityClue(battery);
+function batteryFacts(battery) {
   const facts = [];
   if (Number.isFinite(battery.settingsHealthPercent)) facts.push(t('parts.hw.health', { n: battery.settingsHealthPercent }));
   else if (Number.isFinite(battery.healthPercent)) facts.push(t('parts.hw.healthMeasured', { n: battery.healthPercent }));
   if (Number.isFinite(battery.cycleCount)) facts.push(t('parts.hw.cycles', { n: battery.cycleCount }));
   const capacity = battery.nominalChargeCapacity || battery.fullChargeCapacity;
-  if (capacity && battery.designCapacity) {
-    facts.push(`${capacity}/${battery.designCapacity} mAh`);
-  }
-  if (battery.serial) facts.push(t('parts.hw.serial', { s: battery.serial }));
-  if (batteryFinding) {
-    addRow(t('parts.part.battery'), t('parts.status.' + batteryFinding.status), batteryFinding.status);
-  } else if (battery.auth && battery.auth.driver) {
-    // Có driver xác thực pin nhưng iOS chưa khai kết quả.
-    addRow(t('parts.part.battery'), t('parts.hw.batteryDriverNoFlag'), 'unverified');
-  } else if (support.battery === false) {
-    addRow(t('parts.part.battery'), t('parts.hw.batteryNotSupported'), '');
-  } else {
-    addRow(t('parts.part.battery'), t(facts.length ? 'parts.hw.batteryNoFlag' : 'parts.hw.batteryUnread'),
-      facts.length ? 'unverified' : 'unknown');
-  }
-  if (facts.length) addRow('', facts.join(' · '), '');
-  // Linh kiện khác có cờ auth-passed (camera, Face ID, Touch ID…).
-  const bioPart = (hardwareReport.biometrics || {}).part;
-  for (const finding of hardwarePartSignals) {
-    if (finding.part === 'display' || finding.part === 'battery' || finding.part === bioPart) continue;
-    if (finding.status !== 'genuine' && finding.status !== 'authfail') continue;
-    addRow(t('parts.part.' + finding.part),
-      t(finding.status === 'genuine' ? 'parts.hw.partPass' : 'parts.hw.partFail'), finding.status);
-  }
-  if (batteryFinding && batteryFinding.status === 'auth_error') {
-    paragraph(t('parts.hw.batteryAuthError', { n: batteryFinding.code || '?' }), 'parts-note parts-error');
-  }
-  if (clue) {
-    paragraph(t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }), 'parts-note parts-error');
-  }
-
-  if (Array.isArray(hardwareReport.errors) && hardwareReport.errors.length) {
-    paragraph(t('parts.hw.error', { e: String(hardwareReport.errors[0]).slice(0, 200) }), 'parts-note parts-error');
-  }
+  if (capacity && battery.designCapacity) facts.push(`${capacity}/${battery.designCapacity} mAh`);
+  return facts;
 }
 
 // Dữ liệu thô của các node xác thực: không hiện trong app (tên node dài, chỉ

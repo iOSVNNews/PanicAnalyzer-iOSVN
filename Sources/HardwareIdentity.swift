@@ -18,12 +18,28 @@ enum HardwareIdentity {
     /// keep an Apple-signed certificate + "auth-passed" on a device-tree node
     /// (mogul-display…); older ones relay through an I2C auth driver under
     /// display-eeprom (RoswellAuthI2CRelayInterface on iPhone 11). The battery
-    /// has its own relay, AppleBatteryAuth. The IOService names come last:
-    /// that dump is the largest and may time out.
+    /// has its own relay, AppleBatteryAuth. The two whole-plane dumps come
+    /// last: they are the largest, and when the device resets the connection
+    /// on one of them the small queries before it are already answered.
     enum First: Int, CaseIterable {
-        case treeNames, batteryByName, batteryByClass, panelByClass, panelByName,
-             batteryAuth, roswellAuth, serviceNames
+        case batteryByName, batteryByClass, panelByClass, panelByName,
+             batteryAuth, roswellAuth, treeNames, serviceNames
     }
+
+    /// Driver classes of other parts, read one by one on their own connection
+    /// (names from real iPhone IORegistry trees and corerepaird's entitlements).
+    /// Classes a model does not have simply answer "not found".
+    static let componentClasses: [(part: String, className: String)] = [
+        ("face_id", "ApplePearlSEPDriver"), ("face_id", "AppleH16PearlCam"),
+        ("face_id", "AppleH13PearlCam"), ("face_id", "AppleH10PearlCam"),
+        ("touch_id", "AppleMesaSEPDriver"), ("touch_id", "AppleSandDollar"),
+        ("camera", "AppleH17CamIn"), ("camera", "AppleH16CamIn"),
+        ("camera", "AppleH13CamIn"), ("camera", "AppleH10CamIn"),
+        ("speaker", "AppleCS35L27Amp"), ("speaker", "AppleCS35L26Amp"),
+        ("touch_panel", "AppleMultitouchDevice"), ("touch_panel", "AppleEmbeddedTouchEEPROMDriver"),
+    ]
+
+    static let componentPass: [[String: Any]] = componentClasses.map { ["class": $0.className] }
 
     static let firstPass: [[String: Any]] = First.allCases.map { (query: First) -> [String: Any] in
         switch query {
@@ -184,7 +200,8 @@ enum HardwareIdentity {
         if let percent = integer(data["MaximumCapacityPercent"]) ?? integer(entry["MaximumCapacityPercent"]) {
             out["settingsHealthPercent"] = percent
         } else if let nominal, let nominalBase, nominal > 0, nominalBase > 0 {
-            let percent = Int((Double(nominal) / Double(nominalBase) * 100).rounded(.up))
+            // Rounded down: 4269/4768 mAh = 89.5 % shows as 89 % in Settings.
+            let percent = Int((Double(nominal) / Double(nominalBase) * 100).rounded(.down))
             if (1...150).contains(percent) { out["settingsHealthPercent"] = percent }
         }
         // Only flags whose name states success (1 = passed). Counters such as
@@ -322,8 +339,12 @@ enum HardwareIdentity {
         let hit: Hit
     }
 
-    static func componentNodes(in first: [[String: Any]]) -> [ComponentNode] {
+    static func componentNodes(in first: [[String: Any]], classResults: [[String: Any]] = []) -> [ComponentNode] {
         var nodes: [ComponentNode] = []
+        for (query, props) in zip(componentClasses, classResults) where props["error"] == nil && !props.isEmpty {
+            nodes.append(ComponentNode(part: query.part,
+                                       hit: Hit(path: query.className, className: query.className, props: props)))
+        }
         for result in [entry(first, .treeNames), entry(first, .serviceNames)] {
             for item in result["components"] as? [[String: Any]] ?? [] {
                 guard let part = item["part"] as? String, let path = item["path"] as? String,
@@ -378,12 +399,12 @@ enum HardwareIdentity {
     }
 
     /// Properties of auth-related entries, as sent to the UI for copying.
-    static func rawEntries(_ entries: [(name: String, entry: [String: Any])]) -> [[String: Any]] {
+    static func rawEntries(_ entries: [(name: String, entry: [String: Any])], limit: Int = 30) -> [[String: Any]] {
         entries.compactMap { item -> [String: Any]? in
             let (name, entry) = item
             guard entry["error"] == nil, !entry.isEmpty else { return nil }
             var props: [String: String] = [:]
-            for key in entry.keys.sorted().prefix(30) {
+            for key in entry.keys.sorted().prefix(limit) {
                 if let value = entry[key] { props[key] = describe(value) }
             }
             return ["name": name, "props": props]
@@ -391,7 +412,8 @@ enum HardwareIdentity {
     }
 
     /// Everything the Linh kiện tab needs, from both passes.
-    static func report(first: [[String: Any]], candidates: [String], second: [[String: Any]]) -> [String: Any] {
+    static func report(first: [[String: Any]], candidates: [String], second: [[String: Any]],
+                       components classResults: [[String: Any]] = []) -> [String: Any] {
         let scanned = hits(in: first)
         let hitPairs = scanned.map { (name: $0.path, entry: $0.props) }
         let displayHits = zip(scanned, hitPairs).filter { HardwareIdentity.part(of: $0.0) == "display" }.map { $0.1 }
@@ -410,7 +432,7 @@ enum HardwareIdentity {
         ]
         let flags = partFlags(scanned)
         if !flags.isEmpty { report["parts"] = flags }
-        let components = componentNodes(in: first)
+        let components = componentNodes(in: first, classResults: classResults)
         let componentList = componentSummary(components)
         if !componentList.isEmpty { report["components"] = componentList }
         var raw = rawEntries(Array(zip(candidates, second).map { (name: $0, entry: $1) }))
@@ -420,7 +442,7 @@ enum HardwareIdentity {
         raw += rawEntries(components.prefix(40).map { (node: ComponentNode) -> (name: String, entry: [String: Any]) in
             let leaf = node.hit.path.split(separator: "/").last.map(String.init) ?? node.hit.path
             return (name: "\(node.part): \(leaf)", entry: node.hit.props)
-        })
+        }, limit: 60)
         if !raw.isEmpty { report["raw"] = raw }
         report["probe"] = [
             "treeNames": (entry(first, .treeNames)["names"] as? [Any])?.count ?? 0,
@@ -430,8 +452,18 @@ enum HardwareIdentity {
             "batteryNodes": batteryNodeNames(
                 (entry(first, .serviceNames)["names"] as? [Any])?.compactMap { $0 as? String } ?? [])
         ] as [String: Any]
-        let errorList = errors(in: first + second)
+        // The two whole-plane dumps are best effort (the device sometimes
+        // resets the connection on them): their errors go to the raw data
+        // only, the screen reports errors of the reads that matter.
+        let dumps: Set<Int> = [First.treeNames.rawValue, First.serviceNames.rawValue]
+        let mainEntries = first.enumerated().filter { !dumps.contains($0.offset) }.map { $0.element }
+        let errorList = errors(in: mainEntries + second)
         if !errorList.isEmpty { report["errors"] = errorList }
+        let dumpErrors = errors(in: [entry(first, .treeNames), entry(first, .serviceNames)])
+        if !dumpErrors.isEmpty, var probe = report["probe"] as? [String: Any] {
+            probe["scanErrors"] = dumpErrors
+            report["probe"] = probe
+        }
         return report
     }
 

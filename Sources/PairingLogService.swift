@@ -576,7 +576,14 @@ final class PairingLogService {
         if Date().timeIntervalSince(started) < 50 {
             second = try query(candidates.map { ["name": $0] })
         }
-        return HardwareIdentity.report(first: first, candidates: candidates, second: second)
+        // Face ID, Touch ID, camera, speaker and touch-panel drivers on their
+        // own connection, so a reset during the plane dumps cannot lose them.
+        var components: [[String: Any]] = []
+        if Date().timeIntervalSince(started) < 70 {
+            components = (try? query(HardwareIdentity.componentPass)) ?? []
+        }
+        return HardwareIdentity.report(first: first, candidates: candidates, second: second,
+                                       components: components)
     }
 
     typealias HardwareCall = (UnsafePointer<CChar>, UnsafePointer<UInt8>?, Int,

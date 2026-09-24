@@ -917,6 +917,11 @@ a.about-row b { color: var(--brand-bright); }
 .parts-row b { font-weight: 600; flex-shrink: 0; white-space: nowrap; }
 .parts-status { text-align: right; color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .parts-status.unknown, .parts-status.unverified, .parts-status.finish_repair { color: var(--brand-bright); }
-.parts-status.authfail, .parts-status.nongenuine, .parts-status.auth_error, .parts-status.unavailable, .parts-status.replaced { color: var(--brand-bright); font-weight: 700; }
+.parts-status.authfail, .parts-status.nongenuine, .parts-status.auth_error, .parts-status.unavailable, .parts-status.replaced, .parts-status.changed { color: var(--brand-bright); font-weight: 700; }
 .parts-status.genuine { color: var(--text-primary); font-weight: 600; }
 .parts-scan-summary.verified .parts-scan-indicator { background: #30d158; }
+
+.parts-status.working { color: var(--text-primary); font-weight: 600; }
+.parts-alert { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; padding: 12px 14px;
+  border-radius: 12px; background: rgba(255, 69, 58, 0.14); border: 1px solid rgba(255, 69, 58, 0.45); font-size: 13px; }
+.parts-alert b { color: var(--brand-bright); }

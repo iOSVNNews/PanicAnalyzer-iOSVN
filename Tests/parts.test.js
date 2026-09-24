@@ -138,6 +138,29 @@ const mergedPair = PartsHistory.mergeHardwareReport(mergedLocal, { display: { au
 assert.equal(mergedPair.biometrics.state, 'ok');
 assert.equal(mergedPair.display.authPassed, false);
 
+// Tổng quan: mỗi linh kiện một dòng, bằng chứng mạnh nhất thắng.
+const iphone17 = { display: { authPassed: true, panelSerial: 'G9N1' },
+  battery: { serial: 'FG9A', auth: { driver: true, passed: true, passKey: 'BatteryAuthPassed' } },
+  biometrics: { part: 'face_id', state: 'ok' } };
+const view = PartsHistory.partsOverview(iphone17, [], 'iPhone18,2');
+assert.deepEqual(view.map(({ part, status }) => [part, status]), [
+  ['display', 'genuine'], ['battery', 'genuine'], ['face_id', 'working'],
+  ['rear_camera', 'no_flag'], ['front_camera', 'no_flag'], ['speaker', 'not_authenticated']]);
+assert.equal(view.filter(item => PartsHistory.isAlert(item.status)).length, 0);
+assert.equal(PartsHistory.expectedParts('iPhone12,8')[2], 'touch_id');
+// Pin chính hãng nhưng khác sê-ri gốc → Đã thay; log báo camera "unknown part".
+const swapped = PartsHistory.partsOverview(
+  { battery: { auth: { passed: true } }, syscfg: [{ part: 'battery', factory: 'AAA111', current: 'BBB222', match: false }] },
+  [{ part: 'rear_camera', status: 'unknown', source: 'log' }], 'iPhone11,6');
+assert.deepEqual(swapped.filter(item => PartsHistory.isAlert(item.status)).map(item => [item.part, item.status]),
+  [['battery', 'replaced'], ['rear_camera', 'unknown']]);
+// Sê-ri khác lần kiểm tra trước → "Đã thay đổi".
+const ids = PartsHistory.partIdentities(iphone17);
+assert.deepEqual(ids, { display: 'G9N1', battery: 'FG9A' });
+assert.deepEqual(PartsHistory.changedParts({ display: 'G9N1', battery: 'OLD9' }, ids), ['battery']);
+assert.deepEqual(PartsHistory.changedParts(null, ids), []);
+assert.equal(PartsHistory.partsOverview(iphone17, [], 'iPhone18,2', ['battery'])[1].status, 'changed');
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

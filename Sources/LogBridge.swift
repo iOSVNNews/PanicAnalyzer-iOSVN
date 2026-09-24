@@ -927,6 +927,8 @@ extension LogBridge: WKScriptMessageHandler {
         case "cancelPairing": PairingLogService.shared.cancelPairing()
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
+        case "notifyParts":  PartsNotifier.shared.post(title: body["title"] as? String ?? "",
+                                                       body: body["body"] as? String ?? "")
         case "refreshRules": refreshRules()
         case "openURL":      openExternal(body["url"] as? String ?? "")
         default: break

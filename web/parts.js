@@ -221,7 +221,73 @@ const PartsHistory = (() => {
     return merged;
   }
 
-  return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport };
+  // ---- Tổng quan toàn bộ linh kiện + phát hiện thay thế ----------------------
+  // Trạng thái cần báo cho người dùng (thông báo iOS + băng cảnh báo).
+  const ALERT = new Set(['authfail', 'nongenuine', 'replaced', 'unavailable', 'auth_error', 'changed',
+    'unknown', 'serial_mismatch', 'used', 'finish_repair', 'unverified']);
+  const isAlert = status => ALERT.has(status);
+
+  // Linh kiện chính của đời máy: Face ID hay Touch ID theo mã máy.
+  function expectedParts(model) {
+    const m = /^iPhone(\d+),(\d+)$/.exec(String(model || ''));
+    let bio = 'face_id';
+    if (m) {
+      const major = Number(m[1]), minor = Number(m[2]);
+      if ((major === 12 && minor === 8) || (major === 14 && minor === 6) || major < 10 ||
+          (major === 10 && [1, 2, 4, 5].includes(minor))) bio = 'touch_id';
+    }
+    return ['display', 'battery', bio, 'rear_camera', 'front_camera', 'speaker'];
+  }
+
+  // Sê-ri đang lắp của từng linh kiện (để nhận ra lần sau có bị thay không).
+  function partIdentities(report) {
+    const ids = {};
+    if (report && report.display && report.display.panelSerial) ids.display = String(report.display.panelSerial);
+    if (report && report.battery && report.battery.serial) ids.battery = String(report.battery.serial);
+    for (const item of Array.isArray(report && report.syscfg) ? report.syscfg : []) {
+      if (item && item.part && item.current && !ids[item.part]) ids[item.part] = String(item.current);
+    }
+    return ids;
+  }
+
+  function changedParts(previousIds, currentIds) {
+    if (!previousIds || typeof previousIds !== 'object') return [];
+    return Object.keys(currentIds || {})
+      .filter(part => previousIds[part] && previousIds[part] !== currentIds[part]);
+  }
+
+  // Một dòng cho mỗi linh kiện: bằng chứng mạnh nhất từ phần cứng, SysCfg,
+  // Face ID/Touch ID rồi mới tới log.
+  function partsOverview(report, logFindings, model, changed) {
+    const hardware = fromHardware(report).filter(f => f.status !== 'capacity_anomaly');
+    const logs = Array.isArray(logFindings) ? logFindings : [];
+    const syscfg = Array.isArray(report && report.syscfg) ? report.syscfg : [];
+    const bio = (report && report.biometrics) || {};
+    const moved = Array.isArray(changed) ? changed : [];
+    const parts = expectedParts(model);
+    for (const f of hardware) if (!parts.includes(f.part)) parts.push(f.part);
+    return parts.map(part => {
+      if (moved.includes(part)) return { part, status: 'changed' };
+      const hw = hardware.filter(f => f.part === part);
+      const bad = hw.find(f => isAlert(f.status));
+      if (bad) return { part, status: bad.status };
+      const sys = syscfg.find(item => item && item.part === part);
+      if (sys && sys.match === false) return { part, status: 'replaced' };
+      const logBad = logs.find(f => f.part === part && isAlert(f.status));
+      if (logBad) return { part, status: logBad.status, source: 'log' };
+      if (hw.some(f => f.status === 'genuine') || (sys && sys.match === true)) return { part, status: 'genuine' };
+      if (bio.part === part && (bio.state === 'ok' || bio.state === 'not_enrolled')) {
+        return { part, status: 'working', detail: bio.state };
+      }
+      const logAny = logs.find(f => f.part === part);
+      if (logAny) return { part, status: logAny.status, source: 'log' };
+      if (part === 'speaker') return { part, status: 'not_authenticated' };
+      return sys && sys.factory ? { part, status: 'no_flag', factory: String(sys.factory) } : { part, status: 'no_flag' };
+    });
+  }
+
+  return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport,
+    isAlert, expectedParts, partIdentities, changedParts, partsOverview };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;
