@@ -101,6 +101,31 @@ const PartsHistory = (() => {
   //   cũng là cơ sở của cảnh báo "Linh kiện không xác định" cho màn hình.
   // - Pin: chỉ khi driver pin có cờ xác thực (0/1); số liệu pin không phải
   //   bằng chứng chính hãng.
+  // Apple chỉ xác thực màn hình từ iPhone 11 (trừ SE 2/3) và pin từ
+  // iPhone XS/XR (support.apple.com/102658). null = không rõ đời máy.
+  function authSupport(model) {
+    const m = /^iPhone(\d+),(\d+)$/.exec(String(model || ''));
+    if (!m) return { display: null, battery: null };
+    const major = Number(m[1]), minor = Number(m[2]);
+    const se = (major === 12 && minor === 8) || (major === 14 && minor === 6);
+    return {
+      display: major >= 12 && !se,
+      battery: major >= 12 || (major === 11 && [2, 4, 6, 8].includes(minor))
+    };
+  }
+
+  // Dấu hiệu (không phải kết luận): pin đã dùng nhiều chu kỳ mà dung lượng đo
+  // vẫn vượt dung lượng thiết kế — pin zin gần như không như vậy; hay gặp ở
+  // pin thay thế hoặc chip đo đã bị can thiệp.
+  function capacityClue(battery) {
+    const design = Number(battery && battery.designCapacity);
+    const full = Number(battery && battery.fullChargeCapacity);
+    const cycles = Number(battery && battery.cycleCount);
+    if (!(design > 0 && full > 0 && Number.isFinite(cycles))) return null;
+    const percent = Math.round(full / design * 1000) / 10;
+    return percent >= 102 && cycles >= 200 ? { percent, cycles } : null;
+  }
+
   function fromHardware(report) {
     const findings = [];
     if (!report || typeof report !== 'object') return findings;
@@ -114,6 +139,9 @@ const PartsHistory = (() => {
     if (values.length) {
       findings.push({ part: 'battery', status: values.every(v => v === 1) ? 'genuine' : 'authfail',
         source: 'hardware', serial: report.battery.serial || '' });
+    }
+    if (capacityClue(report.battery)) {
+      findings.push({ part: 'battery', status: 'capacity_anomaly', source: 'hardware' });
     }
     return findings;
   }
@@ -131,7 +159,7 @@ const PartsHistory = (() => {
     return 'noEvidence';
   }
 
-  return { fromLogs, fromHardware, cableClues, assessScan };
+  return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;

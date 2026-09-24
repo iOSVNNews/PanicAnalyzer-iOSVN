@@ -758,12 +758,16 @@ function renderHardwareReport(host, paragraph) {
   };
   paragraph(t('parts.hwSource'), 'parts-source');
 
+  const support = PartsHistory.authSupport(window.__DEVICE_MODEL__);
   const display = hardwareReport.display || {};
   const panel = display.panelSerial ? ` · ${display.panelSerial}` : '';
   if (typeof display.authPassed === 'boolean') {
     addRow(t('parts.part.display'),
       t(display.authPassed ? 'parts.hw.displayPass' : 'parts.hw.displayFail') + panel,
       display.authPassed ? 'genuine' : 'authfail');
+  } else if (support.display === false) {
+    // Đời máy này không có IC xác thực màn hình: không đọc được là đúng.
+    addRow(t('parts.part.display'), t('parts.hw.displayNotSupported'), '');
   } else if (display.panelSerial || display.panelId) {
     addRow(t('parts.part.display'), t('parts.hw.displayNoFlag') + panel, 'unverified');
   } else {
@@ -771,7 +775,8 @@ function renderHardwareReport(host, paragraph) {
   }
 
   const battery = hardwareReport.battery || {};
-  const batteryFinding = hardwarePartSignals.find(f => f.part === 'battery');
+  const batteryFinding = hardwarePartSignals.find(f => f.part === 'battery' && f.status !== 'capacity_anomaly');
+  const clue = PartsHistory.capacityClue(battery);
   const facts = [];
   if (Number.isFinite(battery.settingsHealthPercent)) facts.push(t('parts.hw.health', { n: battery.settingsHealthPercent }));
   else if (Number.isFinite(battery.healthPercent)) facts.push(t('parts.hw.healthMeasured', { n: battery.healthPercent }));
@@ -782,11 +787,16 @@ function renderHardwareReport(host, paragraph) {
   if (battery.serial) facts.push(t('parts.hw.serial', { s: battery.serial }));
   if (batteryFinding) {
     addRow(t('parts.part.battery'), t('parts.status.' + batteryFinding.status), batteryFinding.status);
+  } else if (support.battery === false) {
+    addRow(t('parts.part.battery'), t('parts.hw.batteryNotSupported'), '');
   } else {
     addRow(t('parts.part.battery'), t(facts.length ? 'parts.hw.batteryNoFlag' : 'parts.hw.batteryUnread'),
       facts.length ? 'unverified' : 'unknown');
   }
   if (facts.length) addRow('', facts.join(' · '), '');
+  if (clue) {
+    paragraph(t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }), 'parts-note parts-error');
+  }
 
   if (Array.isArray(hardwareReport.errors) && hardwareReport.errors.length) {
     paragraph(t('parts.hw.error', { e: String(hardwareReport.errors[0]).slice(0, 200) }), 'parts-note parts-error');

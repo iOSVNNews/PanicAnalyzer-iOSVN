@@ -63,6 +63,22 @@ assert.equal(PartsHistory.assessScan(3, [], [], hwFail), 'found');
 assert.equal(PartsHistory.assessScan(3, logs, [], hwPass), 'found');
 assert.equal(PartsHistory.assessScan(3, [], cable, []), 'cable');
 
+// Đời máy: XS Max có xác thực pin, không có xác thực màn hình; SE 2 như vậy.
+assert.deepEqual(PartsHistory.authSupport('iPhone11,6'), { display: false, battery: true });
+assert.deepEqual(PartsHistory.authSupport('iPhone12,8'), { display: false, battery: true });
+assert.deepEqual(PartsHistory.authSupport('iPhone10,6'), { display: false, battery: false });
+assert.deepEqual(PartsHistory.authSupport('iPhone18,2'), { display: true, battery: true });
+assert.deepEqual(PartsHistory.authSupport('iPad8,1'), { display: null, battery: null });
+
+// Dung lượng vượt thiết kế sau nhiều chu kỳ (XS Max pin thay: 3307/3156, 471 chu kỳ).
+assert.deepEqual(PartsHistory.capacityClue({ designCapacity: 3156, fullChargeCapacity: 3307, cycleCount: 471 }),
+  { percent: 104.8, cycles: 471 });
+assert.equal(PartsHistory.capacityClue({ designCapacity: 3156, fullChargeCapacity: 3200, cycleCount: 20 }), null);
+assert.equal(PartsHistory.capacityClue({ designCapacity: 3156, fullChargeCapacity: 2900, cycleCount: 471 }), null);
+const clue = PartsHistory.fromHardware({ battery: { designCapacity: 3156, fullChargeCapacity: 3307, cycleCount: 471 } });
+assert.deepEqual(clue.map(({ part, status }) => [part, status]), [['battery', 'capacity_anomaly']]);
+assert.equal(PartsHistory.assessScan(100, [], [], clue), 'found');
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 
