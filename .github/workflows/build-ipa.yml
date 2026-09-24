@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: build-ipa
+  group: build-ipa-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -170,6 +170,7 @@ jobs:
             PanicAnalyzer-rootful.deb
 
       - name: Ghi phiên bản cho tính năng tự kiểm tra cập nhật
+        if: github.ref == 'refs/heads/main'
         run: |
           cat assets/app_version.json
           if [ -z "$(git status --porcelain assets/app_version.json)" ]; then
@@ -188,6 +189,7 @@ jobs:
           fi
 
       - name: Phát hành bản mới nhất
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

@@ -1,3 +1,5 @@
+mod remote_tunnel;
+
 use std::alloc::{dealloc, Layout};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
@@ -6,15 +8,13 @@ use std::ptr::null_mut;
 
 use idevice_ffi::core_device_proxy::{adapter_free, AdapterHandle};
 use idevice_ffi::crashreportcopymobile::{
-    crash_report_client_connect_rsd, crash_report_client_free, crash_report_client_ls,
+    crash_report_client_free, crash_report_client_ls,
     CrashReportCopyMobileHandle,
 };
 use idevice_ffi::rp_pairing_file::{
-    rp_pairing_file_free, rp_pairing_file_read, rp_pairing_file_write, RpPairingFileHandle,
+    rp_pairing_file_free, rp_pairing_file_read, RpPairingFileHandle,
 };
 use idevice_ffi::rsd::{rsd_handshake_free, RsdHandshakeHandle};
-use idevice_ffi::tunnel_provider::tunnel_create_rppairing;
-use idevice_ffi::util::idevice_sockaddr;
 use idevice_ffi::pairing_host::{
     pairable_host_accept_fd, pairable_host_free, pairable_host_prepare, PairableHostHandle,
 };
@@ -114,61 +114,21 @@ pub unsafe extern "C" fn pa_session_connect(
         Err(error) => return error,
     };
 
-    let mut address: libc::sockaddr_in = std::mem::zeroed();
-    address.sin_family = libc::AF_INET as libc::sa_family_t;
-    address.sin_port = rsd_port.to_be();
-    #[cfg(target_vendor = "apple")]
-    {
-        address.sin_len = std::mem::size_of::<libc::sockaddr_in>() as u8;
-    }
-    // sockaddr stores network bytes in native memory; no platform-specific
-    // inet_pton symbol is required (libc does not expose it for this iOS target).
-    address.sin_addr.s_addr = u32::from_ne_bytes(ip.octets());
-
-    let hostname = CString::new("PanicAnalyzer").unwrap();
-    let mut pairing: *mut RpPairingFileHandle = null_mut();
-    let read_error = rp_pairing_file_read(pairing_path, &mut pairing);
-    if !read_error.is_null() {
-        // iOS 27 pairs device-initiated (Settings > Privacy & Security >
-        // Developer) through pa_host_*; never start a host-initiated
-        // pair-setup the iPhone would reject.
-        return consume_idevice_error(
-            read_error,
-            "Chưa có pairing record. Bấm Ghép đôi thiết bị này rồi chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển",
-        );
-    }
-    let mut adapter: *mut AdapterHandle = null_mut();
-    let mut handshake: *mut RsdHandshakeHandle = null_mut();
-    let tunnel_error = tunnel_create_rppairing(
-        &address as *const libc::sockaddr_in as *const idevice_sockaddr,
-        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-        hostname.as_ptr(),
-        pairing,
-        None,
-        null_mut(),
-        &mut adapter,
-        &mut handshake,
-    );
-    if !tunnel_error.is_null() {
-        rp_pairing_file_free(pairing);
-        close_parts(null_mut(), handshake, adapter);
-        return consume_idevice_error(
-            tunnel_error,
-            "Không hoàn tất ghép đôi hoặc mở RSD tunnel. Kiểm tra LocalDevVPN còn kết nối, mở khóa iPhone và chấp nhận yêu cầu ghép đôi. Có thể nhập Remote Pairing file trong Cấu hình LocalDevVPN",
-        );
-    }
-
-    // tunnel_create_rppairing updates new or stale credentials after iOS has
-    // approved them. Persist only after the complete pairing+tunnel succeeds.
-    let write_error = rp_pairing_file_write(pairing, pairing_path);
-    rp_pairing_file_free(pairing);
-    if !write_error.is_null() {
-        close_parts(null_mut(), handshake, adapter);
-        return consume_idevice_error(
-            write_error,
-            "Đã ghép đôi nhưng không lưu được pairing record",
-        );
-    }
+    let path = CStr::from_ptr(pairing_path).to_string_lossy().into_owned();
+    let result = idevice_ffi::run_sync_local(async {
+        let mut record = idevice::remote_pairing::RpPairingFile::read_from_file(&path).await
+            .map_err(|e| format!("Pairing file: {e}"))?;
+        remote_tunnel::connect(std::net::SocketAddr::new(ip.into(), rsd_port),
+            &mut record, std::time::Duration::from_secs(20)).await
+    });
+    let (adapter, handshake) = match result {
+        Ok((adapter, handshake)) => (
+            Box::into_raw(Box::new(AdapterHandle(adapter))),
+            Box::into_raw(Box::new(RsdHandshakeHandle(handshake))),
+        ),
+        Err(error) => return owned_message(error),
+    };
+    // Pair-verify does not replace or rewrite the imported credential file.
 
     open_crash_reports(adapter, handshake, out_session)
 }
@@ -180,15 +140,21 @@ unsafe fn open_crash_reports(
     handshake: *mut RsdHandshakeHandle,
     out_session: *mut *mut PaLogSession,
 ) -> *mut c_char {
-    let mut client: *mut CrashReportCopyMobileHandle = null_mut();
-    let client_error = crash_report_client_connect_rsd(adapter, handshake, &mut client);
-    if !client_error.is_null() {
-        close_parts(client, handshake, adapter);
-        return consume_idevice_error(
-            client_error,
-            "Không kết nối được dịch vụ crashreportcopymobile",
-        );
-    }
+    let result = idevice_ffi::run_sync_local(async {
+        use idevice::RsdService;
+        use idevice::services::crashreportcopymobile::CrashReportCopyMobileClient;
+        tokio::time::timeout(std::time::Duration::from_secs(8),
+            CrashReportCopyMobileClient::connect_rsd(&mut (*adapter).0, &(*handshake).0))
+            .await.map_err(|_| "CrashReporter RSD timed out (8s)".to_string())?
+            .map_err(|e| format!("CrashReporter RSD: {e}"))
+    });
+    let client = match result {
+        Ok(client) => Box::into_raw(Box::new(CrashReportCopyMobileHandle(client))),
+        Err(error) => {
+            close_parts(null_mut(), handshake, adapter);
+            return owned_message(error);
+        }
+    };
 
     *out_session = Box::into_raw(Box::new(PaLogSession {
         adapter,
@@ -284,6 +250,45 @@ pub unsafe extern "C" fn pa_lockdown_mint(
     }
 }
 
+/// Read-only CrashReporter using the imported lockdown record, without RSD.
+#[no_mangle]
+pub unsafe extern "C" fn pa_session_connect_crashreporter(
+    record_path: *const c_char,
+    device_ip: *const c_char,
+    out_session: *mut *mut PaLogSession,
+) -> *mut c_char {
+    if out_session.is_null() { return owned_message("out_session is null"); }
+    *out_session = null_mut();
+    let record = match read_lockdown_record(record_path) {
+        Ok(record) => record, Err(error) => return error,
+    };
+    let ip = match parse_ipv4(device_ip) {
+        Ok(ip) => ip, Err(error) => return error,
+    };
+    let provider = idevice::provider::TcpProvider {
+        addr: std::net::IpAddr::V4(ip), scope_id: None,
+        pairing_file: record, label: "PanicAnalyzer".to_string(),
+    };
+    let result = idevice_ffi::run_sync_local(async {
+        use idevice::IdeviceService;
+        use idevice::services::crashreportcopymobile::CrashReportCopyMobileClient;
+        tokio::time::timeout(std::time::Duration::from_secs(12),
+            CrashReportCopyMobileClient::connect(&provider)).await
+            .map_err(|_| "CrashReporter lockdown timed out (12s)".to_string())?
+            .map_err(|e| format!("CrashReporter lockdown: {e}"))
+    });
+    match result {
+        Ok(client) => {
+            *out_session = Box::into_raw(Box::new(PaLogSession {
+                adapter: null_mut(), handshake: null_mut(),
+                client: Box::into_raw(Box::new(CrashReportCopyMobileHandle(client))),
+            }));
+            null_mut()
+        }
+        Err(error) => owned_message(error),
+    }
+}
+
 /// Opens CoreDeviceProxy with a classic record over LocalDevVPN, then
 /// CrashReportCopyMobile over the resulting RSD tunnel.
 #[no_mangle]
@@ -311,6 +316,7 @@ pub unsafe extern "C" fn pa_session_connect_lockdown(
         label: "PanicAnalyzer".to_string(),
     };
     let result = idevice_ffi::run_sync_local(async move {
+        tokio::time::timeout(std::time::Duration::from_secs(12), async {
         use idevice::IdeviceService;
         // Preflight: có tới được lockdownd 62078 qua VPN không? Tách bạch
         // "VPN chưa định tuyến" khỏi lỗi bắt tay bên trong CoreDeviceProxy.
@@ -350,6 +356,7 @@ pub unsafe extern "C" fn pa_session_connect_lockdown(
             .await
             .map_err(|e| format!("B5 bắt tay RSD: {e}"))?;
         Ok::<_, String>((adapter, handshake))
+        }).await.map_err(|_| "CoreDeviceProxy timed out (12s)".to_string())?
     });
     match result {
         Ok((adapter, handshake)) => {
@@ -491,6 +498,13 @@ mod tests {
             let mut session = null_mut();
             let error = pa_session_connect_lockdown(missing.as_ptr(), bad_ip.as_ptr(), &mut session);
             assert!(!error.is_null() && session.is_null());
+            pa_error_free(error);
+            session = std::ptr::dangling_mut();
+            let error = pa_session_connect_crashreporter(missing.as_ptr(), bad_ip.as_ptr(), &mut session);
+            assert!(!error.is_null() && session.is_null());
+            pa_error_free(error);
+            let error = pa_session_connect_crashreporter(null_mut(), null_mut(), null_mut());
+            assert!(!error.is_null());
             pa_error_free(error);
         }
     }

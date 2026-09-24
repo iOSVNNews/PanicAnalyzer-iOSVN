@@ -16,6 +16,7 @@ final class LocalNetworkAuthorization {
     private var browser: NWBrowser?
     private var listener: NWListener?
     private var completion: ((Bool) -> Void)?
+    private var deadline: DispatchWorkItem?
 
     /// Call on the main queue; `completion` runs on the main queue once.
     func request(timeout: TimeInterval = 60, completion: @escaping (Bool) -> Void) {
@@ -54,12 +55,16 @@ final class LocalNetworkAuthorization {
 
         listener?.start(queue: .main)
         browser.start(queue: .main)
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
-            self?.finish(false)
-        }
+        let deadline = DispatchWorkItem { [weak self] in self?.finish(false) }
+        self.deadline = deadline
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: deadline)
     }
 
     private func finish(_ granted: Bool) {
+        deadline?.cancel(); deadline = nil
+        browser?.stateUpdateHandler = nil
+        browser?.browseResultsChangedHandler = nil
+        listener?.stateUpdateHandler = nil
         browser?.cancel(); browser = nil
         listener?.cancel(); listener = nil
         guard let completion else { return }

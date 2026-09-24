@@ -362,8 +362,39 @@ final class LogBridge: NSObject {
 
     // MARK: - Quét log trực tiếp hoặc qua Remote Pairing
 
+    // Coalesce launch/import/button scans, and request Local Network before
+    // the Rust transport opens raw sockets (also for iOS 18 + iLoader).
+    private var scanInProgress = false
+    private let scanNetworkAuthorization = LocalNetworkAuthorization()
+
     func scanLogs() {
+        DispatchQueue.main.async {
+            guard !self.scanInProgress else { return }
+            self.scanInProgress = true
+            if self.isPrivilegedBuild || !PairingLogService.shared.isConfigured {
+                self.performScanLogs()
+                return
+            }
+            self.scanNetworkAuthorization.request(timeout: 30) { granted in
+                guard granted else {
+                    self.scanInProgress = false
+                    self.notifyPairingStatus(
+                        configured: PairingLogService.shared.isConfigured,
+                        message: Loc.s(
+                            "Chưa xác nhận được quyền Mạng cục bộ. Bật Wi-Fi và vào Cài đặt > Ứng dụng > PanicAnalyzer > Mạng cục bộ, rồi quét lại.",
+                            "Local Network access could not be confirmed. Turn on Wi-Fi and check Settings > Apps > PanicAnalyzer > Local Network, then scan again.",
+                            "无法确认本地网络访问权限。请打开 Wi-Fi，在设置 > 应用 > PanicAnalyzer 中检查本地网络权限后重试。"),
+                        isError: true)
+                    return
+                }
+                self.performScanLogs()
+            }
+        }
+    }
+
+    private func performScanLogs() {
         DispatchQueue.global(qos: .userInitiated).async {
+            defer { DispatchQueue.main.async { self.scanInProgress = false } }
             // Trên máy JB / TrollStore đọc thẳng file log, không cần ghép đôi.
             let direct = self.readFilesystemLogs()
             if !direct.logs.isEmpty {

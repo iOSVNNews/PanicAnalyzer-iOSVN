@@ -1066,7 +1066,7 @@ function armScanTimeout() {
     updateScanStatus(t('s.timeout'), false);
     setPartsScanState('error', 0, t('s.timeout'));
     showToast(t('s.timeout'), 4500);
-  }, 45000);
+  }, 120000);
 }
 function clearScanTimeout() { clearTimeout(scanTimeoutId); scanTimeoutId = null; }
 

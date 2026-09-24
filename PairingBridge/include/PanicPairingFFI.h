@@ -36,6 +36,13 @@ char *pa_lockdown_mint(
     const char *out_path
 );
 
+/* Direct read-only CrashReporter over lockdown; no RSD tunnel required. */
+char *pa_session_connect_crashreporter(
+    const char *record_path,
+    const char *device_ip,
+    PaLogSession **out_session
+);
+
 char *pa_session_connect_lockdown(
     const char *record_path,
     const char *device_ip,

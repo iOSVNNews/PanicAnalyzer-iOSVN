@@ -21,6 +21,18 @@ sandbox. Nếu đã cài IPA thường cùng bundle ID, hãy gỡ bản đó tr�
 JB/TrollStore. Ứng dụng sẽ báo lỗi quyền đọc CrashReporter thay vì báo máy không
 có log khi bản đặc quyền không truy cập được thư mục.
 
+## Kiểm tra kết nối iOS 18 / iLoader (2.7.13)
+
+Sau khi iLoader đặt pairing file vào PanicAnalyzer, mở app và cho phép **Mạng
+cục bộ**, bật LocalDevVPN rồi quét. App thử đọc CrashReporter trực tiếp bằng
+khóa lockdown trước; Remote Pairing và CoreDeviceProxy là các đường dự phòng.
+Lỗi xác minh khóa sẽ yêu cầu xuất lại file cho đúng iPhone, không tự ghép đôi
+lại hoặc thay khóa trong lúc quét. Kết nối tunnel có thời hạn để lần quét lỗi
+không giữ khóa thao tác vô hạn.
+
+Bản này cần kiểm tra trên iPhone thật để xác nhận iOS 18.7.10 và cấu hình VPN
+cụ thể. Đọc được pairing file không đồng nghĩa kết nối tới thiết bị đã thành công.
+
 ## Chức năng
 
 **Phân loại theo mức độ.** Mỗi lần sập nguồn được xếp vào một trong ba nhóm:

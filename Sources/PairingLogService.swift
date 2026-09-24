@@ -335,9 +335,28 @@ final class PairingLogService {
         var session: OpaquePointer?
         var failures: [String] = []
 
+        // iLoader provides a classic record: CrashReporter can use it without
+        // a developer tunnel. Keep RSD as fallback if this service is blocked.
+        if hasLockdownRecord, let recordURL = lockdownRecordURL {
+            do {
+                var opened: OpaquePointer?
+                try recordURL.path.withCString { path in
+                    try deviceIP.withCString { ip in
+                        try check(pa_session_connect_crashreporter(path, ip, &opened))
+                    }
+                }
+                guard let opened else {
+                    throw PairingError.bridge("CrashReporter returned no session")
+                }
+                session = opened
+            } catch {
+                failures.append("CrashReporter: " + error.localizedDescription)
+            }
+        }
+
         // 0. iOS < 27 (y như StikDebug): Remote Pairing record → 10.7.0.1:49152.
         let preferRemote = !supportsOnDevicePairing && hasRemotePairingRecord
-        if preferRemote {
+        if session == nil, preferRemote {
             do {
                 session = try openRemotePairingSession(deviceIP: deviceIP)
             } catch {
