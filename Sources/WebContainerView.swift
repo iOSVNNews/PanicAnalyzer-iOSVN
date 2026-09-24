@@ -25,6 +25,13 @@ struct WebContainerView: UIViewRepresentable {
         // không cho WebContent đọc file:// trong bundle: phục vụ trang qua
         // scheme riêng thay vì file://. Xem WebLoadMonitor.
         config.setURLSchemeHandler(BundleSchemeHandler(), forURLScheme: BundleSchemeHandler.scheme)
+        // Không có data container riêng (bản .deb chạy như app hệ thống, kể cả
+        // roothide .jbroot-…): WebKit không có chỗ ghi cookie/cache nên tiến
+        // trình WebContent có thể chết ngay khi mở. Trang không cần lưu dữ liệu
+        // web, nên giữ tất cả trong RAM.
+        if WebLoadMonitor.isSystemInstall || !WebLoadMonitor.hasDataContainer {
+            config.websiteDataStore = .nonPersistent()
+        }
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.scrollView.bounces = false
