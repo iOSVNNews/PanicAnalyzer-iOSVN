@@ -11,6 +11,8 @@ use idevice::crashreportcopymobile::{flush_reports, CrashReportCopyMobileClient}
 use idevice::remote_pairing::{connect_tls_psk_tunnel_native, RemotePairingClient, RpPairingSocket};
 use idevice::rsd::RsdHandshake;
 use idevice::tcp::handle::AdapterHandle as TunnelAdapter;
+use idevice::lockdown::LockdownClient;
+use idevice::provider::IdeviceProvider;
 use idevice::{IdeviceError, IdeviceService, RsdService};
 use idevice_ffi::core_device_proxy::{adapter_free, AdapterHandle};
 use idevice_ffi::crashreportcopymobile::{crash_report_client_free, CrashReportCopyMobileHandle};
@@ -29,6 +31,11 @@ pub struct PaLogSession {
     adapter: *mut AdapterHandle,
     handshake: *mut RsdHandshakeHandle,
     client: *mut CrashReportCopyMobileHandle,
+    /// Direct route only: the lockdown session that started the service is
+    /// kept open for the life of the service connection (held, never read;
+    /// dropped after the client in pa_session_free).
+    #[allow(dead_code)]
+    lockdown: Option<LockdownClient>,
     /// Set after a timeout or socket error: every later call fails at once
     /// instead of waiting on a dead connection again.
     broken: bool,
@@ -70,6 +77,15 @@ where
 
 fn is_connection_error(error: &IdeviceError) -> bool {
     matches!(error, IdeviceError::Socket(_) | IdeviceError::Timeout)
+}
+
+/// "device socket io failed" alone hides why: add the OS error kind and text
+/// (UnexpectedEof = the iPhone closed the connection, ConnectionReset, …).
+fn describe(error: &IdeviceError) -> String {
+    match error {
+        IdeviceError::Socket(io) => format!("{error} ({:?}: {io})", io.kind()),
+        _ => error.to_string(),
+    }
 }
 
 const BROKEN_SESSION: &str =
@@ -128,6 +144,7 @@ unsafe fn close_parts(
 
 fn new_session(
     tunnel: Option<(TunnelAdapter, RsdHandshake)>,
+    lockdown: Option<LockdownClient>,
     client: CrashReportCopyMobileClient,
 ) -> *mut PaLogSession {
     let (adapter, handshake) = match tunnel {
@@ -141,6 +158,7 @@ fn new_session(
         adapter,
         handshake,
         client: Box::into_raw(Box::new(CrashReportCopyMobileHandle(client))),
+        lockdown,
         broken: false,
     }))
 }
@@ -179,13 +197,13 @@ async fn open_rppairing_tunnel(
     within(PAIR_VERIFY_SECS, "R2 pair-verify", async {
         rpc.connect(&mut *pairing, || async { "000000".to_string() })
             .await
-            .map_err(|e| format!("R2 pair-verify: {e}"))
+            .map_err(|e| format!("R2 pair-verify: {}", describe(&e)))
     })
     .await?;
     let tunnel_port = within(STEP_SECS, "R3 xin cổng tunnel", async {
         rpc.create_tcp_listener()
             .await
-            .map_err(|e| format!("R3 xin cổng tunnel: {e}"))
+            .map_err(|e| format!("R3 xin cổng tunnel: {}", describe(&e)))
     })
     .await?;
     let mut tunnel_address = address;
@@ -200,7 +218,7 @@ async fn open_rppairing_tunnel(
     let tunnel = within(STEP_SECS, "R5 TLS-PSK", async {
         connect_tls_psk_tunnel_native(tunnel_stream, &key)
             .await
-            .map_err(|e| format!("R5 TLS-PSK: {e}"))
+            .map_err(|e| format!("R5 TLS-PSK: {}", describe(&e)))
     })
     .await?;
     let client_ip: IpAddr = tunnel
@@ -238,7 +256,7 @@ async fn rsd_over_adapter(
     let handshake = within(STEP_SECS, &format!("{handshake_step} bắt tay RSD"), async {
         RsdHandshake::new(stream)
             .await
-            .map_err(|e| format!("{handshake_step} bắt tay RSD: {e}"))
+            .map_err(|e| format!("{handshake_step} bắt tay RSD: {}", describe(&e)))
     })
     .await?;
     Ok((adapter, handshake))
@@ -313,14 +331,14 @@ unsafe fn open_crash_reports(
         let client = within(SERVICE_SECS, "C1 crashreportcopymobile qua RSD", async {
             CrashReportCopyMobileClient::connect_rsd(&mut adapter, &mut handshake)
                 .await
-                .map_err(|e| format!("C1 crashreportcopymobile qua RSD: {e}"))
+                .map_err(|e| format!("C1 crashreportcopymobile qua RSD: {}", describe(&e)))
         })
         .await?;
         Ok::<_, String>((adapter, handshake, client))
     });
     match result {
         Ok((adapter, handshake, client)) => {
-            *out_session = new_session(Some((adapter, handshake)), client);
+            *out_session = new_session(Some((adapter, handshake)), None, client);
             null_mut()
         }
         Err(error) => owned_message(format!(
@@ -477,16 +495,39 @@ pub unsafe extern "C" fn pa_session_connect_lockdown_direct(
         // L1 (best effort): ask crashreportmover to move pending reports into
         // the CrashReporter view, as idevicecrashreport/Xcode do first.
         let _ = tokio::time::timeout(deadline(FLUSH_SECS), flush_reports(&provider)).await;
-        within(SERVICE_SECS, "L2 lockdown StartService crashreportcopymobile", async {
-            CrashReportCopyMobileClient::connect(&provider).await.map_err(|e| {
-                format!("L2 lockdown StartService com.apple.crashreportcopymobile: {e}")
-            })
+        within(SERVICE_SECS, "L2-L4 lockdown StartService crashreportcopymobile", async {
+            let pairing = provider
+                .get_pairing_file()
+                .await
+                .map_err(|e| format!("L2 pair record: {}", describe(&e)))?;
+            let mut lockdown = LockdownClient::connect(&provider)
+                .await
+                .map_err(|e| format!("L2 nối lockdownd: {}", describe(&e)))?;
+            let legacy = lockdown
+                .start_session(&pairing)
+                .await
+                .map_err(|e| format!("L2 StartSession: {}", describe(&e)))?;
+            let (port, ssl) = lockdown
+                .start_service("com.apple.crashreportcopymobile")
+                .await
+                .map_err(|e| format!("L3 StartService com.apple.crashreportcopymobile: {}", describe(&e)))?;
+            let mut device = provider
+                .connect(port)
+                .await
+                .map_err(|e| format!("L4 nối cổng dịch vụ {port}: {}", describe(&e)))?;
+            if ssl {
+                device
+                    .start_session(&pairing, legacy)
+                    .await
+                    .map_err(|e| format!("L4 TLS dịch vụ cổng {port}: {}", describe(&e)))?;
+            }
+            Ok((lockdown, CrashReportCopyMobileClient::new(device)))
         })
         .await
     });
     match result {
-        Ok(client) => {
-            *out_session = new_session(None, client);
+        Ok((lockdown, client)) => {
+            *out_session = new_session(None, Some(lockdown), client);
             null_mut()
         }
         Err(error) => owned_message(format!(
@@ -522,7 +563,8 @@ pub unsafe extern "C" fn pa_session_connect_lockdown(
             idevice::core_device_proxy::CoreDeviceProxy::connect(&provider)
                 .await
                 .map_err(|e| format!(
-                    "B2 CoreDeviceProxy::connect: {e} — bắt tay lockdown / StartService untrusted.tunnelservice thất bại. Pairing file có thể thiếu phần Remote Pairing hoặc thiết bị chưa Tin cậy."
+                    "B2 CoreDeviceProxy::connect: {} — bắt tay lockdown / StartService untrusted.tunnelservice thất bại. Pairing file có thể thiếu phần Remote Pairing hoặc thiết bị chưa Tin cậy.",
+                    describe(&e)
                 ))
         })
         .await?;
@@ -605,7 +647,7 @@ pub unsafe extern "C" fn pa_session_list(
             if is_connection_error(&error) {
                 session.broken = true;
             }
-            owned_message(format!("Không liệt kê được thư mục CrashReporter: {error}"))
+            owned_message(format!("Không liệt kê được thư mục CrashReporter: {}", describe(&error)))
         }
         Ok(Ok(names)) => match write_string_array(names, out_entries, out_count) {
             Ok(()) => null_mut(),
@@ -623,9 +665,9 @@ enum PullError {
 
 fn pull_error(error: IdeviceError) -> PullError {
     if is_connection_error(&error) {
-        PullError::Fatal(error.to_string())
+        PullError::Fatal(describe(&error))
     } else {
-        PullError::Skip(error.to_string())
+        PullError::Skip(describe(&error))
     }
 }
 

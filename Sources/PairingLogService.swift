@@ -381,6 +381,24 @@ final class PairingLogService {
         let ordered: [Route?] = supportsOnDevicePairing ? [proxy, remote] : [remote, proxy]
         routes += ordered.compactMap { $0 }
 
+        var rootEntries: [String] = []
+        var connectedRoute = ""
+        /// A route only counts once it can list CrashReporter: a session whose
+        /// first listing fails (the iPhone closed the service) must not stop
+        /// the next route from being tried.
+        func accept(_ opened: OpaquePointer, via name: String) {
+            do {
+                rootEntries = try list(session: opened, directory: "")
+                session = opened
+                connectedRoute = name
+            } catch {
+                pa_session_free(opened)
+                failures.append("\(name): "
+                    + Loc.s("mở được nhưng không đọc được — ", "opened but cannot read — ", "已打开但无法读取——")
+                    + error.localizedDescription)
+            }
+        }
+
         for (index, route) in routes.enumerated() where session == nil {
             if Date().timeIntervalSince(started) > connectBudget {
                 failures.append(Loc.s("\(route.name): bỏ qua vì đã quá \(Int(connectBudget)) giây",
@@ -392,7 +410,8 @@ final class PairingLogService {
                            "Connecting (\(index + 1)/\(routes.count)): \(route.name)…",
                            "正在连接（\(index + 1)/\(routes.count)）：\(route.name)…"))
             do {
-                session = try route.connect()
+                let opened = try route.connect()
+                accept(opened, via: route.name)
             } catch {
                 failures.append("\(route.name): " + error.localizedDescription)
             }
@@ -406,7 +425,8 @@ final class PairingLogService {
                            "Asking the iPhone for a new lockdown record…",
                            "正在请求 iPhone 创建新的 lockdown 记录…"))
             do {
-                session = try openLockdownSession(deviceIP: deviceIP, reuseStored: false)
+                let opened = try openLockdownSession(deviceIP: deviceIP, reuseStored: false)
+                accept(opened, via: "Lockdown (record mới)")
             } catch {
                 guard !failures.isEmpty else { throw error }
                 failures.append(Loc.s("Tạo record mới: ", "New record: ", "新建记录：") + error.localizedDescription)
@@ -419,9 +439,9 @@ final class PairingLogService {
             throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
         }
         defer { pa_session_free(session) }
-        progress(Loc.s("Đã kết nối, đang đọc CrashReporter…",
-                       "Connected, reading CrashReporter…",
-                       "已连接，正在读取 CrashReporter…"))
+        progress(Loc.s("Đã kết nối qua \(connectedRoute), đang đọc CrashReporter…",
+                       "Connected via \(connectedRoute), reading CrashReporter…",
+                       "已通过 \(connectedRoute) 连接，正在读取 CrashReporter…"))
 
         struct PendingDirectory {
             let path: String
@@ -443,13 +463,16 @@ final class PairingLogService {
             guard visited.insert(directory.path).inserted else { continue }
 
             let entries: [String]
-            do {
-                entries = try list(session: session, directory: directory.path)
-            } catch {
-                if directory.depth == 0 { throw error }
-                // A dead connection fails every later call too: keep what we have.
-                if pa_session_is_broken(session) { break scan }
-                continue
+            if directory.depth == 0 {
+                entries = rootEntries // already listed when the route was accepted
+            } else {
+                do {
+                    entries = try list(session: session, directory: directory.path)
+                } catch {
+                    // A dead connection fails every later call too: keep what we have.
+                    if pa_session_is_broken(session) { break scan }
+                    continue
+                }
             }
             entryCount += entries.count
 
