@@ -609,6 +609,10 @@ final class LogBridge: NSObject {
     /// Nhận pairing file iLoader / Files / Finder đặt vào thư mục Documents của app.
     /// `atLaunch`: chạy đồng bộ trước khi trang web tải để cờ ghép đôi đã đúng.
     func importPairingFromDocuments(atLaunch: Bool) {
+        // Bản JB/TrollStore đọc log trực tiếp, không dùng pairing. Bản .deb còn
+        // không có container: "Documents" là /var/mobile/Documents dùng chung,
+        // nên tuyệt đối không nhập rồi xoá file của người dùng ở đó.
+        guard !isPrivilegedBuild, !WebLoadMonitor.isSystemInstall else { return }
         let work = {
             let outcome = PairingLogService.shared.importFromDocuments()
             if let result = outcome.result {
@@ -910,6 +914,7 @@ extension LogBridge: WKScriptMessageHandler {
         guard let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
         switch action {
+        case "pageReady":    WebLoadMonitor.shared.markReady()
         case "autoScanLogs": scanLogs()
         case "pickFiles":    presentPicker()
         case "importPairing": presentPairingPicker()

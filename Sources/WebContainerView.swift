@@ -21,16 +21,16 @@ struct WebContainerView: UIViewRepresentable {
         config.userContentController = ucc
         config.allowsInlineMediaPlayback = true
 
+        // Bản .deb (cài vào /Applications, không có sandbox container) có thể
+        // không cho WebContent đọc file:// trong bundle: phục vụ trang qua
+        // scheme riêng thay vì file://. Xem WebLoadMonitor.
+        config.setURLSchemeHandler(BundleSchemeHandler(), forURLScheme: BundleSchemeHandler.scheme)
+
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.scrollView.bounces = false
         LogBridge.shared.webView = webView
-
-        if let index = Bundle.main.url(forResource: "index",
-                                       withExtension: "html",
-                                       subdirectory: "web") {
-            // Cấp quyền đọc cả bundle để ../Resources/ truy cập được
-            webView.loadFileURL(index, allowingReadAccessTo: Bundle.main.bundleURL)
-        }
+        // Tải trang và hiện lỗi rõ ràng thay vì màn đen nếu trang không chạy.
+        WebLoadMonitor.shared.attach(webView)
         return webView
     }
 

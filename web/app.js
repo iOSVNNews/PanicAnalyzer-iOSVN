@@ -25,6 +25,8 @@ let ruleDatabases = {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+  // Báo native trang đã chạy (native hiện lỗi thay vì màn đen nếu không nhận được).
+  try { window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'pageReady' }); } catch (e) { /* trình duyệt */ }
   applyStaticI18n();
   setActiveTab('panic');
   updatePartsPairingRequirement();
