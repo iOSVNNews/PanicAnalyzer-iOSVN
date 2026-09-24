@@ -362,8 +362,56 @@ final class LogBridge: NSObject {
 
     // MARK: - Quét log trực tiếp hoặc qua Remote Pairing
 
+    /// Một lần quét tại một thời điểm: bấm lại khi đang kết nối chỉ báo tiến độ,
+    /// không xếp thêm lượt quét chờ sau lượt đang chạy.
+    private let scanStateLock = NSLock()
+    private var scanRunning = false
+
+    /// Tách khỏi `localNetwork` (máy chủ ghép đôi) để hai việc không huỷ nhau.
+    private let scanLocalNetwork = LocalNetworkAuthorization()
+    private let localNetworkGrantedKey = "localNetworkGranted"
+    private let localNetworkAskedKey = "localNetworkAsked"
+
+    /// Hỏi quyền Mạng cục bộ trước khi kết nối tới 10.7.0.1 và chờ câu trả lời
+    /// (chỉ gọi từ luồng nền). Không có quyền thì iOS chặn im lặng mọi kết nối
+    /// tới LocalDevVPN, lỗi chỉ hiện ra dưới dạng quá thời gian.
+    private func ensureLocalNetwork() -> Bool {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: localNetworkGrantedKey) { return true }
+        // Lần đầu iOS hiện hộp thoại: cho người dùng thời gian bấm Cho phép.
+        let timeout: TimeInterval = defaults.bool(forKey: localNetworkAskedKey) ? 5 : 30
+        defaults.set(true, forKey: localNetworkAskedKey)
+        let done = DispatchSemaphore(value: 0)
+        var granted = false
+        DispatchQueue.main.async {
+            self.scanLocalNetwork.request(timeout: timeout) { ok in
+                granted = ok
+                done.signal()
+            }
+        }
+        _ = done.wait(timeout: .now() + timeout + 2)
+        let result = DispatchQueue.main.sync { granted }
+        if result { defaults.set(true, forKey: localNetworkGrantedKey) }
+        return result
+    }
+
     func scanLogs() {
+        scanStateLock.lock()
+        if scanRunning {
+            scanStateLock.unlock()
+            notifyScanProgress(Loc.s("Đang quét, vui lòng chờ kết quả…",
+                                     "A scan is already running, please wait…",
+                                     "正在扫描，请等待结果…"))
+            return
+        }
+        scanRunning = true
+        scanStateLock.unlock()
         DispatchQueue.global(qos: .userInitiated).async {
+            defer {
+                self.scanStateLock.lock()
+                self.scanRunning = false
+                self.scanStateLock.unlock()
+            }
             // Trên máy JB / TrollStore đọc thẳng file log, không cần ghép đôi.
             let direct = self.readFilesystemLogs()
             if !direct.logs.isEmpty {
@@ -391,8 +439,15 @@ final class LogBridge: NSObject {
                 return
             }
             let wasConfigured = PairingLogService.shared.isConfigured
+            var localNetworkOK = true
+            if wasConfigured {
+                self.notifyScanProgress(Loc.s("Đang kiểm tra quyền Mạng cục bộ… Chọn Cho phép nếu iOS hỏi.",
+                                              "Checking Local Network permission… Tap Allow if iOS asks.",
+                                              "正在检查本地网络权限… 如 iOS 询问请点「允许」。"))
+                localNetworkOK = self.ensureLocalNetwork()
+            }
             do {
-                let pairedLogs = try PairingLogService.shared.scanLogs()
+                let pairedLogs = try PairingLogService.shared.scanLogs(progress: { self.notifyScanProgress($0) })
                 if !wasConfigured && PairingLogService.shared.isConfigured {
                     self.notifyPairingStatus(
                         configured: true,
@@ -406,13 +461,33 @@ final class LogBridge: NSObject {
             } catch {
                 let notPaired: Bool
                 if case PairingLogService.PairingError.notPaired = error { notPaired = true } else { notPaired = false }
+                var message = error.localizedDescription
+                if !notPaired {
+                    // Quyền có thể đã bị tắt sau đó: lần quét sau kiểm tra lại.
+                    UserDefaults.standard.removeObject(forKey: self.localNetworkGrantedKey)
+                    if !localNetworkOK {
+                        message += "\n\n" + Loc.s(
+                            "Chưa xác nhận được quyền Mạng cục bộ. Vào Cài đặt > PanicAnalyzer, bật Mạng cục bộ, rồi quét lại.",
+                            "Local Network permission could not be confirmed. Go to Settings > PanicAnalyzer, turn on Local Network, then scan again.",
+                            "无法确认本地网络权限。请前往 设置 > PanicAnalyzer 开启本地网络，然后重新扫描。")
+                    }
+                }
                 self.notifyPairingStatus(
                     configured: PairingLogService.shared.isConfigured,
-                    message: error.localizedDescription,
+                    message: message,
                     isError: !notPaired
                 )
             }
         }
+    }
+
+    /// Dòng tiến độ khi đang thử lần lượt các đường kết nối (không bật toast).
+    private func notifyScanProgress(_ message: String) {
+        guard let data = try? JSONSerialization.data(withJSONObject: [message]),
+              let array = String(data: data, encoding: .utf8) else { return }
+        let quoted = String(array.dropFirst().dropLast())
+        let js = "(function(){ if (window.onNativeScanProgress) window.onNativeScanProgress(\(quoted)); })();"
+        DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
     }
 
     private func isLogFile(_ name: String) -> Bool {

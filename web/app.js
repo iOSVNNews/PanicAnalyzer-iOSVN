@@ -1059,16 +1059,27 @@ function exportSanitizedReport() {
 // ---------------------------------------------------------------------------
 let scanTimeoutId = null;
 
+// Native side bounds every connection step and reports progress, which
+// re-arms this deadline; it only fires if native goes silent.
+const SCAN_TIMEOUT_MS = 100000;
+
 function armScanTimeout() {
   clearTimeout(scanTimeoutId);
   scanTimeoutId = setTimeout(() => {
+    scanTimeoutId = null;
     showEmptyState();
     updateScanStatus(t('s.timeout'), false);
     setPartsScanState('error', 0, t('s.timeout'));
     showToast(t('s.timeout'), 4500);
-  }, 45000);
+  }, SCAN_TIMEOUT_MS);
 }
 function clearScanTimeout() { clearTimeout(scanTimeoutId); scanTimeoutId = null; }
+
+// Progress lines while native tries LocalDevVPN routes one by one.
+window.onNativeScanProgress = function(message) {
+  if (message) updateScanStatus(message, true);
+  if (scanTimeoutId !== null || partsScanState === 'scanning') armScanTimeout();
+};
 
 function triggerFilePicker() {
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {

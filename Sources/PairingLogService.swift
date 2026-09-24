@@ -321,9 +321,16 @@ final class PairingLogService {
         }
     }
 
+    /// Connecting stops trying further routes after this long, so the UI always
+    /// gets an answer (each route also has its own deadlines in the bridge).
+    private let connectBudget: TimeInterval = 70
+    /// Reading stops after this long and returns what was already read.
+    private let readBudget: TimeInterval = 45
+
     /// The remote service exposes CrashReporter as a virtual AFC root. It does
     /// not grant arbitrary access to /var or even all of Library/Logs.
-    func scanLogs() throws -> [[String: String]] {
+    /// `progress` receives short status lines while routes are tried.
+    func scanLogs(progress: @escaping (String) -> Void = { _ in }) throws -> [[String: String]] {
         operationLock.lock()
         defer { operationLock.unlock() }
 
@@ -332,50 +339,77 @@ final class PairingLogService {
         }
         let deviceIP = LocalVPNConnection.deviceAddress
 
+        let started = Date()
         var session: OpaquePointer?
         var failures: [String] = []
 
-        // 0. iOS < 27 (y như StikDebug): Remote Pairing record → 10.7.0.1:49152.
-        let preferRemote = !supportsOnDevicePairing && hasRemotePairingRecord
-        if preferRemote {
+        // 0. Every route needs LocalDevVPN: one bounded check of lockdownd first
+        //    instead of three routes each timing out on a dead VPN. If only
+        //    62078 is silent, a Remote Pairing record still gets its own try.
+        progress(Loc.s("Đang kiểm tra LocalDevVPN (\(deviceIP))…",
+                       "Checking LocalDevVPN (\(deviceIP))…",
+                       "正在检查 LocalDevVPN（\(deviceIP)）…"))
+        var lockdownReachable = true
+        do {
+            try LocalVPNConnection.checkDeviceReachable(address: deviceIP)
+        } catch {
+            guard hasRemotePairingRecord else { throw error }
+            lockdownReachable = false
+            failures.append(error.localizedDescription)
+        }
+
+        typealias Route = (name: String, connect: () throws -> OpaquePointer)
+        var routes: [Route] = []
+        let lockdownURL = hasLockdownRecord && lockdownReachable ? lockdownRecordURL : nil
+        // Lockdown direct (SideStore-style): a lockdown session on 62078, then
+        // StartService crashreportcopymobile. No tunnel, so nothing for iOS to
+        // close; tried first whenever a lockdown record exists (iLoader, computer).
+        if let recordURL = lockdownURL {
+            routes.append(("Lockdown", { try self.connectLockdownDirect(recordURL: recordURL, deviceIP: deviceIP) }))
+        }
+        var remote: Route?
+        if hasRemotePairingRecord {
+            remote = ("Remote Pairing", { try self.openRemotePairingSession(deviceIP: deviceIP) })
+        }
+        var proxy: Route?
+        if let recordURL = lockdownURL {
+            proxy = ("CoreDeviceProxy", { try self.connectLockdown(recordURL: recordURL, deviceIP: deviceIP) })
+        }
+        // iOS < 27: Remote Pairing at 49152 exactly like StikDebug, then
+        // CoreDeviceProxy. iOS 27: CoreDeviceProxy before the RPPairing tunnel,
+        // whose on-device listener iOS may close.
+        let ordered: [Route?] = supportsOnDevicePairing ? [proxy, remote] : [remote, proxy]
+        routes += ordered.compactMap { $0 }
+
+        for (index, route) in routes.enumerated() where session == nil {
+            if Date().timeIntervalSince(started) > connectBudget {
+                failures.append(Loc.s("\(route.name): bỏ qua vì đã quá \(Int(connectBudget)) giây",
+                                      "\(route.name): skipped after \(Int(connectBudget)) s",
+                                      "\(route.name)：超过 \(Int(connectBudget)) 秒，已跳过"))
+                continue
+            }
+            progress(Loc.s("Đang kết nối (\(index + 1)/\(routes.count)): \(route.name)…",
+                           "Connecting (\(index + 1)/\(routes.count)): \(route.name)…",
+                           "正在连接（\(index + 1)/\(routes.count)）：\(route.name)…"))
             do {
-                session = try openRemotePairingSession(deviceIP: deviceIP)
+                session = try route.connect()
             } catch {
-                failures.append("Remote Pairing: " + error.localizedDescription)
+                failures.append("\(route.name): " + error.localizedDescription)
             }
         }
 
-        // 1. A stored/imported lockdown record (iLoader, computer, or minted
-        //    earlier) over CoreDeviceProxy: the route that works on-device,
-        //    because it needs no inbound tunnel listener.
-        if session == nil, hasLockdownRecord, let recordURL = lockdownRecordURL {
-            do {
-                session = try connectLockdown(recordURL: recordURL, deviceIP: deviceIP)
-            } catch {
-                failures.append("CoreDeviceProxy: " + error.localizedDescription)
-            }
-        }
-        // 2. RPPairing tunnel (record from Settings > Developer on iOS 27, or the
-        //    Remote Pairing half of an iLoader file).
-        if session == nil, !preferRemote, hasRemotePairingRecord {
-            do {
-                session = try openRemotePairingSession(deviceIP: deviceIP)
-            } catch {
-                // The VPN itself is down: the other routes need it as well.
-                if let vpn = error as? LocalVPNConnection.ConnectionError, !vpn.refused { throw error }
-                failures.append("Remote Pairing: " + error.localizedDescription)
-            }
-        }
-        // 3. Ask lockdownd for a new record (iOS shows "Tin cậy máy tính này?").
-        //    Only when no lockdown record exists yet: with an imported record this
-        //    step only adds a sandbox error (127.0.0.1:62078) that hides the real one.
-        if session == nil, !hasLockdownRecord {
+        // Ask lockdownd for a new record (iOS shows "Tin cậy máy tính này?").
+        // Only when no lockdown record exists yet: with an imported record this
+        // step only adds a sandbox error (127.0.0.1:62078) that hides the real one.
+        if session == nil, !hasLockdownRecord, lockdownReachable {
+            progress(Loc.s("Đang xin iPhone tạo lockdown record mới…",
+                           "Asking the iPhone for a new lockdown record…",
+                           "正在请求 iPhone 创建新的 lockdown 记录…"))
             do {
                 session = try openLockdownSession(deviceIP: deviceIP, reuseStored: false)
             } catch {
                 guard !failures.isEmpty else { throw error }
                 failures.append(Loc.s("Tạo record mới: ", "New record: ", "新建记录：") + error.localizedDescription)
-                throw PairingError.bridge(failures.joined(separator: "\n\n"))
             }
         }
         if session == nil, !failures.isEmpty {
@@ -385,22 +419,26 @@ final class PairingLogService {
             throw PairingError.bridge(Loc.s("RSD tunnel không trả về phiên làm việc hợp lệ.", "The RSD tunnel returned no valid session.", "RSD 隧道未返回有效会话。"))
         }
         defer { pa_session_free(session) }
+        progress(Loc.s("Đã kết nối, đang đọc CrashReporter…",
+                       "Connected, reading CrashReporter…",
+                       "已连接，正在读取 CrashReporter…"))
 
         struct PendingDirectory {
             let path: String
             let depth: Int
         }
 
+        let readStarted = Date()
         var pending = [PendingDirectory(path: "", depth: 0)]
         var visited = Set<String>()
         var results: [[String: String]] = []
         var totalBytes = 0
         var entryCount = 0
 
-        while !pending.isEmpty,
-              results.count < maxFiles,
-              totalBytes < maxTotalBytes,
-              entryCount < maxEntries {
+        scan: while !pending.isEmpty,
+                    results.count < maxFiles,
+                    totalBytes < maxTotalBytes,
+                    entryCount < maxEntries {
             let directory = pending.removeFirst()
             guard visited.insert(directory.path).inserted else { continue }
 
@@ -409,17 +447,27 @@ final class PairingLogService {
                 entries = try list(session: session, directory: directory.path)
             } catch {
                 if directory.depth == 0 { throw error }
+                // A dead connection fails every later call too: keep what we have.
+                if pa_session_is_broken(session) { break scan }
                 continue
             }
             entryCount += entries.count
 
             for entry in entries {
                 guard entry != ".", entry != "..", !entry.contains("/") else { continue }
+                // Deadline for reading: return the logs already read.
+                if Date().timeIntervalSince(readStarted) > readBudget { break scan }
                 let path = directory.path.isEmpty ? entry : "\(directory.path)/\(entry)"
                 if isLogFile(entry) {
                     guard results.count < maxFiles, totalBytes < maxTotalBytes else { break }
-                    guard let data = try? pull(session: session, path: path),
-                          !data.isEmpty,
+                    let data: Data
+                    do {
+                        data = try pull(session: session, path: path)
+                    } catch {
+                        if pa_session_is_broken(session) { break scan }
+                        continue
+                    }
+                    guard !data.isEmpty,
                           data.count <= maxFileBytes,
                           totalBytes + data.count <= maxTotalBytes else { continue }
                     totalBytes += data.count
@@ -433,6 +481,20 @@ final class PairingLogService {
             }
         }
         return results
+    }
+
+    /// Direct lockdown route: lockdown session + StartService, no tunnel.
+    private func connectLockdownDirect(recordURL: URL, deviceIP: String) throws -> OpaquePointer {
+        var opened: OpaquePointer?
+        try recordURL.path.withCString { path in
+            try deviceIP.withCString { ip in
+                try check(pa_session_connect_lockdown_direct(path, ip, &opened))
+            }
+        }
+        guard let opened else {
+            throw PairingError.bridge(Loc.s("Lockdown không trả về phiên làm việc hợp lệ.", "Lockdown returned no valid session.", "Lockdown 未返回有效会话。"))
+        }
+        return opened
     }
 
     /// Route 1 (iOS 27 record from Settings > Developer): RPPairing tunnel.

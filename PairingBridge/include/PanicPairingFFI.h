@@ -1,6 +1,7 @@
 #ifndef PANIC_PAIRING_FFI_H
 #define PANIC_PAIRING_FFI_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -41,6 +42,22 @@ char *pa_session_connect_lockdown(
     const char *device_ip,
     PaLogSession **out_session
 );
+
+/*
+ * Direct route: lockdown session on 62078, then StartService
+ * com.apple.crashreportcopymobile (no tunnel, no RSD). Same record as above.
+ */
+char *pa_session_connect_lockdown_direct(
+    const char *record_path,
+    const char *device_ip,
+    PaLogSession **out_session
+);
+
+/*
+ * Every network step has a deadline. After a timeout or socket error the
+ * session is marked broken and later list/pull calls fail at once.
+ */
+bool pa_session_is_broken(const PaLogSession *session);
 
 char *pa_session_list(
     PaLogSession *session,

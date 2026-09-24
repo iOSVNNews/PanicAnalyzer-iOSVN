@@ -16,11 +16,15 @@ final class LocalNetworkAuthorization {
     private var browser: NWBrowser?
     private var listener: NWListener?
     private var completion: ((Bool) -> Void)?
+    /// Bumped per request so a previous request's timeout cannot end this one.
+    private var generation = 0
 
     /// Call on the main queue; `completion` runs on the main queue once.
     func request(timeout: TimeInterval = 60, completion: @escaping (Bool) -> Void) {
         dispatchPrecondition(condition: .onQueue(.main))
         finish(false)
+        generation += 1
+        let current = generation
         self.completion = completion
 
         let parameters = NWParameters.tcp
@@ -55,7 +59,8 @@ final class LocalNetworkAuthorization {
         listener?.start(queue: .main)
         browser.start(queue: .main)
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
-            self?.finish(false)
+            guard let self, self.generation == current else { return }
+            self.finish(false)
         }
     }
 

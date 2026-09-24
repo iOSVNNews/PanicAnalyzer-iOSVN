@@ -69,6 +69,27 @@ struct LocalVPNConnectionTests {
             expect(attempts == 1, "Refused port must not be retried")
         }
 
+        // One VPN check before any pairing route: lockdownd 62078, bounded.
+        attempts = 0
+        try LocalVPNConnection.checkDeviceReachable(address: "10.7.0.1") { address, port, timeout in
+            attempts += 1
+            expect(address == "10.7.0.1" && port == 62078, "Reachability must probe lockdownd")
+            expect(timeout <= 10, "Reachability check must be bounded")
+        }
+        expect(attempts == 1, "A reachable device must be probed once")
+        try LocalVPNConnection.checkDeviceReachable(address: "10.7.0.1") { _, _, _ in
+            throw LocalVPNConnection.ConnectionError(message: "refused", refused: true)
+        }
+        do {
+            try LocalVPNConnection.checkDeviceReachable(address: "10.7.0.1") { _, _, _ in
+                throw LocalVPNConnection.ConnectionError(message: "offline")
+            }
+            preconditionFailure("A silent VPN must stop the scan before any pairing route")
+        } catch let error as LocalVPNConnection.ConnectionError {
+            expect(!error.refused && error.message.contains("62078") && error.message.contains("offline"),
+                   "VPN error must name lockdownd and keep the cause")
+        }
+
         for (input, expected) in [("", nil), ("  ", nil), ("49152", UInt16(49152)), (" 62078 ", UInt16(62078))] as [(String, UInt16?)] {
             let actual = try LocalVPNConnection.normalizedPort(input)
             expect(actual == expected, "Port parsing: \(input)")

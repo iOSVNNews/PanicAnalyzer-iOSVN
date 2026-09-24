@@ -167,6 +167,36 @@ enum LocalVPNConnection {
         )
     }
 
+    /// lockdownd listens on 62078 on every iOS version, whatever pairing route
+    /// is used afterwards.
+    static let lockdownPort: UInt16 = 62078
+
+    /// One reachability check before any pairing route: every route needs
+    /// LocalDevVPN to deliver TCP to the device. An answer on 62078, even a
+    /// refusal, proves the VPN route works; silence means VPN off / not yet
+    /// connected / Local Network denied, which no route can work around.
+    static func checkDeviceReachable(
+        address: String,
+        probe: (String, UInt16, TimeInterval) throws -> Void = LocalVPNConnection.probe
+    ) throws {
+        do {
+            try probe(address, lockdownPort, 8)
+        } catch let error as ConnectionError where error.refused {
+            return
+        } catch {
+            throw ConnectionError(message: Loc.s(
+                "Không tới được iPhone qua LocalDevVPN (\(address):\(lockdownPort)). Mở LocalDevVPN, bấm Kết nối tới khi báo "
+                    + "Connected, bật Wi-Fi, cho phép Mạng cục bộ cho PanicAnalyzer (Cài đặt > PanicAnalyzer), rồi quét lại. "
+                    + "Chi tiết: \(error.localizedDescription)",
+                "Cannot reach the iPhone through LocalDevVPN (\(address):\(lockdownPort)). Open LocalDevVPN, tap Connect until it "
+                    + "says Connected, turn on Wi-Fi, allow Local Network for PanicAnalyzer (Settings > PanicAnalyzer), then scan again. "
+                    + "Details: \(error.localizedDescription)",
+                "无法通过 LocalDevVPN 连接 iPhone（\(address):\(lockdownPort)）。请打开 LocalDevVPN 并连接直到显示 Connected，"
+                    + "打开 Wi-Fi，允许 PanicAnalyzer 使用本地网络（设置 > PanicAnalyzer），然后重新扫描。"
+                    + "详情：\(error.localizedDescription)"))
+        }
+    }
+
     static func waitUntilReachable(address: String, port: UInt16 = defaultPort,
                                    probe: (String, UInt16, TimeInterval) throws -> Void = LocalVPNConnection.probe) throws {
         // The first attempt also gives iOS time to show the Local Network prompt.
