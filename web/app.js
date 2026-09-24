@@ -787,6 +787,9 @@ function renderHardwareReport(host, paragraph) {
   if (battery.serial) facts.push(t('parts.hw.serial', { s: battery.serial }));
   if (batteryFinding) {
     addRow(t('parts.part.battery'), t('parts.status.' + batteryFinding.status), batteryFinding.status);
+  } else if (battery.auth && battery.auth.driver) {
+    // Có driver xác thực pin nhưng iOS chưa khai kết quả.
+    addRow(t('parts.part.battery'), t('parts.hw.batteryDriverNoFlag'), 'unverified');
   } else if (support.battery === false) {
     addRow(t('parts.part.battery'), t('parts.hw.batteryNotSupported'), '');
   } else {
@@ -800,6 +803,9 @@ function renderHardwareReport(host, paragraph) {
     if (finding.status !== 'genuine' && finding.status !== 'authfail') continue;
     addRow(t('parts.part.' + finding.part),
       t(finding.status === 'genuine' ? 'parts.hw.partPass' : 'parts.hw.partFail'), finding.status);
+  }
+  if (batteryFinding && batteryFinding.status === 'auth_error') {
+    paragraph(t('parts.hw.batteryAuthError', { n: batteryFinding.code || '?' }), 'parts-note parts-error');
   }
   if (clue) {
     paragraph(t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }), 'parts-note parts-error');

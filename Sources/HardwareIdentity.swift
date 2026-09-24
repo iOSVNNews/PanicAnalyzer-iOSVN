@@ -196,6 +196,63 @@ enum HardwareIdentity {
         return positive.contains { lower.contains($0) } && !negative.contains { lower.contains($0) }
     }
 
+    // MARK: - Battery authentication driver (AppleBatteryAuth)
+
+    /// Reads what the battery authentication driver publishes. Per Apple's
+    /// open-source PowerManagement (AppleSmartBatteryManager/AppleBatteryAuth.cpp):
+    /// - "CommunicationError" / "CoProcError": set once when the auth chip inside
+    ///   the battery does not answer over I2C or reports an error. Batteries
+    ///   without Apple's auth chip fail exactly here.
+    /// - a trusted-data "…Pass" boolean, set true/false after the challenge on
+    ///   iOS versions that enable trusted battery data.
+    /// The first entry is the driver itself (queried by class); the rest are
+    /// battery nodes found by the property scan.
+    static func batteryAuth(driver: [String: Any], scanned: [[String: Any]]) -> [String: Any] {
+        var out: [String: Any] = [:]
+        let driverFound = driver["error"] == nil && !driver.isEmpty
+        if driverFound { out["driver"] = true }
+        for props in (driverFound ? [driver] : []) + scanned {
+            for key in props.keys.sorted() {
+                let lower = key.lowercased()
+                let value = props[key]
+                if out["passed"] == nil, isTrustedPassKey(lower),
+                   let number = integer(value), number == 0 || number == 1 {
+                    out["passed"] = number == 1
+                    out["passKey"] = key
+                } else if out["commError"] == nil, lower == "communicationerror",
+                          let number = integer(value), number != 0 {
+                    out["commError"] = number
+                } else if out["coprocError"] == nil, lower == "coprocerror",
+                          let number = integer(value), number != 0 {
+                    out["coprocError"] = number
+                }
+            }
+        }
+        return out
+    }
+
+    /// "TrustedBatteryAuthPass"-style names: a pass result, not a counter.
+    static func isTrustedPassKey(_ lower: String) -> Bool {
+        lower.contains("pass") && (lower.contains("trust") || lower.contains("auth"))
+            && !["count", "retry", "fail", "time", "bypass"].contains { lower.contains($0) }
+    }
+
+    /// IOService names that look like battery or auth drivers, so the raw data
+    /// shows how this iPhone generation names them.
+    static func batteryNodeNames(_ names: [String]) -> [String] {
+        var seen: [String] = []
+        for name in names {
+            let lower = name.lowercased()
+            let batteryLike = lower.contains("batt") || lower.contains("gasgauge") || lower.contains("charger")
+            let authLike = lower.contains("auth") && !lower.contains("userclient")
+            if (batteryLike || authLike), !seen.contains(name) {
+                seen.append(name)
+                if seen.count == 30 { break }
+            }
+        }
+        return seen
+    }
+
     // MARK: - Property scan (finds auth nodes whatever they are called)
 
     struct Hit {
@@ -285,10 +342,15 @@ enum HardwareIdentity {
         let pairs = zip(candidates, second).map { (name: $0, entry: $1) } + displayHits
         let batteryAuth = entry(first, .batteryAuth)
         let roswell = entry(first, .roswellAuth)
+        var batteryInfo = battery(from: [entry(first, .batteryByName), entry(first, .batteryByClass)])
+        let auth = HardwareIdentity.batteryAuth(
+            driver: batteryAuth,
+            scanned: scanned.filter { HardwareIdentity.part(of: $0) == "battery" }.map { $0.props })
+        if !auth.isEmpty { batteryInfo["auth"] = auth }
         var report: [String: Any] = [
             "display": display(candidates: pairs,
                                panelEntries: [entry(first, .panelByClass), entry(first, .panelByName)]),
-            "battery": battery(from: [entry(first, .batteryByName), entry(first, .batteryByClass)])
+            "battery": batteryInfo
         ]
         let flags = partFlags(scanned)
         if !flags.isEmpty { report["parts"] = flags }
@@ -301,7 +363,9 @@ enum HardwareIdentity {
             "treeNames": (entry(first, .treeNames)["names"] as? [Any])?.count ?? 0,
             "serviceNames": (entry(first, .serviceNames)["names"] as? [Any])?.count ?? 0,
             "hits": scanned.count,
-            "candidates": candidates
+            "candidates": candidates,
+            "batteryNodes": batteryNodeNames(
+                (entry(first, .serviceNames)["names"] as? [Any])?.compactMap { $0 as? String } ?? [])
         ] as [String: Any]
         let errorList = errors(in: first + second)
         if !errorList.isEmpty { report["errors"] = errorList }

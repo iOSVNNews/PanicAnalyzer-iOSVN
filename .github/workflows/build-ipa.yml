@@ -17,17 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Chọn Xcode mới nhất
+      - name: Select latest Xcode
         run: |
           LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          echo "dùng: $LATEST"
+          echo "using: $LATEST"
           sudo xcode-select -s "$LATEST/Contents/Developer"
           xcodebuild -version
 
-      - name: Cài XcodeGen
+      - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Kiểm thử kết nối LocalDevVPN
+      - name: Run tests
         run: |
           swiftc Sources/Localization.swift Sources/LocalVPNConnection.swift Tests/LocalVPNConnectionTests.swift -o "$RUNNER_TEMP/vpn-tests"
           "$RUNNER_TEMP/vpn-tests"
@@ -37,25 +37,25 @@ jobs:
           node Tests/parts.test.js
           python3 Tests/test_package_deb.py
 
-      - name: Dựng cầu nối Remote Pairing
+      - name: Build Remote Pairing bridge
         run: |
           rustup target add aarch64-apple-ios
           cargo test --manifest-path PairingBridge/Cargo.toml --lib
           bash PairingBridge/build-xcframework.sh
 
-      - name: Tạo project Xcode
+      - name: Generate Xcode project
         run: |
           set +e
           xcodegen generate --spec project.yml > xcgen.log 2>&1
           rc=$?
           echo "::group::xcodegen"; cat xcgen.log; echo "::endgroup::"
           if [ ! -d PanicAnalyzer.xcodeproj ]; then
-            echo "KHONG TAO DUOC .xcodeproj"
+            echo "Could not generate .xcodeproj"
             head -30 xcgen.log | while IFS= read -r l; do echo "::error::XCGEN $l"; done
             exit 1
           fi
 
-      - name: Chuẩn bị thông tin phiên bản
+      - name: Prepare version info
         run: |
           APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Info.plist)
           RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
@@ -73,7 +73,7 @@ jobs:
           echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
           echo "APP_BUILD=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
-      - name: Build (không ký)
+      - name: Build (unsigned)
         run: |
           set +e
           xcodebuild \
@@ -96,7 +96,7 @@ jobs:
             exit 1
           fi
 
-      - name: Đóng gói thành .ipa
+      - name: Package .ipa
         run: |
           APP=$(find build/Build/Products -maxdepth 2 -name "*.app" | head -1)
           echo "app: $APP"
@@ -110,7 +110,7 @@ jobs:
             exit 1
           fi
 
-      - name: Đóng gói TrollStore và jailbreak
+      - name: Package TrollStore and jailbreak builds
         run: |
           set -euo pipefail
           APP=$(find build/Build/Products -maxdepth 2 -name "PanicAnalyzer.app" | head -1)
@@ -169,25 +169,25 @@ jobs:
             PanicAnalyzer-rootless.deb
             PanicAnalyzer-rootful.deb
 
-      - name: Ghi phiên bản cho tính năng tự kiểm tra cập nhật
+      - name: Record version for the in-app update check
         run: |
           cat assets/app_version.json
           if [ -z "$(git status --porcelain assets/app_version.json)" ]; then
-            echo "phien ban khong doi"
+            echo "version unchanged"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add assets/app_version.json
-            git commit -m "phien ban $APP_VERSION (build ${GITHUB_RUN_NUMBER})"
+            git commit -m "Version $APP_VERSION (build ${GITHUB_RUN_NUMBER})"
             for i in 1 2 3; do
               git fetch origin main
               git pull --rebase --autostash origin main || true
               git push origin HEAD:main && break
-              echo "thu lai lan $i"; sleep 5
+              echo "retry $i"; sleep 5
             done
           fi
 
-      - name: Phát hành bản mới nhất
+      - name: Publish latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -198,26 +198,8 @@ jobs:
             PanicAnalyzer-unsigned.ipa PanicAnalyzer-TrollStore.tipa \
             PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb \
             --title "PanicAnalyzer $APP_VERSION" \
-            --notes "Bản dựng tự động từ nhánh main.
+            --notes "Automatic build from main · version $APP_VERSION · $RULES diagnostic rules · commit \`${GITHUB_SHA::7}\`
 
-          - Phiên bản: $APP_VERSION
-          - Bộ luật chẩn đoán: $RULES lỗi
-          - Nhận log nhanh qua Share Sheet
-          - iOS 27 tự ghép đôi và đọc CrashReporter qua LocalDevVPN
-          - Cấu hình Device IP, chờ VPN sẵn sàng và giữ khóa ghép đôi khi mất kết nối
-          - Tự dò cổng RemotePairing qua Bonjour khi 49152 bị từ chối (NWError 61)
-          - Ghép đôi iOS 27 ngay trên máy: chọn PanicAnalyzer trong Cài đặt > Quyền riêng tư & Bảo mật > Nhà phát triển
-          - Tự chuyển sang CoreDeviceProxy (lockdown 62078) khi tunnel RPPairing tới chính máy bị đóng; nhận cả lockdown pairing file
-          - Ba tab Panic / Linh kiện / Cài đặt, hỗ trợ Tiếng Việt / English / 中文
-          - Tab Linh kiện tự đọc dấu hiệu từ log qua pairing trên máy non-JB; báo rõ khi CrashReporter không đủ dữ liệu để xác định tình trạng linh kiện
-          - Ảnh Cài đặt iOS là tùy chọn; nhận cả màn Lịch sử linh kiện và màn chi tiết Linh kiện không xác định
-          - Máy JB/TrollStore đọc thẳng log hệ thống (quét đệ quy), không cần ghép đôi
-          - Nhận diện panic do màn hình thay/lỗi: DCP, MIPI/DSI, IC cảm ứng
-          - Commit: \`${GITHUB_SHA::7}\`
-
-          - IPA chưa ký: ký bằng chứng chỉ của bạn (ESign, Sideloadly, AltStore…)
-          - TIPA: cài bằng TrollStore, có quyền đọc trực tiếp log hệ thống
-          - DEB rootless: cài bằng Sileo/Zebra trên jailbreak rootless
-          - DEB rootful: cài bằng Sileo/Zebra trên jailbreak rootful
-
-          Tải tại: https://github.com/${GITHUB_REPOSITORY}/releases/latest"
+          - **PanicAnalyzer-unsigned.ipa**: sign with your own certificate (ESign, Sideloadly, AltStore…)
+          - **PanicAnalyzer-TrollStore.tipa**: install with TrollStore
+          - **PanicAnalyzer-rootless.deb / -rootful.deb**: install with Sileo or Zebra on a jailbroken device"

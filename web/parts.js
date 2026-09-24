@@ -142,11 +142,26 @@ const PartsHistory = (() => {
       findings.push({ part: flag.part, status: flag.authPassed ? 'genuine' : 'authfail',
         source: 'hardware', path: String(flag.path || '') });
     }
-    const flags = (report.battery && report.battery.authFlags) || {};
+    // Driver xác thực pin AppleBatteryAuth (mã nguồn PowerManagement của Apple):
+    // cờ "…Pass" sau bước thách-đáp là kết luận; "CommunicationError" /
+    // "CoProcError" nghĩa là chip xác thực trong pin không phản hồi hoặc báo lỗi
+    // — đúng chỗ pin thiếu chip xác thực của Apple bị loại.
+    const battery = report.battery || {};
+    const auth = battery.auth || {};
+    const serial = battery.serial || '';
+    if (typeof auth.passed === 'boolean' && !findings.some(f => f.part === 'battery')) {
+      findings.push({ part: 'battery', status: auth.passed ? 'genuine' : 'authfail',
+        source: 'hardware', serial });
+    }
+    const flags = battery.authFlags || {};
     const values = Object.values(flags).filter(v => v === 0 || v === 1);
     if (values.length && !findings.some(f => f.part === 'battery')) {
       findings.push({ part: 'battery', status: values.every(v => v === 1) ? 'genuine' : 'authfail',
-        source: 'hardware', serial: report.battery.serial || '' });
+        source: 'hardware', serial });
+    }
+    if ((auth.commError || auth.coprocError) && !findings.some(f => f.part === 'battery')) {
+      findings.push({ part: 'battery', status: 'auth_error', source: 'hardware', serial,
+        code: Number(auth.commError || auth.coprocError) || 0 });
     }
     if (capacityClue(report.battery)) {
       findings.push({ part: 'battery', status: 'capacity_anomaly', source: 'hardware' });

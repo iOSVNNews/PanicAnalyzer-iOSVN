@@ -743,7 +743,17 @@ fn tree_names(node: &plist::Value, names: &mut Vec<plist::Value>) {
 /// Property names that may hold a part-authentication result or identity.
 fn is_auth_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
-    ["auth", "cert", "genuine", "trust", "idsn"].iter().any(|word| key.contains(word))
+    ["auth", "cert", "genuine", "trust", "idsn", "coprocerror", "communicationerror"]
+        .iter()
+        .any(|word| key.contains(word))
+}
+
+/// Battery authentication drivers: every property is kept, because the name of
+/// their pass flag is not published (AppleBatteryAuth in Apple's PowerManagement).
+fn is_battery_auth_node(name: &str, class: Option<&str>) -> bool {
+    let name = name.to_ascii_lowercase();
+    let class = class.unwrap_or("").to_ascii_lowercase();
+    name.contains("batteryauth") || class.contains("batteryauth")
 }
 
 /// Keeps small values as they are (Swift parses certificates), summarises big ones.
@@ -766,9 +776,13 @@ fn scan_tree(node: &plist::Value, parent: &str, hits: &mut Vec<plist::Value>) {
     let Some(dict) = node.as_dictionary() else { return };
     let name = dict.get("name").and_then(|v| v.as_string()).unwrap_or("?");
     let path = if parent.is_empty() { name.to_string() } else { format!("{parent}/{name}") };
+    let class = ["IOObjectClass", "className", "class"]
+        .iter()
+        .find_map(|key| dict.get(*key).and_then(|v| v.as_string()));
+    let keep_all = is_battery_auth_node(name, class);
     let mut props = plist::Dictionary::new();
     for (key, value) in dict.iter() {
-        if key != "children" && key != "name" && is_auth_key(key) {
+        if key != "children" && key != "name" && (keep_all || is_auth_key(key)) {
             props.insert(key.clone(), hit_value(value));
         }
     }
@@ -1394,7 +1408,11 @@ mod tests {
 <dict><key>name</key><string>i2c0</string><key>AAPL,phandle</key><integer>7</integer></dict>
 </array></dict>
 <dict><key>name</key><string>battery</string><key>IOObjectClass</key><string>AppleBatteryAuth</string>
-<key>AuthFailures</key><integer>0</integer></dict>
+<key>AuthFailures</key><integer>0</integer>
+<key>CommunicationError</key><integer>2</integer>
+<key>IOGeneralInterest</key><string>x</string></dict>
+<dict><key>name</key><string>other-relay</string><key>CoProcError</key><integer>5</integer>
+<key>compatible</key><string>y</string></dict>
 </array></dict></plist>"#,
         ))
         .unwrap();
@@ -1404,12 +1422,21 @@ mod tests {
             .iter()
             .filter_map(|h| h.as_dictionary()?.get("path")?.as_string())
             .collect();
-        assert_eq!(paths, ["device-tree/arm-io/unusual-panel-node", "device-tree/battery"]);
+        assert_eq!(
+            paths,
+            ["device-tree/arm-io/unusual-panel-node", "device-tree/battery", "device-tree/other-relay"]
+        );
         let first = hits[0].as_dictionary().unwrap().get("props").unwrap().as_dictionary().unwrap();
         assert!(first.contains_key("auth-passed") && first.contains_key("certificate"));
         assert!(!first.contains_key("compatible"));
         let second = hits[1].as_dictionary().unwrap();
         assert_eq!(second.get("class").and_then(|v| v.as_string()), Some("AppleBatteryAuth"));
+        // Battery auth driver: every property kept (its pass flag name is private).
+        let battery_props = second.get("props").unwrap().as_dictionary().unwrap();
+        assert!(battery_props.contains_key("CommunicationError") && battery_props.contains_key("IOGeneralInterest"));
+        // Elsewhere only auth-like keys, now including the auth chip error keys.
+        let relay = hits[2].as_dictionary().unwrap().get("props").unwrap().as_dictionary().unwrap();
+        assert!(relay.contains_key("CoProcError") && !relay.contains_key("compatible"));
         let request = br#"<plist version="1.0"><array><dict><key>plane</key><string>IODeviceTree</string><key>scanKeys</key><true/></dict></array></plist>"#;
         let queries = parse_hardware_queries(request).unwrap();
         assert!(queries[0].scan_keys && !queries[0].names_only);

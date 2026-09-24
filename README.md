@@ -1,194 +1,76 @@
-# PanicAnalyzer — iOSVN
+# PanicAnalyzer
 
-Ứng dụng iOS đọc log `panic-full`, `.ips` và `.crash`, rồi chỉ ra **linh kiện nào
-đang nghi lỗi** thay vì chỉ hiện một đống chữ khó hiểu.
+An iOS app that reads `panic-full`, `.ips` and `.crash` logs and points to the
+component most likely at fault. Made by iOSVN for iPhone repair technicians.
 
-Dành cho kỹ thuật viên sửa iPhone và người dùng muốn biết máy mình sập nguồn vì đâu.
+## Download
 
-## Tải về
+Latest builds are on the [Releases page](../../releases/latest).
 
-[Tải các bản cài mới nhất](../../releases/latest):
-
-| File | Cách cài |
+| File | Install with |
 |---|---|
-| [PanicAnalyzer-unsigned.ipa](../../releases/latest/download/PanicAnalyzer-unsigned.ipa) | Ký bằng ESign/Sideloadly/AltStore; đọc log qua Share Sheet hoặc LocalDevVPN |
-| [PanicAnalyzer-TrollStore.tipa](../../releases/latest/download/PanicAnalyzer-TrollStore.tipa) | Mở bằng TrollStore; bản ký với quyền đọc log ngoài sandbox |
-| [PanicAnalyzer-rootless.deb](../../releases/latest/download/PanicAnalyzer-rootless.deb) | Cài bằng Sileo/Zebra trên jailbreak rootless |
-| [PanicAnalyzer-rootful.deb](../../releases/latest/download/PanicAnalyzer-rootful.deb) | Cài bằng Sileo/Zebra trên jailbreak rootful |
+| [PanicAnalyzer-unsigned.ipa](../../releases/latest/download/PanicAnalyzer-unsigned.ipa) | Your own signing (ESign, Sideloadly, AltStore…) |
+| [PanicAnalyzer-TrollStore.tipa](../../releases/latest/download/PanicAnalyzer-TrollStore.tipa) | TrollStore |
+| [PanicAnalyzer-rootless.deb](../../releases/latest/download/PanicAnalyzer-rootless.deb) | Sileo/Zebra, rootless jailbreak |
+| [PanicAnalyzer-rootful.deb](../../releases/latest/download/PanicAnalyzer-rootful.deb) | Sileo/Zebra, rootful jailbreak |
 
-Các gói `.tipa`/`.deb` là bản dành riêng cho môi trường có quyền đọc ngoài
-sandbox. Nếu đã cài IPA thường cùng bundle ID, hãy gỡ bản đó trước khi cài gói
-JB/TrollStore. Ứng dụng sẽ báo lỗi quyền đọc CrashReporter thay vì báo máy không
-có log khi bản đặc quyền không truy cập được thư mục.
+Remove any IPA install with the same bundle ID before installing the TIPA or DEB.
 
-## Chức năng
+## Features
 
-**Phân loại theo mức độ.** Mỗi lần sập nguồn được xếp vào một trong ba nhóm:
+- **Severity:** each panic is rated *Critical* (hardware signs: missing SMC
+  sensors, I2C bus hangs, storage errors, SoC overheating), *Watch* (watchdog
+  timeouts, sleep/wake hangs, a single kernel panic) or *Ignore* (Jetsam,
+  third-party app crashes).
+- **Suspected part:** missing SMC sensors and I2C device names are mapped to
+  real components, each with a confidence level.
+- **Repeat detection:** panics with the same cause are grouped with their
+  frequency.
+- **Parts tab:** reads the display and battery authentication results that
+  iOS itself publishes in the IORegistry, over the pairing connection.
+- **Clean reports:** exported reports have serials and UDIDs removed.
+- **Share Sheet import:** share logs straight from *Analytics Data* in Settings.
+- **Rules update** from this repository without reinstalling the app.
+- Vietnamese, English and Chinese interface.
 
-| Mức | Nghĩa là gì |
+## Reading logs automatically (no jailbreak)
+
+iOS 17.4 or later, with LocalDevVPN (device IP `10.7.0.1`):
+
+1. Export a pairing file with iLoader, then in the app use
+   **Settings › Import pairing file manually**, or copy `pairingFile.plist` into
+   *Files › On My iPhone › PanicAnalyzer*.
+   On iOS 27 you can pair on the device instead: tap **Pair this device**,
+   choose *PanicAnalyzer* in *Settings › Privacy & Security › Developer* and
+   enter the PIN.
+2. Turn on LocalDevVPN and tap **Auto-scan system logs**.
+
+The app only reads the CrashReporter folder (`com.apple.crashreportcopymobile`)
+and, for the Parts tab, IORegistry through `diagnostics_relay`; it cannot browse
+the rest of `/var`.
+Pairing records stay in the app's protected storage and are excluded from
+backups. TrollStore and jailbreak builds read the log folders directly and
+need no pairing.
+
+## Diagnostic rules
+
+The rules live in `assets/`, separate from the code:
+
+| File | Contents |
 |---|---|
-| Cần quan tâm | Dấu hiệu hỏng phần cứng: mất cảm biến SMC, treo bus I2C, lỗi bộ nhớ trong, quá nhiệt SoC |
-| Cần theo dõi | Watchdog hết giờ, treo khi ngủ/thức, một lần kernel panic đơn lẻ |
-| Có thể bỏ qua | Jetsam giải phóng RAM, ứng dụng bên thứ ba văng |
+| `panic_rules.json` | Panic signatures and severity |
+| `i2c_rules.json` | I2C addresses per bus and model |
+| `sensor_database.json` | SMC sensor codes → part names |
+| `model_database.json` | Model identifiers → marketing names |
 
-**Chỉ ra linh kiện nghi lỗi.** Mã cảm biến thiếu trong log SMC được tra ra đúng
-cụm cáp; tên thiết bị trong log I2C (`roswell`, `audio-speaker-top`…) được dịch
-sang tên linh kiện thật.
+Sources: Apple's xnu source, public panic logs from Apple forums, and iFixit.
+Unverified rules are marked in their `source` field and rated low confidence.
+Logs the app cannot identify can be sent to [@longdzqua](https://t.me/longdzqua)
+on Telegram.
 
-**Kèm độ tin cậy.** Mỗi kết luận ghi rõ Cao / Trung bình / Thấp, vì cùng một địa
-chỉ I2C ở đời máy khác lại là con IC khác — app không đoán bừa.
+## Building
 
-**Gom lỗi trùng.** Các lần sập cùng nguyên nhân được gộp lại và hiện tần suất
-(ví dụ 7 lần trong 24 giờ), vì lặp lại nhiều lần mới là dấu hiệu phần cứng thật.
-
-**Xuất báo cáo đã lọc.** Báo cáo bỏ số sê-ri, UDID và thông tin cá nhân trước khi
-chia sẻ.
-
-**Nhận log nhanh từ Share Sheet.** Trong màn hình Dữ liệu phân tích của iOS, chọn
-một hoặc nhiều log rồi dùng **Chia sẻ → PanicAnalyzer**. Share Extension chuyển
-log thẳng vào app, không cần mở trình chọn Tệp.
-
-**Ba tab Panic / Linh kiện / Cài đặt.** Tab Linh kiện tự đọc log qua pairing file
-và LocalDevVPN trên máy non-JB; chưa ghép đôi thì nút kiểm tra mở bước ghép đôi.
-Bản JB/TrollStore đọc log trực tiếp. Nếu log chứa trạng thái linh kiện rõ ràng,
-ứng dụng hiển thị nó như dấu hiệu riêng. Lỗi cảm biến, I2C, DCP hoặc socket/cáp
-được ghi là nghi ngờ lỗi cáp, không được khẳng định là đã "sàng cáp" hay thay.
-Sau mỗi lần tự quét, tab Linh kiện báo rõ khi có dấu hiệu, không đủ dữ liệu
-để xác định hoặc kết nối bị lỗi. Pairing hiện chỉ đọc CrashReporter, không đọc
-được nhãn **Linh kiện không xác định** trong Cài đặt iOS. Vì vậy app không thể
-tự kết luận tình trạng pin hay các linh kiện khác chỉ từ lần quét log, kể cả
-khi máy đã ghép đôi thành công.
-
-**Kiểm tra thêm bằng ảnh (tùy chọn).** Chụp phần **Cài đặt → Cài đặt chung → Giới thiệu
-→ Lịch sử linh kiện và dịch vụ**, hoặc mở màn chi tiết của một linh kiện, rồi
-chọn ảnh trong tab Linh kiện. Ứng dụng nhận chữ trên ảnh ngay trên máy và hiển thị nhãn Chính hãng, Đã qua sử dụng, Không
-xác định, Chưa xác minh hoặc Hoàn tất sửa chữa cho linh kiện đọc được. Dữ liệu
-CrashReporter qua pairing không bao gồm toàn bộ màn hình Lịch sử linh kiện;
-không có dấu hiệu trong log hoặc không có mục lịch sử trong ảnh cũng không chứng
-minh máy còn nguyên bản.
-Xem [giải thích của Apple](https://support.apple.com/vi-vn/102658) về phạm vi
-và ý nghĩa từng nhãn. Ảnh và chữ nhận diện không được lưu hay gửi đi.
-
-**Tự ghép đôi trên iOS 27.** App tự phát mình thành một "máy tính có thể ghép
-đôi". Bạn chọn nó trong **Cài đặt → Quyền riêng tư & Bảo mật → Nhà phát triển**,
-nhập mã PIN app hiển thị, rồi app lưu pairing record được bảo vệ và quét
-CrashReportCopyMobile qua LocalDevVPN + RSD. Không cần máy tính, không cần
-jailbreak.
-
-**Tự cập nhật bộ luật.** Mỗi lần mở, app tải bộ luật mới nhất từ kho mã — không
-cần cài lại ứng dụng. Mất mạng thì dùng bản đã tải trước đó.
-
-**Gửi log lạ cho admin.** Log nào app chưa tra được sẽ hiện nút gửi, báo cáo được
-sao chép sẵn và mở Telegram [@longdzqua](https://t.me/longdzqua).
-
-Hiện có **53 quy tắc chẩn đoán** trên 20 nhóm hệ thống: I2C, SMC, AOP, SEP,
-Storage, Watchdog, Power, Thermal, GPU, Baseband, Memory, Jetsam…
-
-## Hỗ trợ
-
-Chạy từ **iOS 15.0 trở lên**. Việc đọc log *tự động* phụ thuộc cách cài:
-
-| Cách cài | Phiên bản iOS | Tự đọc log |
-|---|---|---|
-| `.ipa` ký chứng chỉ thường | 15.0 trở lên | Có — qua Share Sheet |
-| `.ipa` + LocalDevVPN | iOS 27 trở lên | Tự ghép đôi và quét CrashReporter |
-| `.tipa` qua TrollStore | Theo phiên bản TrollStore hỗ trợ | Đọc thư mục log khi quyền ngoài sandbox có hiệu lực |
-| `.deb` trên máy jailbreak | Theo bản jailbreak rootless/rootful | Đọc thư mục log khi quyền và đường dẫn hệ thống cho phép |
-
-## Cách nạp log
-
-Nhanh nhất: **Cài đặt → Quyền riêng tư & Bảo mật → Phân tích & Cải thiện → Dữ
-liệu phân tích** → chọn file `panic-full-…` → **Chia sẻ → PanicAnalyzer**. Share
-Extension tự lưu log và đóng; mở PanicAnalyzer để xem kết quả.
-
-Hoặc dùng nút **Chọn file .ips / .crash** trong app.
-
-### Máy đã jailbreak / TrollStore
-
-Trên máy JB hoặc cài bằng TrollStore (.tipa), app đọc thẳng log từ `/var/mobile/Library/Logs/CrashReporter/`, `DiagnosticReports`, `Retired` và `/var/db/CrashReporter` — quét cả thư mục con. Không cần LocalDevVPN, không cần ghép đôi: nút **Ghép đôi thiết bị này** tự ẩn và cạnh tên máy hiện nhãn **Đọc trực tiếp**.
-
-### Quét tự động qua LocalDevVPN trên iOS 27
-
-1. Bật LocalDevVPN/StosVPN với Device IP mặc định `10.7.0.1`. Không cần cấu hình
-   gì trong app: cổng RemotePairing được tự tìm (dịch vụ `remotepairingd` không cố
-   định ở `49152`, iOS có thể đổi sang `49153`, `49154`… sau khi khởi động lại).
-2. Bấm **Ghép đôi thiết bị này**, cho phép **Mạng cục bộ** và **Thông báo** nếu
-   iOS hỏi. App bắt đầu quảng bá `_remotepairing-pairable-host._tcp` tên
-   **PanicAnalyzer** (tối đa 5 phút, vẫn chạy khi bạn chuyển sang Cài đặt).
-3. Mở **Cài đặt → Quyền riêng tư & Bảo mật → Nhà phát triển** (cần bật Chế độ nhà
-   phát triển), chọn **PanicAnalyzer** và nhập mã PIN 6 số. Mã hiện trong thông
-   báo và đã được sao chép sẵn.
-4. App lưu record trong vùng dữ liệu được bảo vệ rồi tự đọc CrashReporter. Những
-   lần sau chỉ cần bật LocalDevVPN; không phải ghép đôi lại.
-
-**Thứ tự kết nối.** Có lockdown pair record (nhập từ iLoader/máy tính hoặc đã
-tạo trước đó) thì app dùng **CoreDeviceProxy** qua lockdownd cổng `62078` trước
-(cách StikDebug dùng) — đường này chạy được ngay trên chính iPhone. Không được
-mới thử tunnel RPPairing: trên chính máy, tunnel này có thể bị iOS đóng ngay sau
-TLS (listener chỉ mở trên Wi-Fi — SideInstaller đã ghi nhận). Cuối cùng app xin
-lockdownd tạo pair record mới — iOS có thể hỏi **Tin cậy máy tính này?**, hãy
-chọn Tin cậy.
-
-### Dùng pairing file từ iLoader
-
-iLoader (iOS 17.4+) xuất **một** file gộp cả lockdown record và khoá Remote
-Pairing; app tách và lưu cả hai. Ba cách đưa file vào app:
-
-1. **iLoader → Export** lưu `pairingFile.plist`, chuyển sang iPhone (AirDrop,
-   iCloud Drive…), rồi trong app vào **Cài đặt → Nhập file pairing thủ công**.
-2. Chép file vào **Tệp → Trên iPhone → PanicAnalyzer** (hoặc kéo vào mục
-   Chia sẻ tệp của Finder/iTunes). Mở app là tự nhận; file được xoá khỏi
-   Documents sau khi nhập vì đó là thông tin xác thực.
-3. Trong Tệp, **Chia sẻ → PanicAnalyzer** hoặc **Mở bằng PanicAnalyzer**.
-
-Nút **Place** của iLoader chỉ hiện những app có trong danh sách viết sẵn của
-iLoader (so theo tên hiển thị). Khi iLoader thêm `PanicAnalyzer` →
-`pairingFile.plist`, nút Place ghi thẳng vào Documents và app tự nhận như cách 2.
-
-Nếu kết nối lỗi, bấm **Kết nối lại thiết bị này** để ghép đôi lại. Record cũ chỉ
-bị thay khi ghép đôi mới thành công; lỗi mạng không xóa khóa cũ.
-
-Lỗi `Connection refused` (NWError 61) nghĩa là VPN đã chạy nhưng cổng đã lưu
-không còn mở. App tự dò lại cổng qua Bonjour `_remotepairing._tcp` (ưu tiên
-dịch vụ của chính máy), thử từng cổng rồi ghi nhớ cổng dùng được.
-
-Nếu vẫn không đến được địa chỉ hiển thị trong lỗi, kiểm tra Device IP của VPN là `10.7.0.1`, quyền
-Mạng cục bộ của PanicAnalyzer trong Cài đặt iOS rồi ngắt/kết nối lại LocalDevVPN.
-VPN hiện trạng thái bật chưa bảo đảm cổng ghép đôi đã truy cập được. App không
-tự thay đổi cấu hình của ứng dụng VPN khác. Sau khi cổng mở được, nếu ghép đôi
-vẫn thất bại, mở khóa iPhone và chấp nhận yêu cầu của iOS hoặc nhập record hợp lệ.
-
-Pairing record là thông tin xác thực nhạy cảm. App tạo và lưu nó trong
-Application Support với file protection, loại khỏi bản sao lưu và không gửi nội
-dung ra ngoài. Xóa app sẽ xóa bản sao record được lưu trong ứng dụng.
-
-### Phạm vi `/var`
-
-Remote Pairing chỉ kết nối dịch vụ
-`com.apple.crashreportcopymobile.shim.remote`. Dịch vụ này xuất một cây AFC ảo
-tương ứng với CrashReporter, thường là
-`/var/mobile/Library/Logs/CrashReporter/` và các thư mục con như `Retired`.
-Nó **không** cấp quyền duyệt toàn bộ `/var`, không đọc tùy ý mọi tệp trong
-`/var/mobile/Library/Logs/`, và không phải Filza chạy trong sandbox.
-
-## Bộ luật
-
-Tri thức chẩn đoán nằm trong `assets/`, tách khỏi mã nguồn:
-
-| File | Nội dung |
-|---|---|
-| `panic_rules.json` | Chữ ký panic và cách phân loại |
-| `i2c_rules.json` | Địa chỉ I2C theo bus và đời máy |
-| `sensor_database.json` | Mã cảm biến SMC → tên linh kiện |
-| `model_database.json` | Mã máy → tên thương mại |
-
-Dữ liệu đối chiếu từ mã nguồn xnu của Apple, log panic thật đăng công khai trên
-Apple Developer Forums / Apple Support Communities, và wiki iFixit. Luật chưa
-kiểm chứng được ghi rõ trong trường `source` và để độ tin cậy Thấp.
-
-## Tự dựng
-
-Cần macOS, Xcode 16 trở lên, XcodeGen và Rust:
+Requires macOS, Xcode 16+, XcodeGen and Rust:
 
 ```bash
 brew install xcodegen
@@ -198,10 +80,9 @@ xcodegen generate
 open PanicAnalyzer.xcodeproj
 ```
 
-Bridge ghim thư viện MIT `jkcoxson/idevice`; xem [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+## License
 
-## Giấy phép
-
-**GNU General Public License v3.0** — xem [LICENSE](LICENSE).
-
-Ứng dụng chỉ đọc log ngay trên máy, không gửi dữ liệu đi đâu.
+[GPL-3.0](LICENSE). The pairing bridge uses the MIT-licensed
+[`jkcoxson/idevice`](https://github.com/jkcoxson/idevice); see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Logs are analysed on the
+device and are only sent anywhere if you share them.

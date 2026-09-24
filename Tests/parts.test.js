@@ -91,6 +91,16 @@ assert.deepEqual(scanned.map(({ part, status }) => [part, status]),
   [['display', 'genuine'], ['battery', 'authfail'], ['rear_camera', 'genuine']]);
 assert.equal(PartsHistory.assessScan(10, [], [], scanned), 'found');
 
+// Driver AppleBatteryAuth: cờ Pass là kết luận; lỗi chip xác thực là dấu hiệu riêng.
+const trusted = PartsHistory.fromHardware({ battery: { auth: { driver: true, passed: false, commError: 2 } } });
+assert.deepEqual(trusted.map(({ part, status }) => [part, status]), [['battery', 'authfail']]);
+const trustedOk = PartsHistory.fromHardware({ battery: { auth: { passed: true }, authFlags: { authenticated: 0 } } });
+assert.deepEqual(trustedOk.map(({ status }) => status), ['genuine']);
+const chipError = PartsHistory.fromHardware({ battery: { serial: 'F8Y', auth: { driver: true, commError: 2 } } });
+assert.deepEqual(chipError.map(({ part, status, code }) => [part, status, code]), [['battery', 'auth_error', 2]]);
+assert.equal(PartsHistory.assessScan(0, [], [], chipError), 'found');
+assert.deepEqual(PartsHistory.fromHardware({ battery: { auth: { driver: true } } }), []);
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 
