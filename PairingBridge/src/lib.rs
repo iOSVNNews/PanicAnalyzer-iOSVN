@@ -11,6 +11,7 @@ use idevice::crashreportcopymobile::{flush_reports, CrashReportCopyMobileClient}
 use idevice::remote_pairing::{connect_tls_psk_tunnel_native, RemotePairingClient, RpPairingSocket};
 use idevice::rsd::RsdHandshake;
 use idevice::tcp::handle::AdapterHandle as TunnelAdapter;
+use idevice::heartbeat::HeartbeatClient;
 use idevice::lockdown::LockdownClient;
 use idevice::provider::IdeviceProvider;
 use idevice::{IdeviceError, IdeviceService, RsdService};
@@ -36,6 +37,10 @@ pub struct PaLogSession {
     /// dropped after the client in pa_session_free).
     #[allow(dead_code)]
     lockdown: Option<LockdownClient>,
+    /// Lockdown routes: Marco/Polo heartbeat kept alive while the session
+    /// lives; aborted when the session is freed.
+    #[allow(dead_code)]
+    heartbeat: Option<HeartbeatGuard>,
     /// Set after a timeout or socket error: every later call fails at once
     /// instead of waiting on a dead connection again.
     broken: bool,
@@ -77,6 +82,59 @@ where
 
 fn is_connection_error(error: &IdeviceError) -> bool {
     matches!(error, IdeviceError::Socket(_) | IdeviceError::Timeout)
+}
+
+// MARK: - Heartbeat
+//
+// iOS drops lockdown *service* connections from a network host (Wi-Fi sync,
+// LocalDevVPN) that has no live com.apple.mobile.heartbeat: StartService
+// answers, the TLS handshake completes, then the first read hits EOF
+// ("peer closed connection without sending TLS close_notify"). Feather,
+// Protokolle and SideStore all keep this Marco/Polo loop running for as long
+// as they use services over the VPN.
+
+/// Aborts the heartbeat task when dropped (a dropped JoinHandle would not).
+pub struct HeartbeatGuard(tokio::task::JoinHandle<()>);
+
+impl Drop for HeartbeatGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+async fn heartbeat_loop(mut client: HeartbeatClient) {
+    let mut interval = 15u64;
+    loop {
+        match client.get_marco(interval).await {
+            Ok(next) => interval = next.clamp(1, 60) + 5,
+            // No Marco yet: keep the connection open and wait again.
+            Err(IdeviceError::Heartbeat(idevice::HeartbeatError::Timeout)) => continue,
+            Err(_) => return,
+        }
+        if client.send_polo().await.is_err() {
+            return;
+        }
+    }
+}
+
+/// H1: starts the heartbeat on the runtime's worker threads. It keeps running
+/// after the FFI call returns, until the guard is dropped.
+async fn start_heartbeat(provider: &idevice::provider::TcpProvider) -> Result<HeartbeatGuard, String> {
+    let client = within(STEP_SECS, "H1 heartbeat", async {
+        HeartbeatClient::connect(provider)
+            .await
+            .map_err(|e| format!("H1 heartbeat: {}", describe(&e)))
+    })
+    .await?;
+    Ok(HeartbeatGuard(tokio::spawn(heartbeat_loop(client))))
+}
+
+/// A later failure is easier to read with the reason the heartbeat did not start.
+fn with_heartbeat_note(error: String, heartbeat_error: Option<String>) -> String {
+    match heartbeat_error {
+        Some(note) => format!("{error}; {note}"),
+        None => error,
+    }
 }
 
 /// "device socket io failed" alone hides why: add the OS error kind and text
@@ -145,6 +203,7 @@ unsafe fn close_parts(
 fn new_session(
     tunnel: Option<(TunnelAdapter, RsdHandshake)>,
     lockdown: Option<LockdownClient>,
+    heartbeat: Option<HeartbeatGuard>,
     client: CrashReportCopyMobileClient,
 ) -> *mut PaLogSession {
     let (adapter, handshake) = match tunnel {
@@ -159,6 +218,7 @@ fn new_session(
         handshake,
         client: Box::into_raw(Box::new(CrashReportCopyMobileHandle(client))),
         lockdown,
+        heartbeat,
         broken: false,
     }))
 }
@@ -316,7 +376,7 @@ pub unsafe extern "C" fn pa_session_connect(
         );
     }
 
-    open_crash_reports(adapter, handshake, out_session)
+    open_crash_reports(adapter, handshake, None, out_session)
 }
 
 /// Opens CrashReportCopyMobile over an RSD tunnel and hands ownership of the
@@ -324,6 +384,7 @@ pub unsafe extern "C" fn pa_session_connect(
 unsafe fn open_crash_reports(
     adapter: TunnelAdapter,
     handshake: RsdHandshake,
+    heartbeat: Option<HeartbeatGuard>,
     out_session: *mut *mut PaLogSession,
 ) -> *mut c_char {
     let result = idevice_ffi::run_sync_local(async move {
@@ -338,7 +399,7 @@ unsafe fn open_crash_reports(
     });
     match result {
         Ok((adapter, handshake, client)) => {
-            *out_session = new_session(Some((adapter, handshake)), None, client);
+            *out_session = new_session(Some((adapter, handshake)), None, heartbeat, client);
             null_mut()
         }
         Err(error) => owned_message(format!(
@@ -492,6 +553,10 @@ pub unsafe extern "C" fn pa_session_connect_lockdown_direct(
     let provider = lockdown_provider(record, ip);
     let result = idevice_ffi::run_sync_local(async move {
         preflight_lockdownd(ip).await?;
+        let (heartbeat, heartbeat_error) = match start_heartbeat(&provider).await {
+            Ok(guard) => (Some(guard), None),
+            Err(error) => (None, Some(error)),
+        };
         // L1 (best effort): ask crashreportmover to move pending reports into
         // the CrashReporter view, as idevicecrashreport/Xcode do first.
         let _ = tokio::time::timeout(deadline(FLUSH_SECS), flush_reports(&provider)).await;
@@ -524,10 +589,12 @@ pub unsafe extern "C" fn pa_session_connect_lockdown_direct(
             Ok((lockdown, CrashReportCopyMobileClient::new(device)))
         })
         .await
+        .map(|(lockdown, client)| (heartbeat, lockdown, client))
+        .map_err(|error| with_heartbeat_note(error, heartbeat_error))
     });
     match result {
-        Ok((lockdown, client)) => {
-            *out_session = new_session(None, Some(lockdown), client);
+        Ok((heartbeat, lockdown, client)) => {
+            *out_session = new_session(None, Some(lockdown), heartbeat, client);
             null_mut()
         }
         Err(error) => owned_message(format!(
@@ -559,23 +626,33 @@ pub unsafe extern "C" fn pa_session_connect_lockdown(
     let provider = lockdown_provider(record, ip);
     let result = idevice_ffi::run_sync_local(async move {
         preflight_lockdownd(ip).await?;
-        let proxy = within(PROXY_SECS, "B2 CoreDeviceProxy::connect (StartService tunnelservice)", async {
-            idevice::core_device_proxy::CoreDeviceProxy::connect(&provider)
-                .await
-                .map_err(|e| format!(
-                    "B2 CoreDeviceProxy::connect: {} — bắt tay lockdown / StartService untrusted.tunnelservice thất bại. Pairing file có thể thiếu phần Remote Pairing hoặc thiết bị chưa Tin cậy.",
-                    describe(&e)
-                ))
-        })
-        .await?;
-        let rsd_port = proxy.tunnel_info().server_rsd_port;
-        let adapter = proxy
-            .create_software_tunnel()
-            .map_err(|e| format!("B3 tạo software tunnel: {e}"))?;
-        rsd_over_adapter(adapter.to_async_handle(), rsd_port, "B4", "B5").await
+        let (heartbeat, heartbeat_error) = match start_heartbeat(&provider).await {
+            Ok(guard) => (Some(guard), None),
+            Err(error) => (None, Some(error)),
+        };
+        let tunnel = async {
+            let proxy = within(PROXY_SECS, "B2 CoreDeviceProxy::connect (StartService tunnelservice)", async {
+                idevice::core_device_proxy::CoreDeviceProxy::connect(&provider)
+                    .await
+                    .map_err(|e| format!(
+                        "B2 CoreDeviceProxy::connect: {} — bắt tay lockdown / StartService untrusted.tunnelservice thất bại. Pairing file có thể thiếu phần Remote Pairing hoặc thiết bị chưa Tin cậy.",
+                        describe(&e)
+                    ))
+            })
+            .await?;
+            let rsd_port = proxy.tunnel_info().server_rsd_port;
+            let adapter = proxy
+                .create_software_tunnel()
+                .map_err(|e| format!("B3 tạo software tunnel: {e}"))?;
+            rsd_over_adapter(adapter.to_async_handle(), rsd_port, "B4", "B5").await
+        };
+        tunnel
+            .await
+            .map(|(adapter, handshake)| (heartbeat, adapter, handshake))
+            .map_err(|error| with_heartbeat_note(error, heartbeat_error))
     });
     match result {
-        Ok((adapter, handshake)) => open_crash_reports(adapter, handshake, out_session),
+        Ok((heartbeat, adapter, handshake)) => open_crash_reports(adapter, handshake, heartbeat, out_session),
         Err(error) => owned_message(format!(
             "Không mở được tunnel CoreDeviceProxy qua LocalDevVPN ({error})"
         )),
@@ -940,6 +1017,23 @@ mod tests {
             assert!(!error.is_null());
             pa_error_free(error);
         }
+    }
+
+    #[test]
+    fn heartbeat_guard_stops_its_task_when_dropped() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+        let finished = Arc::new(AtomicBool::new(false));
+        let flag = finished.clone();
+        let guard = idevice_ffi::run_sync_local(async move {
+            HeartbeatGuard(tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                flag.store(true, Ordering::SeqCst);
+            }))
+        });
+        drop(guard);
+        std::thread::sleep(Duration::from_millis(600));
+        assert!(!finished.load(Ordering::SeqCst), "heartbeat task must stop with its session");
     }
 
     #[test]
