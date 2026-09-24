@@ -66,6 +66,9 @@ const QUERY_SECS: u64 = 20;
 const MAX_QUERIES: usize = 40;
 const MAX_TREE_NAMES: usize = 5000;
 const MAX_KEY_HITS: usize = 80;
+/// Component driver nodes kept whole, per part, and properties kept per node.
+const MAX_COMPONENT_NODES: usize = 10;
+const MAX_COMPONENT_PROPS: usize = 40;
 
 /// Milliseconds per deadline "second". Tests shrink it to run fast.
 static MILLIS_PER_SECOND: AtomicU64 = AtomicU64::new(1000);
@@ -805,6 +808,75 @@ fn scan_tree(node: &plist::Value, parent: &str, hits: &mut Vec<plist::Value>) {
     }
 }
 
+/// Which part a driver node serves, by name or class (from real iPhone
+/// IORegistry trees): Face ID (ApplePearlSEPDriver, AppleH1xPearlCam, romeo,
+/// juliet), Touch ID (AppleMesaSEPDriver, AppleSandDollar), cameras
+/// (AppleH1xCamIn), speakers (CS35Lxx amps, audio-speaker) and the touch panel.
+fn component_of(name: &str, class: Option<&str>) -> Option<&'static str> {
+    let text = format!("{} {}", name, class.unwrap_or("")).to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|word| text.contains(word));
+    if text.contains("userclient") {
+        return None;
+    }
+    if has(&["pearl", "romeo", "juliet", "rosaline", "truedepth"]) {
+        Some("face_id")
+    } else if has(&["mesa", "sanddollar", "touchid"]) {
+        Some("touch_id")
+    } else if has(&["camin", "camera"]) {
+        Some("camera")
+    } else if has(&["speaker", "cs35l", "tas25", "tas27", "sn012", "audio-receiver"]) {
+        Some("speaker")
+    } else if has(&["multitouch", "multi-touch", "toucheeprom"]) {
+        Some("touch_panel")
+    } else {
+        None
+    }
+}
+
+/// Face ID / Touch ID / camera / speaker / touch-panel nodes with every
+/// property, so the raw data shows what each iPhone generation publishes.
+fn scan_components(
+    node: &plist::Value,
+    parent: &str,
+    out: &mut Vec<plist::Value>,
+    counts: &mut std::collections::HashMap<&'static str, usize>,
+) {
+    let Some(dict) = node.as_dictionary() else { return };
+    let name = dict.get("name").and_then(|v| v.as_string()).unwrap_or("?");
+    let path = if parent.is_empty() { name.to_string() } else { format!("{parent}/{name}") };
+    let class = ["IOObjectClass", "className", "class"]
+        .iter()
+        .find_map(|key| dict.get(*key).and_then(|v| v.as_string()));
+    if let Some(part) = component_of(name, class) {
+        let count = counts.entry(part).or_insert(0);
+        if *count < MAX_COMPONENT_NODES {
+            *count += 1;
+            let mut props = plist::Dictionary::new();
+            for (key, value) in dict.iter() {
+                if props.len() >= MAX_COMPONENT_PROPS {
+                    break;
+                }
+                if key != "children" && key != "name" {
+                    props.insert(key.clone(), hit_value(value));
+                }
+            }
+            let mut hit = plist::Dictionary::new();
+            hit.insert("part".into(), plist::Value::String(part.to_string()));
+            hit.insert("path".into(), plist::Value::String(path.clone()));
+            if let Some(class) = class {
+                hit.insert("class".into(), plist::Value::String(class.to_string()));
+            }
+            hit.insert("props".into(), plist::Value::Dictionary(props));
+            out.push(plist::Value::Dictionary(hit));
+        }
+    }
+    if let Some(children) = dict.get("children").and_then(|v| v.as_array()) {
+        for child in children {
+            scan_components(child, &path, out, counts);
+        }
+    }
+}
+
 fn error_entry(message: impl Into<String>) -> plist::Value {
     let mut dict = plist::Dictionary::new();
     dict.insert("error".into(), plist::Value::String(message.into()));
@@ -954,6 +1026,10 @@ async fn run_hardware_queries(
                     let mut hits = Vec::new();
                     scan_tree(&tree, "", &mut hits);
                     dict.insert("hits".into(), plist::Value::Array(hits));
+                    let mut components = Vec::new();
+                    let mut counts = std::collections::HashMap::new();
+                    scan_components(&tree, "", &mut components, &mut counts);
+                    dict.insert("components".into(), plist::Value::Array(components));
                 }
                 plist::Value::Dictionary(dict)
             }
@@ -1440,6 +1516,37 @@ mod tests {
         let request = br#"<plist version="1.0"><array><dict><key>plane</key><string>IODeviceTree</string><key>scanKeys</key><true/></dict></array></plist>"#;
         let queries = parse_hardware_queries(request).unwrap();
         assert!(queries[0].scan_keys && !queries[0].names_only);
+    }
+
+    #[test]
+    fn component_scan_keeps_face_id_touch_id_camera_and_speaker_drivers() {
+        let tree = plist::Value::from_reader_xml(std::io::Cursor::new(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
+<key>name</key><string>Root</string>
+<key>children</key><array>
+<dict><key>name</key><string>ApplePearlSEPDriver</string><key>IOObjectClass</key><string>ApplePearlSEPDriver</string>
+<key>SomeState</key><integer>1</integer></dict>
+<dict><key>name</key><string>ApplePearlUserClient</string><key>IOObjectClass</key><string>ApplePearlUserClient</string></dict>
+<dict><key>name</key><string>AppleMesaSEPDriver</string><key>IOObjectClass</key><string>AppleMesaSEPDriver</string></dict>
+<dict><key>name</key><string>AppleH13CamIn</string><key>IOObjectClass</key><string>AppleH13CamIn</string>
+<key>FrontCameraModuleSerialNumString</key><string>ABC</string></dict>
+<dict><key>name</key><string>AppleCS35L27Amp</string><key>IOObjectClass</key><string>AppleCS35L27Amp</string></dict>
+<dict><key>name</key><string>AppleMultitouchDevice</string><key>IOObjectClass</key><string>AppleMultitouchDevice</string></dict>
+<dict><key>name</key><string>display</string></dict>
+</array></dict></plist>"#,
+        ))
+        .unwrap();
+        let mut out = Vec::new();
+        let mut counts = std::collections::HashMap::new();
+        scan_components(&tree, "", &mut out, &mut counts);
+        let parts: Vec<_> = out
+            .iter()
+            .filter_map(|h| h.as_dictionary()?.get("part")?.as_string())
+            .collect();
+        assert_eq!(parts, ["face_id", "touch_id", "camera", "speaker", "touch_panel"]);
+        let camera = out[2].as_dictionary().unwrap().get("props").unwrap().as_dictionary().unwrap();
+        assert_eq!(camera.get("FrontCameraModuleSerialNumString").and_then(|v| v.as_string()), Some("ABC"));
+        assert_eq!(component_of("display", None), None);
     }
 
     #[test]

@@ -845,7 +845,8 @@ function renderHardwareRaw(host, paragraph, addRow) {
     const payload = {
       app: window.__APP_VERSION__ || '', model: window.__DEVICE_MODEL__ || '',
       ios: window.__IOS_VERSION__ || '', display: hardwareReport.display || {},
-      battery: hardwareReport.battery || {}, parts: hardwareReport.parts || [], probe, raw,
+      battery: hardwareReport.battery || {}, parts: hardwareReport.parts || [],
+      components: hardwareReport.components || [], probe, raw,
       errors: hardwareReport.errors || []
     };
     const text = JSON.stringify(payload, null, 1);

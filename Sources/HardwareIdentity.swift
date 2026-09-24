@@ -314,6 +314,51 @@ enum HardwareIdentity {
         return flags
     }
 
+    // MARK: - Other parts (Face ID, Touch ID, cameras, speakers, touch panel)
+
+    /// A driver node the bridge kept whole because of the part it serves.
+    struct ComponentNode {
+        let part: String
+        let hit: Hit
+    }
+
+    static func componentNodes(in first: [[String: Any]]) -> [ComponentNode] {
+        var nodes: [ComponentNode] = []
+        for result in [entry(first, .treeNames), entry(first, .serviceNames)] {
+            for item in result["components"] as? [[String: Any]] ?? [] {
+                guard let part = item["part"] as? String, let path = item["path"] as? String,
+                      let props = item["props"] as? [String: Any] else { continue }
+                nodes.append(ComponentNode(part: part,
+                                           hit: Hit(path: path, className: item["class"] as? String, props: props)))
+            }
+        }
+        return nodes
+    }
+
+    /// Per part: how many driver nodes answered and the first pass flag any
+    /// of them publishes (never a guess from counters or errors).
+    static func componentSummary(_ nodes: [ComponentNode]) -> [[String: Any]] {
+        var order: [String] = []
+        var summary: [String: [String: Any]] = [:]
+        for node in nodes {
+            var item = summary[node.part] ?? ["part": node.part, "nodes": 0]
+            item["nodes"] = (item["nodes"] as? Int ?? 0) + 1
+            if item["authPassed"] == nil {
+                for key in node.hit.props.keys.sorted() where isPassFlagName(key) {
+                    if let number = integer(node.hit.props[key]), number == 0 || number == 1 {
+                        item["authPassed"] = number == 1
+                        item["flag"] = key
+                        item["path"] = node.hit.path
+                        break
+                    }
+                }
+            }
+            if summary[node.part] == nil { order.append(node.part) }
+            summary[node.part] = item
+        }
+        return order.compactMap { summary[$0] }
+    }
+
     // MARK: - Raw data (to learn the flag names of each iPhone generation)
 
     /// Short text for one IORegistry value.
@@ -365,10 +410,17 @@ enum HardwareIdentity {
         ]
         let flags = partFlags(scanned)
         if !flags.isEmpty { report["parts"] = flags }
+        let components = componentNodes(in: first)
+        let componentList = componentSummary(components)
+        if !componentList.isEmpty { report["components"] = componentList }
         var raw = rawEntries(Array(zip(candidates, second).map { (name: $0, entry: $1) }))
         raw += rawEntries([(name: "AppleBatteryAuth", entry: batteryAuth),
                            (name: "RoswellAuthI2CRelayInterface", entry: roswell)])
         raw += rawEntries(Array(hitPairs.prefix(40)))
+        raw += rawEntries(components.prefix(40).map { (node: ComponentNode) -> (name: String, entry: [String: Any]) in
+            let leaf = node.hit.path.split(separator: "/").last.map(String.init) ?? node.hit.path
+            return (name: "\(node.part): \(leaf)", entry: node.hit.props)
+        })
         if !raw.isEmpty { report["raw"] = raw }
         report["probe"] = [
             "treeNames": (entry(first, .treeNames)["names"] as? [Any])?.count ?? 0,

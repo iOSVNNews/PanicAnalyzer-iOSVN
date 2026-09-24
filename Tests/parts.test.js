@@ -113,6 +113,13 @@ assert.equal(partial.battery.settingsHealthPercent, 89);
 assert.equal(partial.battery.cycleCount, 626);
 assert.equal(PartsHistory.mergeHardwareReport(null, good), good);
 
+// Cờ pass trên driver Face ID / loa… được báo như linh kiện khác.
+const comps = PartsHistory.fromHardware({ components: [
+  { part: 'face_id', nodes: 4, authPassed: true, path: 'Root/ApplePearlSEPDriver' },
+  { part: 'speaker', nodes: 3 },
+  { part: 'touch_id', nodes: 2, authPassed: false } ] });
+assert.deepEqual(comps.map(({ part, status }) => [part, status]), [['face_id', 'genuine'], ['touch_id', 'authfail']]);
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

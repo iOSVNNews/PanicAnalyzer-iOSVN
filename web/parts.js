@@ -153,6 +153,13 @@ const PartsHistory = (() => {
       findings.push({ part: 'battery', status: auth.passed ? 'genuine' : 'authfail',
         source: 'hardware', serial });
     }
+    // Face ID, Touch ID, camera, loa, cảm ứng: cờ pass trên driver của linh kiện.
+    for (const item of Array.isArray(report.components) ? report.components : []) {
+      if (!item || typeof item.authPassed !== 'boolean' || !item.part) continue;
+      if (findings.some(f => f.part === item.part)) continue;
+      findings.push({ part: item.part, status: item.authPassed ? 'genuine' : 'authfail',
+        source: 'hardware', path: String(item.path || '') });
+    }
     const flags = battery.authFlags || {};
     const values = Object.values(flags).filter(v => v === 0 || v === 1);
     if (values.length && !findings.some(f => f.part === 'battery')) {
@@ -192,6 +199,9 @@ const PartsHistory = (() => {
     if (!has(next.display) && has(previous.display)) merged.display = previous.display;
     if (has(previous.battery)) merged.battery = Object.assign({}, previous.battery, next.battery || {});
     if (!(Array.isArray(next.parts) && next.parts.length) && Array.isArray(previous.parts)) merged.parts = previous.parts;
+    if (!(Array.isArray(next.components) && next.components.length) && Array.isArray(previous.components)) {
+      merged.components = previous.components;
+    }
     if (!(Array.isArray(next.raw) && next.raw.length) && Array.isArray(previous.raw)) {
       merged.raw = previous.raw;
       merged.probe = previous.probe;
