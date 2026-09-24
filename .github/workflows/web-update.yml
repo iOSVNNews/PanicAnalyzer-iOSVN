@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['web/**', 'scripts/web_manifest.py']
+    paths: ['web/**', 'scripts/web_manifest.py', '.github/workflows/web-update.yml']
 
 concurrency:
   group: web-update
@@ -45,7 +45,8 @@ jobs:
             fi
             git checkout -q -B main origin/main
             python3 scripts/web_manifest.py
-            if git diff --quiet -- assets/web_update.json; then
+            # status, not diff: the first manifest is a new, untracked file.
+            if [ -z "$(git status --porcelain -- assets/web_update.json)" ]; then
               echo "manifest already up to date"
               exit 0
             fi
