@@ -11,7 +11,10 @@ enum HardwareIdentity {
 
     /// Device-tree nodes that hold the display authentication IC. Apple renames
     /// them between generations, so the tree is also scanned for similar names.
-    static let knownDisplayAuthNodes = ["mogul-display", "display-auth", "panel-auth"]
+    /// roswell (iPhone 11/12) and babbage (12 mini / 12 Pro Max) are the display
+    /// auth ICs on i2c3; mogul-display holds the result from the 15 Pro on.
+    static let knownDisplayAuthNodes = ["mogul-display", "display-auth", "panel-auth", "roswell", "babbage",
+                                        "mogul-display2"]
     static let maxCandidates = 16
 
     /// First pass. Display auth hardware differs by generation: newer iPhones
@@ -23,7 +26,7 @@ enum HardwareIdentity {
     /// on one of them the small queries before it are already answered.
     enum First: Int, CaseIterable {
         case batteryByName, batteryByClass, panelByClass, panelByName,
-             batteryAuth, roswellAuth, treeNames, serviceNames
+             batteryAuth, roswellAuth, authAID, treeNames, serviceNames
     }
 
     /// Driver classes of other parts, read one by one on their own connection
@@ -50,6 +53,8 @@ enum HardwareIdentity {
         case .panelByName: return ["name": "AppleCLCD2"]
         case .batteryAuth: return ["class": "AppleBatteryAuth"]
         case .roswellAuth: return ["class": "RoswellAuthI2CRelayInterface"]
+        // Port-controller auth (display / logic board), see displayFunctionFlag.
+        case .authAID: return ["class": "AppleAuthCPAID"]
         case .serviceNames: return ["plane": "IOService", "namesOnly": true, "scanKeys": true]
         }
     }
@@ -67,7 +72,9 @@ enum HardwareIdentity {
         for name in treeNames {
             let lower = name.lowercased()
             if lower.hasSuffix("-display") || lower.contains("display-auth") || lower.contains("panel-auth")
-                || (lower.contains("display") && lower.contains("auth")) {
+                || (lower.contains("display") && lower.contains("auth"))
+                || lower == "roswell" || lower == "babbage"
+                || (lower.hasPrefix("mogul") && !lower.contains("mlb")) {
                 add(name)
             }
         }
@@ -142,6 +149,17 @@ enum HardwareIdentity {
 
     // MARK: - Report
 
+    /// Pass flag of an auth driver that says it serves the display
+    /// ("ComponentFunction" = "auth,display" on AppleAuthCPAID).
+    static func displayFunctionFlag(_ props: [String: Any]) -> Bool? {
+        let function = ["ComponentFunction", "component-function"].compactMap { text(props[$0]) }.first ?? ""
+        guard function.lowercased().contains("display") else { return nil }
+        for key in ["auth-passed", "PrimaryAuthPassed", "AuthPassed"] {
+            if let number = integer(props[key]), number == 0 || number == 1 { return number == 1 }
+        }
+        return nil
+    }
+
     static func display(candidates: [(name: String, entry: [String: Any])],
                         panelEntries: [[String: Any]]) -> [String: Any] {
         for (name, entry) in candidates {
@@ -161,10 +179,14 @@ enum HardwareIdentity {
             }
             return out
         }
-        // Older nodes: the same "auth-passed" flag without a certificate.
+        // Older nodes: the same "auth-passed" flag without a certificate, or a
+        // port-controller auth driver serving the display.
         for (name, entry) in candidates {
             if let passed = integer(entry["auth-passed"]) {
                 return ["node": name, "authPassed": passed != 0]
+            }
+            if let passed = displayFunctionFlag(entry) {
+                return ["node": name, "authPassed": passed]
             }
         }
         for entry in panelEntries {
@@ -239,6 +261,11 @@ enum HardwareIdentity {
         var out: [String: Any] = [:]
         let driverFound = driver["error"] == nil && !driver.isEmpty
         if driverFound { out["driver"] = true }
+        // "TrustedBatteryEnabled" = 0: iOS does not run the trusted-data check
+        // on this model, so no pass flag will ever be published (iPhone 14).
+        if driverFound, let enabled = integer(driver["TrustedBatteryEnabled"]) {
+            out["trustedEnabled"] = enabled == 1
+        }
         for props in (driverFound ? [driver] : []) + scanned {
             for key in props.keys.sorted() {
                 let lower = key.lowercased()
@@ -263,6 +290,18 @@ enum HardwareIdentity {
     static func isTrustedPassKey(_ lower: String) -> Bool {
         lower.contains("pass") && (lower.contains("trust") || lower.contains("auth"))
             && !["count", "retry", "fail", "time", "bypass"].contains { lower.contains($0) }
+    }
+
+    /// Device-tree names that may belong to an auth IC or its transport, so the
+    /// raw data shows how a new generation lays them out.
+    static func authNames(_ names: [String]) -> [String] {
+        let words = ["auth", "roswell", "babbage", "mogul", "area51", "aid", "hpm", "tristar", "display", "panel"]
+        var seen: [String] = []
+        for name in names where words.contains(where: { name.lowercased().contains($0) }) && !seen.contains(name) {
+            seen.append(name)
+            if seen.count == 60 { break }
+        }
+        return seen
     }
 
     /// IOService names that look like battery or auth drivers, so the raw data
@@ -322,6 +361,11 @@ enum HardwareIdentity {
         var seen = Set<String>()
         var flags: [[String: Any]] = []
         for hit in hits {
+            if !seen.contains("display"), let passed = displayFunctionFlag(hit.props) {
+                seen.insert("display")
+                flags.append(["part": "display", "authPassed": passed, "path": hit.path])
+                continue
+            }
             guard let component = HardwareIdentity.part(of: hit), !seen.contains(component),
                   let key = hit.props.keys.first(where: { $0.lowercased() == "auth-passed" }),
                   let passed = integer(hit.props[key]) else { continue }
@@ -382,13 +426,17 @@ enum HardwareIdentity {
 
     // MARK: - Cameras
 
-    /// "BackSuperWide" -> "back_super_wide".
+    /// "BackSuperWide" -> "back_super_wide", "FrontIRStructuredLight" ->
+    /// "front_ir_structured_light".
     static func moduleID(_ prefix: String) -> String {
+        let chars = Array(prefix)
         var id = ""
-        var previousUpper = true
-        for char in prefix {
-            if char.isUppercase, !previousUpper { id += "_" }
-            previousUpper = char.isUppercase
+        for (index, char) in chars.enumerated() {
+            if index > 0, char.isUppercase {
+                let previous = chars[index - 1]
+                let nextIsLower = index + 1 < chars.count && chars[index + 1].isLowercase
+                if previous.isLowercase || (previous.isUppercase && nextIsLower) { id += "_" }
+            }
             id += char.lowercased()
         }
         return id
@@ -407,9 +455,14 @@ enum HardwareIdentity {
             if modules[id] == nil { order.append(id); modules[id] = ["module": id] }
             if modules[id]?[key] == nil { modules[id]?[key] = value }
         }
-        let suffixes = [("CameraModuleSerialNumString", "serial"), ("CameraExpected", "expected"),
-                        ("CameraActive", "active")]
+        let suffixes = [("CameraModuleSerialNumString", "serial"), ("ProjectorSerialNumString", "serial"),
+                        ("CameraExpected", "expected"), ("CameraActive", "active")]
         for node in nodes where node.part == "camera" {
+            // LiDAR scanner ("Jasper") on Pro models.
+            if let serial = LocalHardware.serialText(node.hit.props["JasperSNUM"]) {
+                set("Lidar", "serial", serial)
+                set("Lidar", "node", node.hit.className ?? node.hit.path)
+            }
             for key in node.hit.props.keys.sorted() {
                 guard let value = node.hit.props[key],
                       let (suffix, field) = suffixes.first(where: { key.hasSuffix($0.0) }) else { continue }
@@ -485,6 +538,7 @@ enum HardwareIdentity {
         let hitPairs = scanned.map { (name: $0.path, entry: $0.props) }
         let displayHits = zip(scanned, hitPairs).filter { HardwareIdentity.part(of: $0.0) == "display" }.map { $0.1 }
         let pairs = zip(candidates, second).map { (name: $0, entry: $1) } + displayHits
+            + [(name: "AppleAuthCPAID", entry: entry(first, .authAID))]
         let batteryAuth = entry(first, .batteryAuth)
         let roswell = entry(first, .roswellAuth)
         var batteryInfo = battery(from: [entry(first, .batteryByName), entry(first, .batteryByClass)])
@@ -508,7 +562,10 @@ enum HardwareIdentity {
         if !validation.isEmpty { report["cameraValidation"] = validation }
         var raw = rawEntries(Array(zip(candidates, second).map { (name: $0, entry: $1) }))
         raw += rawEntries([(name: "AppleBatteryAuth", entry: batteryAuth),
-                           (name: "RoswellAuthI2CRelayInterface", entry: roswell)])
+                           (name: "RoswellAuthI2CRelayInterface", entry: roswell),
+                           (name: "AppleAuthCPAID", entry: entry(first, .authAID)),
+                           (name: "AppleCLCD2", entry: entry(first, .panelByClass)),
+                           (name: "AppleSmartBattery", entry: entry(first, .batteryByClass))], limit: 40)
         raw += rawEntries(Array(hitPairs.prefix(40)))
         raw += rawEntries(components.prefix(40).map { (node: ComponentNode) -> (name: String, entry: [String: Any]) in
             let leaf = node.hit.path.split(separator: "/").last.map(String.init) ?? node.hit.path
@@ -521,7 +578,8 @@ enum HardwareIdentity {
             "hits": scanned.count,
             "candidates": candidates,
             "batteryNodes": batteryNodeNames(
-                (entry(first, .serviceNames)["names"] as? [Any])?.compactMap { $0 as? String } ?? [])
+                (entry(first, .serviceNames)["names"] as? [Any])?.compactMap { $0 as? String } ?? []),
+            "authTreeNames": authNames((entry(first, .treeNames)["names"] as? [Any])?.compactMap { $0 as? String } ?? [])
         ] as [String: Any]
         // The two whole-plane dumps are best effort (the device sometimes
         // resets the connection on them): their errors go to the raw data

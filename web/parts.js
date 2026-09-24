@@ -144,13 +144,33 @@ const PartsHistory = (() => {
   // Chưa kiểm chứng trên máy đã thay camera rằng ioreg/gestalt là sê-ri module
   // ĐANG lắp, nên khác sê-ri gốc chỉ là "cần kiểm tra", không kết luận đã thay;
   // khớp sê-ri cũng không chứng minh cả cụm chưa từng sửa.
-  const CAMERA_MODULES = ['rear_main', 'rear_ultra_wide', 'rear_tele', 'front', 'truedepth_ir', 'truedepth_projector'];
+  const CAMERA_MODULES = ['rear_main', 'rear_ultra_wide', 'rear_tele', 'rear_lidar', 'front', 'truedepth_ir',
+    'truedepth_projector'];
   const CAMERA_PART = { rear_main: 'rear_camera', rear_ultra_wide: 'rear_camera', rear_tele: 'rear_camera',
-    front: 'front_camera', truedepth_ir: 'face_id', truedepth_projector: 'face_id' };
+    rear_lidar: 'rear_camera', front: 'front_camera', truedepth_ir: 'face_id', truedepth_projector: 'face_id' };
   const MAIN_MODULE = { rear_camera: 'rear_main', front_camera: 'front' };
   // Tên module của driver camera (tiền tố trước "CameraModuleSerialNumString").
   const IOREG_MODULE = { back: 'rear_main', back_super_wide: 'rear_ultra_wide', back_tele: 'rear_tele',
-    front: 'front', front_ir: 'truedepth_ir' };
+    lidar: 'rear_lidar', front: 'front', front_ir: 'truedepth_ir', front_ir_structured_light: 'truedepth_projector' };
+
+  // Kết quả iOS tự kiểm tra dữ liệu hiệu chuẩn của module camera với dữ liệu
+  // niêm phong lúc xuất xưởng (driver camera AppleH1xCamIn; corerepaird đọc
+  // "CmClValidationStatus" cho camera sau). CmCl = camera sau, FCCl = camera
+  // trước. Các khoá khác (CmPM…) chưa rõ thuộc module nào: chỉ giữ ở dữ liệu thô.
+  const VALIDATION_PART = { CmClValidationStatus: 'rear_camera', FCClValidationStatus: 'front_camera' };
+  const validationFailed = value => /fail|mismatch|unauthori[sz]ed|invalid|swap/i.test(String(value || ''));
+
+  function cameraValidation(report) {
+    const out = [];
+    const statuses = (report && report.cameraValidation) || {};
+    for (const [key, part] of Object.entries(VALIDATION_PART)) {
+      const value = statuses[key];
+      if (typeof value !== 'string' || !value) continue;
+      const status = /^pass/i.test(value) ? 'validated' : (validationFailed(value) ? 'validation_fail' : null);
+      out.push({ part, key, value, status });
+    }
+    return out;
+  }
 
   function cameraModules(report) {
     const byModule = {};
@@ -185,6 +205,16 @@ const PartsHistory = (() => {
   function cameraCheck(report, part) {
     const module = MAIN_MODULE[part];
     return module ? cameraModules(report).find(entry => entry.module === module) || null : null;
+  }
+
+  // iOS không chạy kiểm tra "trusted battery" trên đời máy này (iPhone 14…):
+  // AppleBatteryAuth có TrustedBatteryEnabled = 0 nên không bao giờ có cờ pass.
+  // Bản native cũ chỉ gửi giá trị này trong dữ liệu thô.
+  function batteryTrustedOff(report) {
+    const auth = (report && report.battery && report.battery.auth) || {};
+    if (typeof auth.trustedEnabled === 'boolean') return !auth.trustedEnabled;
+    return (Array.isArray(report && report.raw) ? report.raw : []).some(entry => entry && entry.name === 'AppleBatteryAuth'
+      && entry.props && String(entry.props.TrustedBatteryEnabled) === '0');
   }
 
   function fromHardware(report) {
@@ -239,6 +269,9 @@ const PartsHistory = (() => {
       findings.push({ part, status: check.match ? 'serial_match' : 'serial_mismatch', source: 'hardware',
         factory: check.factory, current: check.current });
     }
+    for (const item of cameraValidation(report)) {
+      if (item.status) findings.push({ part: item.part, status: item.status, source: 'hardware', value: item.value });
+    }
     const flags = battery.authFlags || {};
     const values = Object.values(flags).filter(v => v === 0 || v === 1);
     if (values.length && !findings.some(f => f.part === 'battery')) {
@@ -259,7 +292,7 @@ const PartsHistory = (() => {
   // Xác thực phần cứng chỉ nói về linh kiện đã đọc được, không phải toàn máy.
   function assessScan(logCount, statusSignals, cableSignals, hardwareSignals) {
     const hardware = Array.isArray(hardwareSignals) ? hardwareSignals : [];
-    if (hardware.some(f => f.status !== 'genuine' && f.status !== 'serial_match')) return 'found';
+    if (hardware.some(f => !['genuine', 'serial_match', 'validated'].includes(f.status))) return 'found';
     const hasLogs = Number.isFinite(logCount) && logCount > 0;
     if (hasLogs && Array.isArray(statusSignals) && statusSignals.length) return 'found';
     if (hardware.length) return 'verified';
@@ -290,7 +323,7 @@ const PartsHistory = (() => {
 
   // ---- Tổng quan toàn bộ linh kiện + phát hiện thay thế ----------------------
   // Trạng thái cần báo cho người dùng (thông báo iOS + băng cảnh báo).
-  const ALERT = new Set(['authfail', 'nongenuine', 'replaced', 'unavailable', 'auth_error', 'changed',
+  const ALERT = new Set(['authfail', 'nongenuine', 'replaced', 'unavailable', 'auth_error', 'changed', 'validation_fail',
     'unknown', 'serial_mismatch', 'used', 'finish_repair', 'unverified']);
   const isAlert = status => ALERT.has(status);
 
@@ -349,6 +382,8 @@ const PartsHistory = (() => {
       if (sys && sys.match === false) return { part, status: 'replaced' };
       const logBad = logs.find(f => f.part === part && isAlert(f.status));
       if (logBad) return { part, status: logBad.status, source: 'log' };
+      const validated = hw.find(f => f.status === 'validated');
+      if (validated) return { part, status: 'validated', value: validated.value };
       if (hw.some(f => f.status === 'serial_match')) return { part, status: 'serial_match' };
       if (hw.some(f => f.status === 'genuine') || (sys && sys.match === true)) return { part, status: 'genuine' };
       if (bio.part === part && (bio.state === 'ok' || bio.state === 'not_enrolled')) {
@@ -366,7 +401,7 @@ const PartsHistory = (() => {
 
   return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport,
     isAlert, expectedParts, partIdentities, changedParts, partsOverview, sameSerial, cameraModules, cameraCheck,
-    CAMERA_PART };
+    cameraValidation, batteryTrustedOff, CAMERA_PART };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;

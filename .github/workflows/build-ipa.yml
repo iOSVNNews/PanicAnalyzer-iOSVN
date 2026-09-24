@@ -13,6 +13,7 @@ on:
       - '**.md'
       - 'Tests/parts.test.js'
       - 'Tests/crash.test.js'
+      - 'Tests/generations.test.js'
       - '.github/workflows/web-update.yml'
 
 concurrency:
@@ -43,11 +44,14 @@ jobs:
         run: |
           swiftc Sources/Localization.swift Sources/LocalVPNConnection.swift Tests/LocalVPNConnectionTests.swift -o "$RUNNER_TEMP/vpn-tests"
           "$RUNNER_TEMP/vpn-tests"
+          swiftc Sources/HardwareIdentity.swift Sources/LocalHardware.swift Tests/HardwareIdentityTests.swift -o "$RUNNER_TEMP/hw-tests"
+          "$RUNNER_TEMP/hw-tests"
           node --check web/i18n.js
           node --check web/parts.js
           node --check web/app.js
           node Tests/parts.test.js
           node Tests/crash.test.js
+          node Tests/generations.test.js
           python3 Tests/test_package_deb.py
 
       - name: Build Remote Pairing bridge

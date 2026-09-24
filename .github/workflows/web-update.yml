@@ -31,6 +31,7 @@ jobs:
           node --check web/app.js
           node Tests/parts.test.js
           node Tests/crash.test.js
+          node Tests/generations.test.js
 
       - name: Publish the manifest
         run: |

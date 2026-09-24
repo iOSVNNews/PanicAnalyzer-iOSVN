@@ -1004,11 +1004,19 @@ function overviewText(item) {
   }
   if (item.status === 'working') return t('parts.bio.' + item.detail);
   if (item.status === 'unavailable') return t('parts.bio.not_available');
-  if (item.status === 'serial_only') return t('parts.status.serial_only', { s: item.serial || '' });
+  if (item.status === 'serial_only') {
+    return t(window.__PRIVILEGED__ ? 'parts.status.serial_only' : 'parts.status.serial_onlyIpa', { s: item.serial || '' });
+  }
+  // Có dữ liệu nhưng iOS không công bố kết quả xác thực trên đời máy này.
+  if (item.status === 'no_flag' && item.part === 'battery' && PartsHistory.batteryTrustedOff(hardwareReport)) {
+    return t('parts.hw.batteryTrustedOff');
+  }
+  if (item.status === 'no_flag' && item.part === 'display' && display.panelId) return t('parts.hw.displayNoResult');
   let text = t('parts.status.' + item.status);
   if (item.part === 'display' && display.panelSerial && item.status === 'genuine') text += ` · ${display.panelSerial}`;
   const camera = PartsHistory.cameraCheck(hardwareReport, item.part);
-  if (item.status === 'serial_match' && camera && camera.current) text += ` · ${camera.current}`;
+  if ((item.status === 'serial_match' || item.status === 'validated') && camera && camera.current) text += ` · ${camera.current}`;
+  if (item.status === 'validation_fail') text = t('parts.status.validation_fail', { v: item.value || '' });
   if (item.status === 'serial_mismatch' && camera && camera.factory && camera.current) {
     text = t('parts.cam.mismatch', { f: camera.factory, c: camera.current });
   }

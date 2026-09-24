@@ -758,12 +758,22 @@ fn is_identity_key(key: &str) -> bool {
         || ["serial", "validation", "expected"].iter().any(|word| key.contains(word))
 }
 
-/// Battery authentication drivers: every property is kept, because the name of
-/// their pass flag is not published (AppleBatteryAuth in Apple's PowerManagement).
+/// Authentication-chip nodes: every property is kept, because the pass flag
+/// and the part it serves differ per generation. AppleBatteryAuth (Apple's
+/// PowerManagement), the AppleAuthCP drivers (AppleAuthCPAID carries
+/// "ComponentFunction" = "auth,display" / "auth,mlb"), and the display auth
+/// ICs by device-tree name: roswell (iPhone 11/12), babbage (12 mini / Pro
+/// Max), mogul-* (15 Pro and later), area51 (iOS 27).
 fn is_battery_auth_node(name: &str, class: Option<&str>) -> bool {
     let name = name.to_ascii_lowercase();
     let class = class.unwrap_or("").to_ascii_lowercase();
-    name.contains("batteryauth") || class.contains("batteryauth")
+    if name.contains("userclient") || class.contains("userclient") {
+        return false;
+    }
+    let text = format!("{name} {class}");
+    ["batteryauth", "authcp", "roswell", "babbage", "mogul", "area51"]
+        .iter()
+        .any(|word| text.contains(word))
 }
 
 /// Keeps small values as they are (Swift parses certificates), summarises big ones.
@@ -1595,6 +1605,17 @@ mod tests {
         assert!(take_message(error).contains("R2a"));
         assert!(started.elapsed() < Duration::from_secs(5));
         drop(listener);
+    }
+
+    #[test]
+    fn auth_chip_nodes_keep_every_property() {
+        assert!(is_battery_auth_node("AppleBatteryAuth", Some("AppleBatteryAuth")));
+        assert!(is_battery_auth_node("AppleAuthCPAID", Some("AppleAuthCPAID")));
+        assert!(is_battery_auth_node("roswell", None));
+        assert!(is_battery_auth_node("babbage", None));
+        assert!(is_battery_auth_node("mogul-display", None));
+        assert!(!is_battery_auth_node("AppleAuthCPUserClient", Some("AppleAuthCPUserClient")));
+        assert!(!is_battery_auth_node("AppleSmartBattery", Some("AppleSmartBattery")));
     }
 
     #[test]
