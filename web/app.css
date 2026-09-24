@@ -914,8 +914,8 @@ a.about-row b { color: var(--brand-bright); }
 .parts-error { color: var(--brand-bright); }
 .parts-row { display: flex; justify-content: space-between; align-items: center; gap: 12px;
   padding: 10px 0; border-bottom: 1px solid var(--card-border); font-size: 13px; }
-.parts-row b { font-weight: 600; }
-.parts-status { text-align: right; color: var(--text-secondary); }
+.parts-row b { font-weight: 600; flex-shrink: 0; white-space: nowrap; }
+.parts-status { text-align: right; color: var(--text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .parts-status.unknown, .parts-status.unverified, .parts-status.finish_repair { color: var(--brand-bright); }
 .parts-status.authfail, .parts-status.nongenuine, .parts-status.auth_error { color: var(--brand-bright); font-weight: 700; }
 .parts-status.genuine { color: var(--text-primary); font-weight: 600; }

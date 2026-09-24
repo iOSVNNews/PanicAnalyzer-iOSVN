@@ -101,6 +101,18 @@ assert.deepEqual(chipError.map(({ part, status, code }) => [part, status, code])
 assert.equal(PartsHistory.assessScan(0, [], [], chipError), 'found');
 assert.deepEqual(PartsHistory.fromHardware({ battery: { auth: { driver: true } } }), []);
 
+// Lần đọc hỏng không làm mất số liệu của lần đọc trước.
+const good = { display: { authPassed: true }, battery: { serial: 'F8Y', settingsHealthPercent: 89, auth: { passed: true } },
+  parts: [{ part: 'display', authPassed: true }], raw: [{ name: 'x', props: {} }], probe: { hits: 1 } };
+const failed = PartsHistory.mergeHardwareReport(good, { errors: ['D1 diagnostics_relay: timeout'] });
+assert.equal(failed.display.authPassed, true);
+assert.equal(failed.battery.settingsHealthPercent, 89);
+assert.deepEqual(failed.errors, ['D1 diagnostics_relay: timeout']);
+const partial = PartsHistory.mergeHardwareReport(good, { battery: { serial: 'F8Y', cycleCount: 626 } });
+assert.equal(partial.battery.settingsHealthPercent, 89);
+assert.equal(partial.battery.cycleCount, 626);
+assert.equal(PartsHistory.mergeHardwareReport(null, good), good);
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

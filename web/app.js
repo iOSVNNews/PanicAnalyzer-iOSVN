@@ -737,8 +737,22 @@ function resetHardwareReport() {
 
 // Native gửi báo cáo phần cứng TRƯỚC log, nên kết luận ở onNativeScanMode đã
 // tính cả phần cứng.
+const HARDWARE_CACHE_KEY = 'panic.hardwareReport';
+
+function loadCachedHardwareReport() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HARDWARE_CACHE_KEY) || 'null');
+    return saved && saved.model === (window.__DEVICE_MODEL__ || '') ? saved.report : null;
+  } catch (_) { return null; }
+}
+
 window.onNativeHardwareReport = function(report) {
-  hardwareReport = report && typeof report === 'object' ? report : null;
+  const incoming = report && typeof report === 'object' ? report : null;
+  hardwareReport = PartsHistory.mergeHardwareReport(hardwareReport || loadCachedHardwareReport(), incoming);
+  try {
+    localStorage.setItem(HARDWARE_CACHE_KEY,
+      JSON.stringify({ model: window.__DEVICE_MODEL__ || '', report: hardwareReport }));
+  } catch (_) {}
   hardwarePartSignals = PartsHistory.fromHardware(hardwareReport);
   renderPartsHistory();
 };
@@ -781,8 +795,9 @@ function renderHardwareReport(host, paragraph) {
   if (Number.isFinite(battery.settingsHealthPercent)) facts.push(t('parts.hw.health', { n: battery.settingsHealthPercent }));
   else if (Number.isFinite(battery.healthPercent)) facts.push(t('parts.hw.healthMeasured', { n: battery.healthPercent }));
   if (Number.isFinite(battery.cycleCount)) facts.push(t('parts.hw.cycles', { n: battery.cycleCount }));
-  if (battery.fullChargeCapacity && battery.designCapacity) {
-    facts.push(`${battery.fullChargeCapacity}/${battery.designCapacity} mAh`);
+  const capacity = battery.nominalChargeCapacity || battery.fullChargeCapacity;
+  if (capacity && battery.designCapacity) {
+    facts.push(`${capacity}/${battery.designCapacity} mAh`);
   }
   if (battery.serial) facts.push(t('parts.hw.serial', { s: battery.serial }));
   if (batteryFinding) {
@@ -818,19 +833,11 @@ function renderHardwareReport(host, paragraph) {
   renderHardwareRaw(host, paragraph, addRow);
 }
 
-// Dữ liệu thô của các node xác thực: mỗi đời iPhone đặt tên khác nhau, nên
-// cần dữ liệu thật từ máy người dùng để nhận diện cờ màn hình/pin.
+// Dữ liệu thô của các node xác thực: không hiện trong app (tên node dài, chỉ
+// dành cho iOSVN), chỉ giữ nút gửi để nhận diện đời máy mới.
 function renderHardwareRaw(host, paragraph, addRow) {
   const raw = Array.isArray(hardwareReport.raw) ? hardwareReport.raw : [];
   const probe = hardwareReport.probe || {};
-  paragraph(t('parts.hw.rawTitle'), 'parts-source');
-  paragraph(t('parts.hw.probe', {
-    t: probe.treeNames || 0, s: probe.serviceNames || 0,
-    c: Array.isArray(probe.candidates) ? probe.candidates.length : 0, h: probe.hits || 0
-  }));
-  for (const item of raw.slice(0, 12)) {
-    addRow(String(item.name || '?'), t('parts.hw.rawKeys', { n: Object.keys(item.props || {}).length }), '');
-  }
   const button = document.createElement('button');
   button.className = 'action-btn secondary';
   button.textContent = t('parts.hw.rawShare');

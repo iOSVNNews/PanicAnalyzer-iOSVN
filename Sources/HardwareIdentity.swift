@@ -174,8 +174,19 @@ enum HardwareIdentity {
         if let design, let full, design > 0, full > 0 {
             out["healthPercent"] = (Double(full) / Double(design) * 1000).rounded() / 10
         }
-        // iOS 17+: the "Maximum Capacity" shown in Settings > Battery.
-        out["settingsHealthPercent"] = integer(data["MaximumCapacityPercent"])
+        // Settings › Battery "Maximum Capacity" is powerd's nominal figure, not
+        // FullChargeCapacity: ceil(NominalChargeCapacity / DesignCapacity × 100)
+        // (Apple PowerManagement, BatteryTimeRemaining.m rawToNominal). Use the
+        // gauge's own MaximumCapacityPercent when it is published.
+        let nominal = integer(entry["NominalChargeCapacity"]) ?? integer(data["NominalChargeCapacity"])
+        let nominalBase = integer(entry["DesignCapacity"]) ?? design
+        out["nominalChargeCapacity"] = nominal
+        if let percent = integer(data["MaximumCapacityPercent"]) ?? integer(entry["MaximumCapacityPercent"]) {
+            out["settingsHealthPercent"] = percent
+        } else if let nominal, let nominalBase, nominal > 0, nominalBase > 0 {
+            let percent = Int((Double(nominal) / Double(nominalBase) * 100).rounded(.up))
+            if (1...150).contains(percent) { out["settingsHealthPercent"] = percent }
+        }
         // Only flags whose name states success (1 = passed). Counters such as
         // "AuthFailures" must never turn into a verdict.
         var flags: [String: Int] = [:]

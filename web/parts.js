@@ -182,7 +182,24 @@ const PartsHistory = (() => {
     return 'noEvidence';
   }
 
-  return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue };
+  // Một lần đọc phần cứng có thể hỏng giữa chừng (VPN/pairing chập chờn): giữ
+  // phần đã đọc được ở lần trước thay vì làm mục Pin/Màn hình biến mất.
+  function mergeHardwareReport(previous, next) {
+    const has = value => !!value && typeof value === 'object' && Object.keys(value).length > 0;
+    if (!has(previous)) return next;
+    if (!has(next)) return previous;
+    const merged = Object.assign({}, next);
+    if (!has(next.display) && has(previous.display)) merged.display = previous.display;
+    if (has(previous.battery)) merged.battery = Object.assign({}, previous.battery, next.battery || {});
+    if (!(Array.isArray(next.parts) && next.parts.length) && Array.isArray(previous.parts)) merged.parts = previous.parts;
+    if (!(Array.isArray(next.raw) && next.raw.length) && Array.isArray(previous.raw)) {
+      merged.raw = previous.raw;
+      merged.probe = previous.probe;
+    }
+    return merged;
+  }
+
+  return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;
