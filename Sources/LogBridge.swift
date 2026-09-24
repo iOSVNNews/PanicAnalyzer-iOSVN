@@ -448,6 +448,20 @@ final class LogBridge: NSObject {
             }
             do {
                 let pairedLogs = try PairingLogService.shared.scanLogs(progress: { self.notifyScanProgress($0) })
+                // Linh kiện: đọc IC xác thực màn hình và số liệu pin qua cùng
+                // kết nối lockdown. Gửi trước log để tab Linh kiện kết luận một lần.
+                if PairingLogService.shared.canReadHardware {
+                    self.notifyScanProgress(Loc.s("Đang đọc phần cứng (IC xác thực màn hình, pin)…",
+                                                  "Reading hardware (display auth IC, battery)…",
+                                                  "正在读取硬件（屏幕认证芯片、电池）…"))
+                    let report: [String: Any]
+                    do {
+                        report = try PairingLogService.shared.readHardwareReport()
+                    } catch {
+                        report = ["errors": [error.localizedDescription]]
+                    }
+                    self.deliverHardwareReport(report)
+                }
                 if !wasConfigured && PairingLogService.shared.isConfigured {
                     self.notifyPairingStatus(
                         configured: true,
@@ -479,6 +493,15 @@ final class LogBridge: NSObject {
                 )
             }
         }
+    }
+
+    /// Báo cáo phần cứng cho tab Linh kiện (chỉ những gì thiết bị tự khai).
+    private func deliverHardwareReport(_ report: [String: Any]) {
+        guard JSONSerialization.isValidJSONObject(report),
+              let data = try? JSONSerialization.data(withJSONObject: report),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let js = "(function(){ if (window.onNativeHardwareReport) window.onNativeHardwareReport(\(json)); })();"
+        DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
     }
 
     /// Dòng tiến độ khi đang thử lần lượt các đường kết nối (không bật toast).

@@ -59,6 +59,22 @@ char *pa_session_connect_lockdown_direct(
  */
 bool pa_session_is_broken(const PaLogSession *session);
 
+/*
+ * Read-only hardware identity over lockdown (heartbeat + diagnostics_relay).
+ * `request` is a plist array of dictionaries with optional keys plane, name,
+ * class (IORegistry query) and namesOnly (bool). On success *out_data holds an
+ * XML plist array, one dictionary per query: the entry's properties (empty if
+ * not found), {names: [...]} or {error: "..."}. Free it with pa_bytes_free.
+ */
+char *pa_hardware_query(
+    const char *record_path,
+    const char *device_ip,
+    const uint8_t *request,
+    size_t request_length,
+    uint8_t **out_data,
+    size_t *out_length
+);
+
 char *pa_session_list(
     PaLogSession *session,
     const char *directory,

@@ -96,15 +96,42 @@ const PartsHistory = (() => {
     return clues;
   }
 
+  // Kết quả do CHÍNH thiết bị khai qua diagnostics_relay (không phải suy đoán):
+  // - Màn hình: cờ auth-passed của IC xác thực — iOS đặt sau bước thách-đáp,
+  //   cũng là cơ sở của cảnh báo "Linh kiện không xác định" cho màn hình.
+  // - Pin: chỉ khi driver pin có cờ xác thực (0/1); số liệu pin không phải
+  //   bằng chứng chính hãng.
+  function fromHardware(report) {
+    const findings = [];
+    if (!report || typeof report !== 'object') return findings;
+    const display = report.display || {};
+    if (typeof display.authPassed === 'boolean') {
+      findings.push({ part: 'display', status: display.authPassed ? 'genuine' : 'authfail',
+        source: 'hardware', serial: display.panelSerial || '' });
+    }
+    const flags = (report.battery && report.battery.authFlags) || {};
+    const values = Object.values(flags).filter(v => v === 0 || v === 1);
+    if (values.length) {
+      findings.push({ part: 'battery', status: values.every(v => v === 1) ? 'genuine' : 'authfail',
+        source: 'hardware', serial: report.battery.serial || '' });
+    }
+    return findings;
+  }
+
   // Không thấy nhãn trong log KHÔNG chứng minh mọi linh kiện còn nguyên bản.
-  function assessScan(logCount, statusSignals, cableSignals) {
-    if (!Number.isFinite(logCount) || logCount <= 0) return 'noLogs';
-    if (Array.isArray(statusSignals) && statusSignals.length) return 'found';
+  // Xác thực phần cứng chỉ nói về linh kiện đã đọc được, không phải toàn máy.
+  function assessScan(logCount, statusSignals, cableSignals, hardwareSignals) {
+    const hardware = Array.isArray(hardwareSignals) ? hardwareSignals : [];
+    if (hardware.some(f => f.status !== 'genuine')) return 'found';
+    const hasLogs = Number.isFinite(logCount) && logCount > 0;
+    if (hasLogs && Array.isArray(statusSignals) && statusSignals.length) return 'found';
+    if (hardware.length) return 'verified';
+    if (!hasLogs) return 'noLogs';
     if (Array.isArray(cableSignals) && cableSignals.length) return 'cable';
     return 'noEvidence';
   }
 
-  return { fromLogs, cableClues, assessScan };
+  return { fromLogs, fromHardware, cableClues, assessScan };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;

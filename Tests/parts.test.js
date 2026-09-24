@@ -47,6 +47,22 @@ assert.equal(PartsHistory.assessScan(3, logs, []), 'found');
 assert.equal(PartsHistory.assessScan(3, [], cable), 'cable');
 assert.equal(PartsHistory.assessScan(3, [], []), 'noEvidence');
 
+// fromHardware: chỉ nhận cờ thiết bị tự khai; số liệu pin không phải trạng thái.
+assert.deepEqual(PartsHistory.fromHardware(null), []);
+assert.deepEqual(PartsHistory.fromHardware({ battery: { serial: 'F8Y', cycleCount: 412 } }), []);
+const hwPass = PartsHistory.fromHardware({ display: { authPassed: true, panelSerial: 'G9N123' } });
+assert.deepEqual(hwPass.map(({ part, status, source }) => [part, status, source]), [['display', 'genuine', 'hardware']]);
+const hwFail = PartsHistory.fromHardware({
+  display: { authPassed: false },
+  battery: { serial: 'X', authFlags: { BatteryAuthenticated: 0 } }
+});
+assert.deepEqual(hwFail.map(({ part, status }) => [part, status]), [['display', 'authfail'], ['battery', 'authfail']]);
+assert.equal(PartsHistory.assessScan(3, [], [], hwPass), 'verified');
+assert.equal(PartsHistory.assessScan(0, [], [], hwPass), 'verified');
+assert.equal(PartsHistory.assessScan(3, [], [], hwFail), 'found');
+assert.equal(PartsHistory.assessScan(3, logs, [], hwPass), 'found');
+assert.equal(PartsHistory.assessScan(3, [], cable, []), 'cable');
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

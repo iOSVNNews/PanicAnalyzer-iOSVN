@@ -1,0 +1,161 @@
+//  HardwareIdentity.swift
+//  Turns IORegistry entries read through diagnostics_relay (lockdown +
+//  heartbeat) into a small report for the Linh kiện tab. It only repeats what
+//  the device itself states: the display authentication IC's "auth-passed"
+//  flag (the check behind iOS's "Unknown Part" display warning) and battery
+//  figures. It never guesses whether a part is original.
+
+import Foundation
+
+enum HardwareIdentity {
+
+    /// Device-tree nodes that hold the display authentication IC. Apple renames
+    /// them between generations, so the tree is also scanned for similar names.
+    static let knownDisplayAuthNodes = ["mogul-display", "display-auth", "panel-auth"]
+    static let maxCandidates = 12
+
+    /// Queries for the first pass: tree names, battery, panel id.
+    static let firstPass: [[String: Any]] = [
+        ["plane": "IODeviceTree", "namesOnly": true],
+        ["name": "AppleSmartBattery"],
+        ["class": "AppleSmartBattery"],
+        ["class": "AppleCLCD2"],
+        ["name": "AppleCLCD2"]
+    ]
+
+    static func displayAuthCandidates(from names: [String]) -> [String] {
+        var result = knownDisplayAuthNodes
+        for name in names where result.count < maxCandidates && !result.contains(name) {
+            let lower = name.lowercased()
+            if lower.hasSuffix("-display") || lower.contains("display-auth") || lower.contains("panel-auth") {
+                result.append(name)
+            }
+        }
+        return result
+    }
+
+    // MARK: - Value decoding (IORegistry mixes numbers, strings and raw bytes)
+
+    static func integer(_ value: Any?) -> Int? {
+        switch value {
+        case let number as NSNumber:
+            return number.intValue
+        case let data as Data where !data.isEmpty && data.count <= 8:
+            return data.reversed().reduce(0) { ($0 << 8) | Int($1) }
+        case let string as String:
+            return Int(string.trimmingCharacters(in: .whitespaces))
+        default:
+            return nil
+        }
+    }
+
+    static func text(_ value: Any?) -> String? {
+        let raw: String?
+        switch value {
+        case let string as String:
+            raw = string
+        case let data as Data:
+            raw = String(decoding: data.prefix { $0 != 0 }, as: UTF8.self)
+        default:
+            raw = nil
+        }
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    /// commonName values inside a DER certificate, found without a crypto
+    /// library (OID 2.5.4.3 followed by a short string).
+    static func commonNames(in der: Data) -> [String] {
+        let bytes = [UInt8](der)
+        let oid: [UInt8] = [0x06, 0x03, 0x55, 0x04, 0x03]
+        var names: [String] = []
+        var index = 0
+        while index + oid.count + 2 <= bytes.count {
+            guard Array(bytes[index..<index + oid.count]) == oid else { index += 1; continue }
+            let tagIndex = index + oid.count
+            let tag = bytes[tagIndex]
+            let length = Int(bytes[tagIndex + 1])
+            let start = tagIndex + 2
+            if [0x0C, 0x13, 0x16].contains(tag), length < 0x80, start + length <= bytes.count,
+               let name = String(bytes: bytes[start..<start + length], encoding: .ascii) {
+                names.append(name)
+            }
+            index = start
+        }
+        return names
+    }
+
+    /// Module serial + auth IC serial, e.g. "G9N1234567890ABCDE-0123456789AB".
+    static func panelSerial(in text: String) -> String? {
+        guard let range = text.range(of: "[A-Z][A-Z0-9]{17}-[0-9A-F]{12}", options: .regularExpression) else { return nil }
+        return String(text[range])
+    }
+
+    // MARK: - Report
+
+    static func display(candidates: [(name: String, entry: [String: Any])],
+                        panelEntries: [[String: Any]]) -> [String: Any] {
+        for (name, entry) in candidates {
+            guard let certificate = entry["certificate"] as? Data else { continue }
+            let names = commonNames(in: certificate)
+            let ascii = String(decoding: certificate.map { (32...126).contains($0) ? $0 : 32 }, as: UTF8.self)
+            let serial = names.compactMap(panelSerial(in:)).first ?? panelSerial(in: ascii)
+            var out: [String: Any] = ["node": name]
+            if let serial {
+                let parts = serial.split(separator: "-", maxSplits: 1).map(String.init)
+                out["panelSerial"] = parts.first
+                out["authICSerial"] = parts.count > 1 ? parts[1] : nil
+            }
+            out["authCA"] = names.first { $0.contains("CA") && !$0.contains("Root") }
+            if let passed = integer(entry["auth-passed"]) {
+                out["authPassed"] = passed != 0
+            }
+            return out
+        }
+        for entry in panelEntries {
+            if let panel = text(entry["Panel_ID"]) {
+                return ["panelId": panel]
+            }
+        }
+        return [:]
+    }
+
+    static func battery(from entries: [[String: Any]]) -> [String: Any] {
+        guard let entry = entries.first(where: { $0["error"] == nil && ($0["Serial"] != nil || $0["CycleCount"] != nil) }) else {
+            return [:]
+        }
+        let data = entry["BatteryData"] as? [String: Any] ?? [:]
+        var out: [String: Any] = [:]
+        out["serial"] = text(entry["Serial"])
+        out["cycleCount"] = integer(entry["CycleCount"]) ?? integer(data["CycleCount"])
+        let design = integer(data["DesignCapacity"]) ?? integer(entry["DesignCapacity"])
+        let full = integer(data["FullChargeCapacity"]) ?? integer(entry["AppleRawMaxCapacity"])
+        out["designCapacity"] = design
+        out["fullChargeCapacity"] = full
+        if let design, let full, design > 0, full > 0 {
+            out["healthPercent"] = (Double(full) / Double(design) * 1000).rounded() / 10
+        }
+        // iOS 17+: the "Maximum Capacity" shown in Settings > Battery.
+        out["settingsHealthPercent"] = integer(data["MaximumCapacityPercent"])
+        // Any authenticity flag the battery driver states, reported verbatim.
+        var flags: [String: Int] = [:]
+        for source in [entry, data] {
+            for (key, value) in source
+            where key.range(of: "auth|genuine", options: [.regularExpression, .caseInsensitive]) != nil {
+                if let number = integer(value), number == 0 || number == 1 { flags[key] = number }
+            }
+        }
+        if !flags.isEmpty { out["authFlags"] = flags }
+        return out
+    }
+
+    /// First few errors, so the UI can say what could not be read.
+    static func errors(in entries: [[String: Any]]) -> [String] {
+        var seen: [String] = []
+        for message in entries.compactMap({ $0["error"] as? String }) where !seen.contains(message) {
+            seen.append(message)
+            if seen.count == 3 { break }
+        }
+        return seen
+    }
+}

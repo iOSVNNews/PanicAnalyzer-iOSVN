@@ -9,6 +9,9 @@ let incidentGroups = [];
 let currentFilter = 'all';
 let currentSearchQuery = '';
 let logPartSignals = [];
+// Báo cáo phần cứng do thiết bị tự khai qua lockdown (IC xác thực màn hình, pin).
+let hardwareReport = null;
+let hardwarePartSignals = [];
 let partsScanState = 'idle';
 let partsScanCount = 0;
 let partsScanError = '';
@@ -51,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           ? t('s.checkingPair')
           : t('s.readingSystem'))), true);
     armScanTimeout();
+    resetHardwareReport();
     try {
       window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
     } catch (e) {
@@ -140,6 +144,7 @@ function triggerAutoScan() {
       ? 'scanning' : 'pairRequired');
     updateScanStatus(t('s.checking'), true);
     armScanTimeout();
+    resetHardwareReport();
     window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'autoScanLogs' });
   } else {
     showEmptyState();
@@ -722,6 +727,71 @@ function parseAndIngestLogs(rawLogsArray) {
   renderIncidentList();
 }
 
+function resetHardwareReport() {
+  hardwareReport = null;
+  hardwarePartSignals = [];
+  renderPartsHistory();
+}
+
+// Native gửi báo cáo phần cứng TRƯỚC log, nên kết luận ở onNativeScanMode đã
+// tính cả phần cứng.
+window.onNativeHardwareReport = function(report) {
+  hardwareReport = report && typeof report === 'object' ? report : null;
+  hardwarePartSignals = PartsHistory.fromHardware(hardwareReport);
+  renderPartsHistory();
+};
+
+function renderHardwareReport(host, paragraph) {
+  if (!hardwareReport) return;
+  const addRow = (label, text, status) => {
+    const node = document.createElement('div');
+    node.className = 'parts-row';
+    const part = document.createElement('b');
+    part.textContent = label;
+    const detail = document.createElement('span');
+    detail.className = 'parts-status' + (status ? ' ' + status : '');
+    detail.textContent = text;
+    node.append(part, detail);
+    host.appendChild(node);
+  };
+  paragraph(t('parts.hwSource'), 'parts-source');
+
+  const display = hardwareReport.display || {};
+  const panel = display.panelSerial ? ` · ${display.panelSerial}` : '';
+  if (typeof display.authPassed === 'boolean') {
+    addRow(t('parts.part.display'),
+      t(display.authPassed ? 'parts.hw.displayPass' : 'parts.hw.displayFail') + panel,
+      display.authPassed ? 'genuine' : 'authfail');
+  } else if (display.panelSerial || display.panelId) {
+    addRow(t('parts.part.display'), t('parts.hw.displayNoFlag') + panel, 'unverified');
+  } else {
+    addRow(t('parts.part.display'), t('parts.hw.displayUnread'), 'unknown');
+  }
+
+  const battery = hardwareReport.battery || {};
+  const batteryFinding = hardwarePartSignals.find(f => f.part === 'battery');
+  const facts = [];
+  if (Number.isFinite(battery.settingsHealthPercent)) facts.push(t('parts.hw.health', { n: battery.settingsHealthPercent }));
+  else if (Number.isFinite(battery.healthPercent)) facts.push(t('parts.hw.healthMeasured', { n: battery.healthPercent }));
+  if (Number.isFinite(battery.cycleCount)) facts.push(t('parts.hw.cycles', { n: battery.cycleCount }));
+  if (battery.fullChargeCapacity && battery.designCapacity) {
+    facts.push(`${battery.fullChargeCapacity}/${battery.designCapacity} mAh`);
+  }
+  if (battery.serial) facts.push(t('parts.hw.serial', { s: battery.serial }));
+  if (batteryFinding) {
+    addRow(t('parts.part.battery'), t('parts.status.' + batteryFinding.status), batteryFinding.status);
+  } else {
+    addRow(t('parts.part.battery'), t(facts.length ? 'parts.hw.batteryNoFlag' : 'parts.hw.batteryUnread'),
+      facts.length ? 'unverified' : 'unknown');
+  }
+  if (facts.length) addRow('', facts.join(' · '), '');
+
+  if (Array.isArray(hardwareReport.errors) && hardwareReport.errors.length) {
+    paragraph(t('parts.hw.error', { e: String(hardwareReport.errors[0]).slice(0, 200) }), 'parts-note parts-error');
+  }
+  paragraph(t('parts.hwCaution'));
+}
+
 function renderPartsHistory() {
   const host = document.getElementById('partsHistoryResults');
   if (!host) return;
@@ -732,6 +802,7 @@ function renderPartsHistory() {
     node.textContent = text;
     host.appendChild(node);
   };
+  renderHardwareReport(host, paragraph);
   const row = finding => {
     const node = document.createElement('div');
     node.className = 'parts-row';
@@ -1112,7 +1183,7 @@ window.onNativeScanMode = function(isAutoScan, count, source) {
   }
   if (isAutoScan && (source === 'pairing' || source === 'filesystem')) {
     const outcome = PartsHistory.assessScan(count, logPartSignals,
-      PartsHistory.cableClues(diagnosticRecords));
+      PartsHistory.cableClues(diagnosticRecords), hardwarePartSignals);
     setPartsScanState(outcome, count);
     showToast(t('parts.result.' + outcome + 'Title'), 4500);
   } else if (isAutoScan && source === 'sandbox') {

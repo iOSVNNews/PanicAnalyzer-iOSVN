@@ -506,6 +506,63 @@ final class PairingLogService {
         return results
     }
 
+    // MARK: - Hardware identity (Linh kiện tab)
+
+    /// diagnostics_relay needs the classic lockdown record (iLoader, computer).
+    var canReadHardware: Bool { hasLockdownRecord }
+
+    /// Reads what the device states about its display authentication IC and
+    /// battery, over lockdown + heartbeat. Two short connections: the first
+    /// finds the display-auth node names, the second reads those nodes.
+    func readHardwareReport() throws -> [String: Any] {
+        operationLock.lock()
+        defer { operationLock.unlock() }
+        guard hasLockdownRecord, let recordURL = lockdownRecordURL else {
+            throw PairingError.bridge(Loc.s("Cần pairing file có phần lockdown (iLoader) để đọc phần cứng.",
+                                            "A pairing file with a lockdown record (iLoader) is needed to read hardware.",
+                                            "读取硬件需要包含 lockdown 记录的配对文件（iLoader）。"))
+        }
+        let deviceIP = LocalVPNConnection.deviceAddress
+        let started = Date()
+        let first = try hardwareQuery(recordURL: recordURL, deviceIP: deviceIP, HardwareIdentity.firstPass)
+        let names = (first.first?["names"] as? [String]) ?? []
+        let candidates = HardwareIdentity.displayAuthCandidates(from: names)
+        var second: [[String: Any]] = []
+        if Date().timeIntervalSince(started) < 40 {
+            second = try hardwareQuery(recordURL: recordURL, deviceIP: deviceIP, candidates.map { ["name": $0] })
+        }
+        let pairs = zip(candidates, second).map { (name: $0, entry: $1) }
+        var report: [String: Any] = [
+            "display": HardwareIdentity.display(candidates: pairs, panelEntries: Array(first.dropFirst(3))),
+            "battery": HardwareIdentity.battery(from: Array(first.dropFirst().prefix(2)))
+        ]
+        let errors = HardwareIdentity.errors(in: first + second)
+        if !errors.isEmpty { report["errors"] = errors }
+        return report
+    }
+
+    private func hardwareQuery(recordURL: URL, deviceIP: String,
+                               _ queries: [[String: Any]]) throws -> [[String: Any]] {
+        let request = try PropertyListSerialization.data(fromPropertyList: queries, format: .xml, options: 0)
+        var bytes: UnsafeMutablePointer<UInt8>?
+        var length = 0
+        try recordURL.path.withCString { path in
+            try deviceIP.withCString { ip in
+                try request.withUnsafeBytes { raw in
+                    let base = raw.bindMemory(to: UInt8.self).baseAddress
+                    try check(pa_hardware_query(path, ip, base, raw.count, &bytes, &length))
+                }
+            }
+        }
+        guard let bytes, length > 0 else { return queries.map { _ in [:] } }
+        defer { pa_bytes_free(bytes, length) }
+        let data = Data(bytes: bytes, count: length)
+        let list = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [Any] ?? []
+        return queries.indices.map { index in
+            index < list.count ? (list[index] as? [String: Any] ?? [:]) : [:]
+        }
+    }
+
     /// Direct lockdown route: lockdown session + StartService, no tunnel.
     private func connectLockdownDirect(recordURL: URL, deviceIP: String) throws -> OpaquePointer {
         var opened: OpaquePointer?

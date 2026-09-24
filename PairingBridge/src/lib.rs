@@ -11,6 +11,7 @@ use idevice::crashreportcopymobile::{flush_reports, CrashReportCopyMobileClient}
 use idevice::remote_pairing::{connect_tls_psk_tunnel_native, RemotePairingClient, RpPairingSocket};
 use idevice::rsd::RsdHandshake;
 use idevice::tcp::handle::AdapterHandle as TunnelAdapter;
+use idevice::diagnostics_relay::DiagnosticsRelayClient;
 use idevice::heartbeat::HeartbeatClient;
 use idevice::lockdown::LockdownClient;
 use idevice::provider::IdeviceProvider;
@@ -61,6 +62,9 @@ const PROXY_SECS: u64 = 15;
 const FLUSH_SECS: u64 = 8;
 const LIST_SECS: u64 = 15;
 const PULL_SECS: u64 = 15;
+const QUERY_SECS: u64 = 20;
+const MAX_QUERIES: usize = 40;
+const MAX_TREE_NAMES: usize = 5000;
 
 /// Milliseconds per deadline "second". Tests shrink it to run fast.
 static MILLIS_PER_SECOND: AtomicU64 = AtomicU64::new(1000);
@@ -659,6 +663,167 @@ pub unsafe extern "C" fn pa_session_connect_lockdown(
     }
 }
 
+// MARK: - Hardware identity (diagnostics_relay, read-only)
+//
+// With the same lockdown record + heartbeat, com.apple.mobile.diagnostics_relay
+// answers IORegistry queries: the display authentication node ("auth-passed"
+// set by iOS after the challenge that drives "Unknown Part"), the Apple-signed
+// panel certificate, AppleSmartBattery (serial, cycles, capacity). Swift
+// decides which entries to ask for; this only runs the queries.
+
+struct HardwareQuery {
+    plane: Option<String>,
+    name: Option<String>,
+    class: Option<String>,
+    names_only: bool,
+}
+
+fn parse_hardware_queries(bytes: &[u8]) -> Result<Vec<HardwareQuery>, String> {
+    let value: plist::Value =
+        plist::from_bytes(bytes).map_err(|e| format!("yêu cầu phần cứng không hợp lệ: {e}"))?;
+    let items = value
+        .into_array()
+        .ok_or_else(|| "yêu cầu phần cứng phải là mảng".to_string())?;
+    let text = |dict: &plist::Dictionary, key: &str| {
+        dict.get(key)
+            .and_then(|v| v.as_string())
+            .map(str::to_string)
+            .filter(|s| !s.is_empty() && s.len() <= 128)
+    };
+    Ok(items
+        .iter()
+        .take(MAX_QUERIES)
+        .filter_map(|item| item.as_dictionary())
+        .map(|dict| HardwareQuery {
+            plane: text(dict, "plane"),
+            name: text(dict, "name"),
+            class: text(dict, "class"),
+            names_only: dict.get("namesOnly").and_then(|v| v.as_boolean()).unwrap_or(false),
+        })
+        .collect())
+}
+
+/// Entry names of an IORegistry plane dump (the full dump can be megabytes).
+fn tree_names(node: &plist::Value, names: &mut Vec<plist::Value>) {
+    if names.len() >= MAX_TREE_NAMES {
+        return;
+    }
+    if let Some(dict) = node.as_dictionary() {
+        if let Some(name) = dict.get("name").and_then(|v| v.as_string()) {
+            names.push(plist::Value::String(name.to_string()));
+        }
+        if let Some(children) = dict.get("children").and_then(|v| v.as_array()) {
+            for child in children {
+                tree_names(child, names);
+            }
+        }
+    }
+}
+
+fn error_entry(message: impl Into<String>) -> plist::Value {
+    let mut dict = plist::Dictionary::new();
+    dict.insert("error".into(), plist::Value::String(message.into()));
+    plist::Value::Dictionary(dict)
+}
+
+/// Runs IORegistry queries over lockdown. `request` is a plist array of
+/// dictionaries with optional `plane`, `name`, `class` and `namesOnly`. On
+/// success `out_data` holds an XML plist array with one dictionary per query:
+/// the entry's properties (empty if not found), `{names: [...]}` for
+/// namesOnly, or `{error: "..."}`. Release it with pa_bytes_free.
+#[no_mangle]
+pub unsafe extern "C" fn pa_hardware_query(
+    record_path: *const c_char,
+    device_ip: *const c_char,
+    request: *const u8,
+    request_length: usize,
+    out_data: *mut *mut u8,
+    out_length: *mut usize,
+) -> *mut c_char {
+    if request.is_null() || out_data.is_null() || out_length.is_null() {
+        return owned_message("Tham số đọc phần cứng không hợp lệ");
+    }
+    *out_data = null_mut();
+    *out_length = 0;
+    let queries = match parse_hardware_queries(std::slice::from_raw_parts(request, request_length)) {
+        Ok(queries) => queries,
+        Err(error) => return owned_message(error),
+    };
+    let record = match read_lockdown_record(record_path) {
+        Ok(record) => record,
+        Err(error) => return error,
+    };
+    let ip = match parse_ipv4(device_ip) {
+        Ok(ip) => ip,
+        Err(error) => return error,
+    };
+    let provider = lockdown_provider(record, ip);
+    let result = idevice_ffi::run_sync_local(async move {
+        preflight_lockdownd(ip).await?;
+        let (heartbeat, heartbeat_error) = match start_heartbeat(&provider).await {
+            Ok(guard) => (Some(guard), None),
+            Err(error) => (None, Some(error)),
+        };
+        let mut client = within(SERVICE_SECS, "D1 diagnostics_relay", async {
+            DiagnosticsRelayClient::connect(&provider)
+                .await
+                .map_err(|e| format!("D1 diagnostics_relay: {}", describe(&e)))
+        })
+        .await
+        .map_err(|error| with_heartbeat_note(error, heartbeat_error))?;
+        let mut replies = Vec::with_capacity(queries.len());
+        let mut dead = false;
+        for query in &queries {
+            if dead {
+                replies.push(error_entry("bỏ qua: kết nối diagnostics_relay đã ngắt"));
+                continue;
+            }
+            let answer = tokio::time::timeout(
+                deadline(QUERY_SECS),
+                client.ioregistry(query.plane.as_deref(), query.name.as_deref(), query.class.as_deref()),
+            )
+            .await;
+            replies.push(match answer {
+                Err(_) => {
+                    dead = true;
+                    error_entry(format!("D2 IORegistry quá {QUERY_SECS} giây"))
+                }
+                Ok(Err(error)) => {
+                    dead = is_connection_error(&error);
+                    error_entry(format!("D2 IORegistry: {}", describe(&error)))
+                }
+                Ok(Ok(None)) => plist::Value::Dictionary(plist::Dictionary::new()),
+                Ok(Ok(Some(entry))) if query.names_only => {
+                    let mut names = Vec::new();
+                    tree_names(&plist::Value::Dictionary(entry), &mut names);
+                    let mut dict = plist::Dictionary::new();
+                    dict.insert("names".into(), plist::Value::Array(names));
+                    plist::Value::Dictionary(dict)
+                }
+                Ok(Ok(Some(entry))) => plist::Value::Dictionary(entry),
+            });
+        }
+        if !dead {
+            let _ = tokio::time::timeout(deadline(3), client.goodbye()).await;
+        }
+        drop(heartbeat);
+        Ok::<_, String>(replies)
+    });
+    let replies = match result {
+        Ok(replies) => replies,
+        Err(error) => return owned_message(format!("Không đọc được phần cứng qua lockdown ({error})")),
+    };
+    let mut bytes = Vec::new();
+    if let Err(error) = plist::to_writer_xml(&mut bytes, &plist::Value::Array(replies)) {
+        return owned_message(format!("Không đóng gói được dữ liệu phần cứng: {error}"));
+    }
+    let mut bytes = bytes.into_boxed_slice();
+    *out_length = bytes.len();
+    *out_data = bytes.as_mut_ptr();
+    std::mem::forget(bytes);
+    null_mut()
+}
+
 // MARK: - Reading CrashReporter
 
 /// True once a timeout or socket error killed the session: stop scanning.
@@ -1034,6 +1199,53 @@ mod tests {
         drop(guard);
         std::thread::sleep(Duration::from_millis(600));
         assert!(!finished.load(Ordering::SeqCst), "heartbeat task must stop with its session");
+    }
+
+    #[test]
+    fn hardware_queries_parse_and_tree_names_are_collected() {
+        let request = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><array>
+<dict><key>plane</key><string>IODeviceTree</string><key>namesOnly</key><true/></dict>
+<dict><key>name</key><string>AppleSmartBattery</string></dict>
+<string>ignored</string>
+</array></plist>"#;
+        let queries = parse_hardware_queries(request.as_bytes()).unwrap();
+        assert_eq!(queries.len(), 2);
+        assert!(queries[0].names_only && queries[0].plane.as_deref() == Some("IODeviceTree"));
+        assert_eq!(queries[1].name.as_deref(), Some("AppleSmartBattery"));
+        assert!(parse_hardware_queries(b"not a plist").is_err());
+
+        let tree = plist::Value::from_reader_xml(std::io::Cursor::new(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
+<key>name</key><string>device-tree</string>
+<key>children</key><array>
+<dict><key>name</key><string>mogul-display</string><key>children</key><array/></dict>
+<dict><key>name</key><string>arm-io</string><key>children</key><array>
+<dict><key>name</key><string>disp0</string></dict></array></dict>
+</array></dict></plist>"#,
+        ))
+        .unwrap();
+        let mut names = Vec::new();
+        tree_names(&tree, &mut names);
+        let names: Vec<_> = names.iter().filter_map(|v| v.as_string()).collect();
+        assert_eq!(names, ["device-tree", "mogul-display", "arm-io", "disp0"]);
+    }
+
+    #[test]
+    fn hardware_query_reports_errors_instead_of_crashing() {
+        unsafe {
+            let missing = CString::new("/nonexistent/lockdown.plist").unwrap();
+            let ip = CString::new("10.7.0.1").unwrap();
+            let request = b"<plist version=\"1.0\"><array/></plist>";
+            let mut data = null_mut();
+            let mut length = 0usize;
+            let error = pa_hardware_query(missing.as_ptr(), ip.as_ptr(), request.as_ptr(), request.len(), &mut data, &mut length);
+            assert!(data.is_null() && length == 0);
+            assert!(take_message(error).contains("lockdown pair record"));
+            let error = pa_hardware_query(missing.as_ptr(), ip.as_ptr(), null_mut(), 0, &mut data, &mut length);
+            assert!(!error.is_null());
+            pa_error_free(error);
+        }
     }
 
     #[test]
