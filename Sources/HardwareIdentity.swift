@@ -27,14 +27,14 @@ enum HardwareIdentity {
 
     static let firstPass: [[String: Any]] = First.allCases.map { (query: First) -> [String: Any] in
         switch query {
-        case .treeNames: return ["plane": "IODeviceTree", "namesOnly": true]
+        case .treeNames: return ["plane": "IODeviceTree", "namesOnly": true, "scanKeys": true]
         case .batteryByName: return ["name": "AppleSmartBattery"]
         case .batteryByClass: return ["class": "AppleSmartBattery"]
         case .panelByClass: return ["class": "AppleCLCD2"]
         case .panelByName: return ["name": "AppleCLCD2"]
         case .batteryAuth: return ["class": "AppleBatteryAuth"]
         case .roswellAuth: return ["class": "RoswellAuthI2CRelayInterface"]
-        case .serviceNames: return ["plane": "IOService", "namesOnly": true]
+        case .serviceNames: return ["plane": "IOService", "namesOnly": true, "scanKeys": true]
         }
     }
 
@@ -196,6 +196,56 @@ enum HardwareIdentity {
         return positive.contains { lower.contains($0) } && !negative.contains { lower.contains($0) }
     }
 
+    // MARK: - Property scan (finds auth nodes whatever they are called)
+
+    struct Hit {
+        let path: String
+        let className: String?
+        let props: [String: Any]
+    }
+
+    /// Nodes with auth/certificate-like properties from both plane scans.
+    static func hits(in first: [[String: Any]]) -> [Hit] {
+        [entry(first, .treeNames), entry(first, .serviceNames)].flatMap { result -> [Hit] in
+            (result["hits"] as? [[String: Any]] ?? []).compactMap { item -> Hit? in
+                guard let path = item["path"] as? String, let props = item["props"] as? [String: Any] else { return nil }
+                return Hit(path: path, className: item["class"] as? String, props: props)
+            }
+        }
+    }
+
+    /// Which part a node belongs to, from its own name and class.
+    static func part(of hit: Hit) -> String? {
+        let leaf = hit.path.split(separator: "/").last.map(String.init) ?? hit.path
+        let text = (leaf + " " + (hit.className ?? "")).lowercased()
+        func has(_ words: [String]) -> Bool { words.contains { text.contains($0) } }
+        if has(["display", "panel", "lcd", "oled"]) { return "display" }
+        if has(["battery", "gasgauge", "gas-gauge"]) { return "battery" }
+        if has(["pearl", "romeo", "juliet", "truedepth", "faceid"]) { return "face_id" }
+        if has(["mesa", "touchid"]) { return "touch_id" }
+        if has(["cam", "isp"]) {
+            if text.contains("front") { return "front_camera" }
+            if has(["rear", "back"]) { return "rear_camera" }
+            return "camera"
+        }
+        return nil
+    }
+
+    /// The same "auth-passed" flag the newest iPhones put on mogul-display,
+    /// found on any node of any part.
+    static func partFlags(_ hits: [Hit]) -> [[String: Any]] {
+        var seen = Set<String>()
+        var flags: [[String: Any]] = []
+        for hit in hits {
+            guard let component = HardwareIdentity.part(of: hit), !seen.contains(component),
+                  let key = hit.props.keys.first(where: { $0.lowercased() == "auth-passed" }),
+                  let passed = integer(hit.props[key]) else { continue }
+            seen.insert(component)
+            flags.append(["part": component, "authPassed": passed != 0, "path": hit.path])
+        }
+        return flags
+    }
+
     // MARK: - Raw data (to learn the flag names of each iPhone generation)
 
     /// Short text for one IORegistry value.
@@ -229,7 +279,10 @@ enum HardwareIdentity {
 
     /// Everything the Linh kiện tab needs, from both passes.
     static func report(first: [[String: Any]], candidates: [String], second: [[String: Any]]) -> [String: Any] {
-        let pairs = zip(candidates, second).map { (name: $0, entry: $1) }
+        let scanned = hits(in: first)
+        let hitPairs = scanned.map { (name: $0.path, entry: $0.props) }
+        let displayHits = zip(scanned, hitPairs).filter { HardwareIdentity.part(of: $0.0) == "display" }.map { $0.1 }
+        let pairs = zip(candidates, second).map { (name: $0, entry: $1) } + displayHits
         let batteryAuth = entry(first, .batteryAuth)
         let roswell = entry(first, .roswellAuth)
         var report: [String: Any] = [
@@ -237,13 +290,17 @@ enum HardwareIdentity {
                                panelEntries: [entry(first, .panelByClass), entry(first, .panelByName)]),
             "battery": battery(from: [entry(first, .batteryByName), entry(first, .batteryByClass)])
         ]
-        var raw = rawEntries(pairs)
+        let flags = partFlags(scanned)
+        if !flags.isEmpty { report["parts"] = flags }
+        var raw = rawEntries(Array(zip(candidates, second).map { (name: $0, entry: $1) }))
         raw += rawEntries([(name: "AppleBatteryAuth", entry: batteryAuth),
                            (name: "RoswellAuthI2CRelayInterface", entry: roswell)])
+        raw += rawEntries(Array(hitPairs.prefix(40)))
         if !raw.isEmpty { report["raw"] = raw }
         report["probe"] = [
             "treeNames": (entry(first, .treeNames)["names"] as? [Any])?.count ?? 0,
             "serviceNames": (entry(first, .serviceNames)["names"] as? [Any])?.count ?? 0,
+            "hits": scanned.count,
             "candidates": candidates
         ] as [String: Any]
         let errorList = errors(in: first + second)

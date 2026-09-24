@@ -134,9 +134,17 @@ const PartsHistory = (() => {
       findings.push({ part: 'display', status: display.authPassed ? 'genuine' : 'authfail',
         source: 'hardware', serial: display.panelSerial || '' });
     }
+    // Cờ "auth-passed" tìm thấy trên node của linh kiện khác (dò theo thuộc
+    // tính, không theo tên node): pin, camera, Face ID…
+    for (const flag of Array.isArray(report.parts) ? report.parts : []) {
+      if (!flag || typeof flag.authPassed !== 'boolean' || !flag.part) continue;
+      if (findings.some(f => f.part === flag.part)) continue;
+      findings.push({ part: flag.part, status: flag.authPassed ? 'genuine' : 'authfail',
+        source: 'hardware', path: String(flag.path || '') });
+    }
     const flags = (report.battery && report.battery.authFlags) || {};
     const values = Object.values(flags).filter(v => v === 0 || v === 1);
-    if (values.length) {
+    if (values.length && !findings.some(f => f.part === 'battery')) {
       findings.push({ part: 'battery', status: values.every(v => v === 1) ? 'genuine' : 'authfail',
         source: 'hardware', serial: report.battery.serial || '' });
     }

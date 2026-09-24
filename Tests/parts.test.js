@@ -79,6 +79,18 @@ const clue = PartsHistory.fromHardware({ battery: { designCapacity: 3156, fullCh
 assert.deepEqual(clue.map(({ part, status }) => [part, status]), [['battery', 'capacity_anomaly']]);
 assert.equal(PartsHistory.assessScan(100, [], [], clue), 'found');
 
+// Cờ auth-passed tìm theo thuộc tính trên node bất kỳ (dò không theo tên).
+const scanned = PartsHistory.fromHardware({
+  display: {},
+  parts: [{ part: 'display', authPassed: true, path: 'device-tree/arm-io/x-display' },
+          { part: 'battery', authPassed: false, path: 'device-tree/y-battery' },
+          { part: 'rear_camera', authPassed: true, path: 'device-tree/rear-cam' }],
+  battery: { authFlags: { authenticated: 1 } }
+});
+assert.deepEqual(scanned.map(({ part, status }) => [part, status]),
+  [['display', 'genuine'], ['battery', 'authfail'], ['rear_camera', 'genuine']]);
+assert.equal(PartsHistory.assessScan(10, [], [], scanned), 'found');
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

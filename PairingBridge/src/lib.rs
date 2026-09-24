@@ -65,6 +65,7 @@ const PULL_SECS: u64 = 15;
 const QUERY_SECS: u64 = 20;
 const MAX_QUERIES: usize = 40;
 const MAX_TREE_NAMES: usize = 5000;
+const MAX_KEY_HITS: usize = 80;
 
 /// Milliseconds per deadline "second". Tests shrink it to run fast.
 static MILLIS_PER_SECOND: AtomicU64 = AtomicU64::new(1000);
@@ -691,6 +692,9 @@ struct HardwareQuery {
     name: Option<String>,
     class: Option<String>,
     names_only: bool,
+    /// Walk the whole plane dump and return every node that carries an
+    /// auth/certificate-like property, whatever the node is called.
+    scan_keys: bool,
 }
 
 fn parse_hardware_queries(bytes: &[u8]) -> Result<Vec<HardwareQuery>, String> {
@@ -714,6 +718,7 @@ fn parse_hardware_queries(bytes: &[u8]) -> Result<Vec<HardwareQuery>, String> {
             name: text(dict, "name"),
             class: text(dict, "class"),
             names_only: dict.get("namesOnly").and_then(|v| v.as_boolean()).unwrap_or(false),
+            scan_keys: dict.get("scanKeys").and_then(|v| v.as_boolean()).unwrap_or(false),
         })
         .collect())
 }
@@ -731,6 +736,57 @@ fn tree_names(node: &plist::Value, names: &mut Vec<plist::Value>) {
             for child in children {
                 tree_names(child, names);
             }
+        }
+    }
+}
+
+/// Property names that may hold a part-authentication result or identity.
+fn is_auth_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    ["auth", "cert", "genuine", "trust", "idsn"].iter().any(|word| key.contains(word))
+}
+
+/// Keeps small values as they are (Swift parses certificates), summarises big ones.
+fn hit_value(value: &plist::Value) -> plist::Value {
+    match value {
+        plist::Value::Data(data) if data.len() > 4096 => {
+            plist::Value::String(format!("<{} bytes>", data.len()))
+        }
+        plist::Value::Dictionary(dict) => plist::Value::String(format!("{{{} keys}}", dict.len())),
+        plist::Value::Array(items) => plist::Value::String(format!("[{} items]", items.len())),
+        other => other.clone(),
+    }
+}
+
+/// Every node with an auth-like property, with its path from the plane root.
+fn scan_tree(node: &plist::Value, parent: &str, hits: &mut Vec<plist::Value>) {
+    if hits.len() >= MAX_KEY_HITS {
+        return;
+    }
+    let Some(dict) = node.as_dictionary() else { return };
+    let name = dict.get("name").and_then(|v| v.as_string()).unwrap_or("?");
+    let path = if parent.is_empty() { name.to_string() } else { format!("{parent}/{name}") };
+    let mut props = plist::Dictionary::new();
+    for (key, value) in dict.iter() {
+        if key != "children" && key != "name" && is_auth_key(key) {
+            props.insert(key.clone(), hit_value(value));
+        }
+    }
+    if !props.is_empty() {
+        let mut hit = plist::Dictionary::new();
+        hit.insert("path".into(), plist::Value::String(path.clone()));
+        for class_key in ["IOObjectClass", "className", "class"] {
+            if let Some(class) = dict.get(class_key).and_then(|v| v.as_string()) {
+                hit.insert("class".into(), plist::Value::String(class.to_string()));
+                break;
+            }
+        }
+        hit.insert("props".into(), plist::Value::Dictionary(props));
+        hits.push(plist::Value::Dictionary(hit));
+    }
+    if let Some(children) = dict.get("children").and_then(|v| v.as_array()) {
+        for child in children {
+            scan_tree(child, &path, hits);
         }
     }
 }
@@ -872,11 +928,19 @@ async fn run_hardware_queries(
                 error_entry(format!("D2 IORegistry: {}", describe(&error)))
             }
             Ok(Ok(None)) => plist::Value::Dictionary(plist::Dictionary::new()),
-            Ok(Ok(Some(entry))) if query.names_only => {
-                let mut names = Vec::new();
-                tree_names(&plist::Value::Dictionary(entry), &mut names);
+            Ok(Ok(Some(entry))) if query.names_only || query.scan_keys => {
+                let tree = plist::Value::Dictionary(entry);
                 let mut dict = plist::Dictionary::new();
-                dict.insert("names".into(), plist::Value::Array(names));
+                if query.names_only {
+                    let mut names = Vec::new();
+                    tree_names(&tree, &mut names);
+                    dict.insert("names".into(), plist::Value::Array(names));
+                }
+                if query.scan_keys {
+                    let mut hits = Vec::new();
+                    scan_tree(&tree, "", &mut hits);
+                    dict.insert("hits".into(), plist::Value::Array(hits));
+                }
                 plist::Value::Dictionary(dict)
             }
             Ok(Ok(Some(entry))) => plist::Value::Dictionary(entry),
@@ -1314,6 +1378,41 @@ mod tests {
         tree_names(&tree, &mut names);
         let names: Vec<_> = names.iter().filter_map(|v| v.as_string()).collect();
         assert_eq!(names, ["device-tree", "mogul-display", "arm-io", "disp0"]);
+    }
+
+    #[test]
+    fn key_scan_finds_auth_nodes_by_property_not_by_name() {
+        let tree = plist::Value::from_reader_xml(std::io::Cursor::new(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
+<key>name</key><string>device-tree</string>
+<key>children</key><array>
+<dict><key>name</key><string>arm-io</string><key>children</key><array>
+<dict><key>name</key><string>unusual-panel-node</string>
+<key>auth-passed</key><data>AQAAAA==</data>
+<key>certificate</key><data>MIIB</data>
+<key>compatible</key><string>x</string></dict>
+<dict><key>name</key><string>i2c0</string><key>AAPL,phandle</key><integer>7</integer></dict>
+</array></dict>
+<dict><key>name</key><string>battery</string><key>IOObjectClass</key><string>AppleBatteryAuth</string>
+<key>AuthFailures</key><integer>0</integer></dict>
+</array></dict></plist>"#,
+        ))
+        .unwrap();
+        let mut hits = Vec::new();
+        scan_tree(&tree, "", &mut hits);
+        let paths: Vec<_> = hits
+            .iter()
+            .filter_map(|h| h.as_dictionary()?.get("path")?.as_string())
+            .collect();
+        assert_eq!(paths, ["device-tree/arm-io/unusual-panel-node", "device-tree/battery"]);
+        let first = hits[0].as_dictionary().unwrap().get("props").unwrap().as_dictionary().unwrap();
+        assert!(first.contains_key("auth-passed") && first.contains_key("certificate"));
+        assert!(!first.contains_key("compatible"));
+        let second = hits[1].as_dictionary().unwrap();
+        assert_eq!(second.get("class").and_then(|v| v.as_string()), Some("AppleBatteryAuth"));
+        let request = br#"<plist version="1.0"><array><dict><key>plane</key><string>IODeviceTree</string><key>scanKeys</key><true/></dict></array></plist>"#;
+        let queries = parse_hardware_queries(request).unwrap();
+        assert!(queries[0].scan_keys && !queries[0].names_only);
     }
 
     #[test]

@@ -794,6 +794,13 @@ function renderHardwareReport(host, paragraph) {
       facts.length ? 'unverified' : 'unknown');
   }
   if (facts.length) addRow('', facts.join(' · '), '');
+  // Linh kiện khác có cờ auth-passed (camera, Face ID, Touch ID…).
+  for (const finding of hardwarePartSignals) {
+    if (finding.part === 'display' || finding.part === 'battery') continue;
+    if (finding.status !== 'genuine' && finding.status !== 'authfail') continue;
+    addRow(t('parts.part.' + finding.part),
+      t(finding.status === 'genuine' ? 'parts.hw.partPass' : 'parts.hw.partFail'), finding.status);
+  }
   if (clue) {
     paragraph(t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }), 'parts-note parts-error');
   }
@@ -813,7 +820,7 @@ function renderHardwareRaw(host, paragraph, addRow) {
   paragraph(t('parts.hw.rawTitle'), 'parts-source');
   paragraph(t('parts.hw.probe', {
     t: probe.treeNames || 0, s: probe.serviceNames || 0,
-    c: Array.isArray(probe.candidates) ? probe.candidates.length : 0
+    c: Array.isArray(probe.candidates) ? probe.candidates.length : 0, h: probe.hits || 0
   }));
   for (const item of raw.slice(0, 12)) {
     addRow(String(item.name || '?'), t('parts.hw.rawKeys', { n: Object.keys(item.props || {}).length }), '');
@@ -825,7 +832,8 @@ function renderHardwareRaw(host, paragraph, addRow) {
     const payload = {
       app: window.__APP_VERSION__ || '', model: window.__DEVICE_MODEL__ || '',
       ios: window.__IOS_VERSION__ || '', display: hardwareReport.display || {},
-      battery: hardwareReport.battery || {}, probe, raw, errors: hardwareReport.errors || []
+      battery: hardwareReport.battery || {}, parts: hardwareReport.parts || [], probe, raw,
+      errors: hardwareReport.errors || []
     };
     const text = JSON.stringify(payload, null, 1);
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
