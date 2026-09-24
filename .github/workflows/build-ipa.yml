@@ -219,6 +219,9 @@ jobs:
           RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
           gh release delete latest --yes 2>/dev/null || true
           git push --delete origin latest 2>/dev/null || true
+          # The full-history checkout also fetched the old tag; gh refuses to
+          # create a release from a tag that exists only locally.
+          git tag -d latest 2>/dev/null || true
           gh release create latest \
             PanicAnalyzer-unsigned.ipa PanicAnalyzer-TrollStore.tipa \
             PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb \
