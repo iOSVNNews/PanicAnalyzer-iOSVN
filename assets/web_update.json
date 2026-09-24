@@ -1,0 +1,11 @@
+{
+  "webBuild": 44,
+  "nativeApi": 1,
+  "files": {
+    "index.html": "99e7730dff6bfa0dae7a40625a0e2712c4b9b50bc78f4ca2478e10b8ce259d38",
+    "app.js": "5f9c38e2c319aceb2fecea502ae51596bebbeed3de0b613d46ced8a2d87f24d4",
+    "parts.js": "a24988fe31fa2abd4418a644d8e0b59d3f8da8ea2dfb2b59999279944a6e5660",
+    "i18n.js": "565e4a858e7d2ad4c7e3ba02824fd3120a75bfcafe0c9cadccaf9f438725d727",
+    "app.css": "358abd5107fd1bc7a6ef51d95165f8c2e915abcef09b5febbc52271d23873f70"
+  }
+}
