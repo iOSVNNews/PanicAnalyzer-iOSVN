@@ -751,6 +751,13 @@ fn is_auth_key(key: &str) -> bool {
         .any(|word| key.contains(word))
 }
 
+/// Serials, auth and validation results: kept before other properties.
+fn is_identity_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    is_auth_key(&key)
+        || ["serial", "validation", "expected"].iter().any(|word| key.contains(word))
+}
+
 /// Battery authentication drivers: every property is kept, because the name of
 /// their pass flag is not published (AppleBatteryAuth in Apple's PowerManagement).
 fn is_battery_auth_node(name: &str, class: Option<&str>) -> bool {
@@ -851,13 +858,17 @@ fn scan_components(
         let count = counts.entry(part).or_insert(0);
         if *count < MAX_COMPONENT_NODES {
             *count += 1;
+            // Identity keys first (camera module serials, auth results), so a
+            // driver with hundreds of properties still reports them.
             let mut props = plist::Dictionary::new();
-            for (key, value) in dict.iter() {
-                if props.len() >= MAX_COMPONENT_PROPS {
-                    break;
-                }
-                if key != "children" && key != "name" {
-                    props.insert(key.clone(), hit_value(value));
+            for important in [true, false] {
+                for (key, value) in dict.iter() {
+                    if props.len() >= MAX_COMPONENT_PROPS {
+                        break;
+                    }
+                    if key != "children" && key != "name" && is_identity_key(key) == important {
+                        props.insert(key.clone(), hit_value(value));
+                    }
                 }
             }
             let mut hit = plist::Dictionary::new();

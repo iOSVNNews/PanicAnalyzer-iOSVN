@@ -18,7 +18,7 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: PanicAnalyzer
-        CFBundleShortVersionString: '2.8.5'
+        CFBundleShortVersionString: '2.9'
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSFaceIDUsageDescription: Kiểm tra Face ID còn hoạt động hay đã bị iOS tắt (không quét khuôn mặt).
         NSLocalNetworkUsageDescription: Kết nối tới LocalDevVPN trên chính thiết bị để đọc crash report bằng Remote Pairing.

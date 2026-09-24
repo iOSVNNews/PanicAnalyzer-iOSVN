@@ -1,0 +1,58 @@
+name: Publish interface update
+
+# Changes to web/ reach installed apps without a new installer: this writes
+# assets/web_update.json (build number + SHA-256 of each file) and the app
+# downloads the files from main. Native changes still go through build-ipa.yml.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['web/**', 'scripts/web_manifest.py']
+
+concurrency:
+  group: web-update
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test the interface
+        run: |
+          node --check web/i18n.js
+          node --check web/parts.js
+          node --check web/app.js
+          node Tests/parts.test.js
+          node Tests/crash.test.js
+
+      - name: Publish the manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3; do
+            git fetch -q origin main
+            # A newer push changed web/ again: its own run tests and publishes it.
+            if ! git diff --quiet "$GITHUB_SHA" origin/main -- web; then
+              echo "web/ changed after $GITHUB_SHA; the newer run publishes"
+              exit 0
+            fi
+            git checkout -q -B main origin/main
+            python3 scripts/web_manifest.py
+            if git diff --quiet -- assets/web_update.json; then
+              echo "manifest already up to date"
+              exit 0
+            fi
+            BUILD=$(python3 -c "import json;print(json.load(open('assets/web_update.json'))['webBuild'])")
+            git add assets/web_update.json
+            git commit -q -m "Interface build $BUILD"
+            git push origin HEAD:main && exit 0
+            echo "retry $i"; sleep 5
+          done
+          exit 1

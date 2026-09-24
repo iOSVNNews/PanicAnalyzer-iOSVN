@@ -7,6 +7,13 @@ struct PanicAnalyzerApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var didRefreshRules = false
 
+    init() {
+        // A web interface update downloaded last time is used from this start;
+        // a crash of the previous run is picked up for the page to report.
+        WebUpdater.shared.promotePending()
+        CrashCatcher.shared.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             WebContainerView()

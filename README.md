@@ -26,11 +26,21 @@ Remove any IPA install with the same bundle ID before installing the TIPA or DEB
   real components, each with a confidence level.
 - **Repeat detection:** panics with the same cause are grouped with their
   frequency.
+- **App crashes:** crash reports of other apps (`bug_type` 309 and 109) are
+  listed apart from kernel panics, with the app, time, exception and
+  termination reason. A scan reads kernel panics first, then the newest files,
+  and says when it hit its limit (100 files / 24 MB over pairing).
 - **Parts tab:** reads the display and battery authentication results that
-  iOS itself publishes in the IORegistry, over the pairing connection.
+  iOS itself publishes in the IORegistry, over the pairing connection, and the
+  serial of each camera module (rear main, ultra wide, telephoto, front,
+  TrueDepth). A camera serial that differs from the factory one is shown as
+  "check", not as "replaced": compare with Parts and Service History.
+- **Own crashes:** if PanicAnalyzer itself crashes, the next start offers to
+  send the details to iOSVN.
 - **Clean reports:** exported reports have serials and UDIDs removed.
 - **Share Sheet import:** share logs straight from *Analytics Data* in Settings.
-- **Rules update** from this repository without reinstalling the app.
+- **Updates without reinstalling:** diagnostic rules (`assets/`) and interface
+  fixes (`web/`) are downloaded from this repository at launch.
 - Vietnamese, English and Chinese interface.
 
 ## Reading logs automatically (no jailbreak)
@@ -67,6 +77,20 @@ Sources: Apple's xnu source, public panic logs from Apple forums, and iFixit.
 Unverified rules are marked in their `source` field and rated low confidence.
 Logs the app cannot identify can be sent to [@longdzqua](https://t.me/longdzqua)
 on Telegram.
+
+## Releases
+
+- Changes to `assets/` or `web/` do not build a new installer. Rules are
+  fetched as they are; `web-update.yml` publishes `assets/web_update.json`
+  (build number and SHA-256 of each file), and the app uses the new interface
+  from its next start.
+- Changes to native code (Swift, Rust) build new installers
+  (`build-ipa.yml`) with a new build number; the app offers the update when
+  the version or the build number is higher.
+- The version label (`CFBundleShortVersionString` in `project.yml`) only
+  changes for major releases.
+- If the page needs a native action older builds lack, raise `NATIVE_API` in
+  `scripts/web_manifest.py` and `WebUpdater.nativeApi` together.
 
 ## Building
 

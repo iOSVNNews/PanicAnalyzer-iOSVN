@@ -925,3 +925,16 @@ a.about-row b { color: var(--brand-bright); }
 .parts-alert { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; padding: 12px 14px;
   border-radius: 12px; background: rgba(255, 69, 58, 0.14); border: 1px solid rgba(255, 69, 58, 0.45); font-size: 13px; }
 .parts-alert b { color: var(--brand-bright); }
+
+/* Thanh thông báo nổi: bản sửa giao diện sẵn sàng, app bị dừng lần trước */
+.notice-banner { position: fixed; left: 12px; right: 12px; z-index: 9000;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 12px 14px;
+  border-radius: 14px; background: rgba(30, 30, 32, 0.96); border: 1px solid var(--brand);
+  color: var(--text-primary); font-size: 13px; backdrop-filter: blur(8px); }
+.notice-banner span { flex: 1 1 200px; }
+.notice-banner.crash { border-color: rgba(255, 69, 58, 0.6); }
+.notice-banner.crash b { display: block; color: var(--brand-bright); }
+.notice-banner .link-btn { background: none; border: none; padding: 4px 0; font: inherit; font-weight: 600;
+  color: var(--brand-bright); cursor: pointer; }
+.notice-banner .link-btn.muted { color: var(--text-secondary); font-weight: 500; }

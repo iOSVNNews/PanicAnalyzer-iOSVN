@@ -32,8 +32,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   updatePartsPairingRequirement();
   renderPartsScanSummary();
   const settingsVersion = document.getElementById('settingsVersion');
-  if (settingsVersion) settingsVersion.textContent = window.__APP_VERSION__
-    || document.querySelector('.version-badge')?.textContent?.replace(/^v| Pro$/g, '') || '';
+  if (settingsVersion) settingsVersion.textContent = (window.__APP_VERSION__
+    || document.querySelector('.version-badge')?.textContent?.replace(/^v| Pro$/g, '') || '')
+    + (window.__WEB_BUILD__ ? ` · ${t('webupd.version', { n: window.__WEB_BUILD__ })}` : '');
+  showAppCrashes();
   await loadDatabases();
   updateDetectedModel();
   applyJailbreakMode();
@@ -442,6 +444,17 @@ function parseLogContent(rawText, filename = "log.ips") {
     if (body.exception && body.exception.type) record.exceptionType = body.exception.type;
   }
 
+  // Báo cáo crash của app (bug_type 309 = JSON từ iOS 15, 109 = .crash cũ):
+  // app nào, lúc nào, vì sao — tách hẳn khỏi kernel panic.
+  const crash = extractAppCrash(head, body, rawText, record.bugType, filename);
+  if (crash) {
+    record.appCrash = crash;
+    record.processName = crash.procName || crash.name || record.processName;
+    if (crash.exceptionType) record.exceptionType = crash.exceptionType;
+    if (!record.timestampMs && crash.time) record.timestampMs = parseTimestamp(crash.time);
+    record.panicString = crashSummaryText(crash);
+  }
+
   if (!record.panicString) {
     const pm = rawText.match(/"panicString"\s*:\s*"([^"]+)"/);
     if (pm) {
@@ -472,13 +485,17 @@ function parseLogContent(rawText, filename = "log.ips") {
   // CHỈ khớp luật trong panicString + panicInitiator + 4KB đầu file.
   // Quét cả file (có thể >1MB stackshot) gây dương tính giả nghiêm trọng:
   // chuỗi "ANS"/"nvme" nằm trong danh sách tiến trình của MỌI log.
-  const matchText = [record.panicString, record.panicInitiator, rawText.slice(0, 4096)].join("\n");
+  const matchText = crash
+    ? record.panicString
+    : [record.panicString, record.panicInitiator, rawText.slice(0, 4096)].join("\n");
   const text = matchText;
 
   // FileClassifier
-  if (record.bugType === "210" || /panic\(/.test(record.panicString) || filename.includes("panic-full")) {
+  if (crash) {
+    record.logType = "app_crash";
+  } else if (record.bugType === "210" || /panic\(/.test(record.panicString) || filename.includes("panic-full")) {
     record.logType = "kernel_panic";
-  } else if (record.bugType === "309" || /watchdog/i.test(text)) {
+  } else if (/watchdog/i.test(text)) {
     record.logType = "watchdog";
   } else if (record.bugType === "298" || /JetsamEvent|largestProcess/.test(text)) {
     record.logType = "jetsam";
@@ -503,7 +520,134 @@ function parseLogContent(rawText, filename = "log.ips") {
   if (rcm) record.resetCounter = parseInt(rcm[1], 10);
 
   applyRules(record, text);
+  if (crash) {
+    record.title = t('crash.app.title', { app: crash.name || crash.procName || '?' });
+    // Luật chung "lỗi app bên thứ ba" không đúng với app của Apple.
+    if (crash.firstParty === true && record.ruleId === 'generic-app-crash') {
+      record.suspectedComponent = t('crash.app.appleSuspect', { app: crash.name || crash.procName });
+    }
+  }
+  markOwnCrash(record, head, body);
   return record;
+}
+
+// Mã kết thúc có ý nghĩa riêng (Apple: "Addressing watchdog terminations",
+// "Understanding the exception types in a crash report").
+const TERMINATION_CODES = {
+  '8badf00d': 'crash.term.watchdog', 'dead10cc': 'crash.term.dead10cc',
+  'c00010ff': 'crash.term.thermal', 'bad22222': 'crash.term.voip', 'deadfa11': 'crash.term.forceQuit'
+};
+
+function hexCode(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? '0x' + n.toString(16) : String(value || '');
+}
+
+// Metadata của một báo cáo crash: tên/bundle ở dòng đầu, procName, exception,
+// termination và ảnh (thư viện) chứa khung lệnh bị lỗi ở phần thân.
+function extractAppCrash(head, body, rawText, bugType, filename) {
+  const type = String(bugType || '');
+  const legacyText = !body && /^(?:Process|Exception Type):\s/m.test(rawText.slice(0, 20000));
+  const isCrash = type === '309' || type === '109' ||
+    (legacyText && (/^Exception Type:/m.test(rawText) || String(filename).endsWith('.crash')));
+  if (!isCrash) return null;
+  const info = { name: '', bundleID: '', version: '', procName: '', exceptionType: '', signal: '',
+    subtype: '', termination: '', terminationKey: '', reasons: '', crashedIn: '', firstParty: null, time: '' };
+  if (head) {
+    info.name = String(head.app_name || head.name || '');
+    info.bundleID = String(head.bundleID || '');
+    info.version = [head.app_version, head.build_version].filter(Boolean).join(' / ');
+    if (head.is_first_party === 1 || head.is_first_party === true) info.firstParty = true;
+    else if (head.is_first_party === 0 || head.is_first_party === false) info.firstParty = false;
+    info.time = String(head.timestamp || '');
+  }
+  if (body) {
+    info.procName = String(body.procName || '');
+    const bundle = body.bundleInfo || {};
+    info.bundleID = info.bundleID || String(bundle.CFBundleIdentifier || '');
+    info.version = info.version || [bundle.CFBundleShortVersionString, bundle.CFBundleVersion].filter(Boolean).join(' / ');
+    info.time = info.time || String(body.captureTime || '');
+    const ex = body.exception || {};
+    info.exceptionType = String(ex.type || '');
+    info.signal = String(ex.signal || '');
+    info.subtype = String(ex.subtype || '');
+    const term = body.termination || {};
+    if (term.namespace || term.code !== undefined) {
+      const code = term.namespace === 'SIGNAL' ? String(term.code) : hexCode(term.code);
+      info.termination = [term.namespace, code, term.indicator].filter(v => v !== undefined && v !== '').join(' ');
+      info.terminationKey = TERMINATION_CODES[hexCode(term.code).replace(/^0x/, '')] || '';
+      if (Array.isArray(term.reasons)) info.reasons = term.reasons.slice(0, 3).join(' | ').slice(0, 300);
+      if (term.byProc) info.termination += ` (${term.byProc})`;
+    }
+    const threads = Array.isArray(body.threads) ? body.threads : [];
+    const faulting = threads[Number(body.faultingThread)] || threads.find(th => th && th.triggered);
+    const frame = faulting && Array.isArray(faulting.frames) ? faulting.frames[0] : null;
+    const image = frame && Array.isArray(body.usedImages) ? body.usedImages[frame.imageIndex] : null;
+    if (image && image.name) info.crashedIn = image.name + (frame.symbol ? ` · ${frame.symbol}` : '');
+  } else {
+    const line = rx => { const m = rawText.match(rx); return m ? m[1].trim() : ''; };
+    info.procName = line(/^Process:\s+([^\[\n]+)/m);
+    info.bundleID = line(/^Identifier:\s+(\S+)/m);
+    info.version = line(/^Version:\s+(.+)$/m);
+    info.time = line(/^Date\/Time:\s+(.+)$/m);
+    const exc = rawText.match(/^Exception Type:\s+(\S+)(?:\s+\((\w+)\))?/m);
+    if (exc) { info.exceptionType = exc[1]; info.signal = exc[2] || ''; }
+    info.subtype = line(/^Exception (?:Subtype|Codes):\s+(.+)$/m);
+    info.termination = line(/^Termination Reason:\s+(.+)$/m);
+    const code = info.termination.match(/0x([0-9a-f]{8})/i);
+    info.terminationKey = code ? TERMINATION_CODES[code[1].toLowerCase()] || '' : '';
+    const crashed = rawText.match(/^Thread \d+ Crashed:[^\n]*\n\d+\s+(\S+)/m);
+    if (crashed) info.crashedIn = crashed[1];
+  }
+  info.name = info.name || info.procName;
+  if (!info.name && !info.exceptionType && !info.termination) return null;
+  return info;
+}
+
+// Lý do ngắn: loại exception, tín hiệu, lý do kết thúc.
+function crashReason(crash) {
+  if (!crash) return '';
+  const parts = [];
+  if (crash.terminationKey) parts.push(t(crash.terminationKey));
+  const exc = [crash.exceptionType, crash.signal && `(${crash.signal})`].filter(Boolean).join(' ');
+  if (exc) parts.push(exc);
+  if (crash.subtype) parts.push(crash.subtype.slice(0, 120));
+  if (!parts.length && crash.termination) parts.push(crash.termination.slice(0, 160));
+  return parts.join(' · ');
+}
+
+function crashSummaryText(crash) {
+  const lines = [
+    `App: ${crash.name}${crash.bundleID ? ` (${crash.bundleID})` : ''}${crash.version ? ` ${crash.version}` : ''} crash`,
+    crash.procName && crash.procName !== crash.name ? `Process: ${crash.procName}` : '',
+    crash.exceptionType ? `Exception: ${crash.exceptionType}${crash.signal ? ` (${crash.signal})` : ''}${crash.subtype ? ` ${crash.subtype}` : ''}` : '',
+    crash.termination ? `Termination Reason: ${crash.termination}` : '',
+    crash.reasons ? `Reasons: ${crash.reasons}` : '',
+    crash.crashedIn ? `Crashed in: ${crash.crashedIn}` : ''
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+// Crash của chính PanicAnalyzer (đọc được qua pairing hoặc bản TrollStore/JB):
+// lỗi phần mềm của app, không phải phần cứng — tách riêng để gửi iOSVN sửa.
+const OWN_BUNDLE_ID = 'com.iosvn.panicanalyzer';
+
+function markOwnCrash(record, head, body) {
+  const ids = [head && head.bundleID, head && head.app_name, body && body.bundleInfo && body.bundleInfo.CFBundleIdentifier,
+    body && body.procName, record.processName].map(v => String(v || ''));
+  const ours = ids.some(v => v === OWN_BUNDLE_ID || v === OWN_BUNDLE_ID + '.share' || v === 'PanicAnalyzer' || v === 'PanicAnalyzerShare');
+  const crashLike = ['109', '309'].includes(String(record.bugType)) || record.logType === 'app_crash';
+  if (!ours || !crashLike) return;
+  record.ownCrash = true;
+  record.logType = 'app_crash';
+  record.ruleId = 'panicanalyzer-crash';
+  record.rule = { id: record.ruleId, family: 'AppCrash', baseSeverity: 'normal', subsystemWeight: 0, escalateAt: 1000 };
+  record.panicFamily = 'AppCrash';
+  record.baseSeverity = record.severity = 'normal';
+  record.title = t('crash.own.title');
+  record.suspectedComponent = 'PanicAnalyzer';
+  record.repairAdvice = t('crash.own.advice');
+  record.confidence = 'Cao';
 }
 
 // ---------------------------------------------------------------------------
@@ -831,7 +975,12 @@ function renderHardwareReport(host, paragraph) {
       const facts = batteryFacts(battery);
       if (facts.length) addRow('', facts.join(' · '), '');
     }
+    if (item.part === 'rear_camera' || item.part === 'front_camera' || item.part === 'face_id') {
+      const facts = cameraFacts(item.part);
+      if (facts.length) addRow('', facts.join(' · '), '');
+    }
   }
+  if (PartsHistory.cameraModules(hardwareReport).length) paragraph(t('parts.cam.caution'), 'parts-note');
   const authError = hardwarePartSignals.find(f => f.part === 'battery' && f.status === 'auth_error');
   if (authError) paragraph(t('parts.hw.batteryAuthError', { n: authError.code || '?' }), 'parts-note parts-error');
   const clue = PartsHistory.capacityClue(battery);
@@ -855,8 +1004,14 @@ function overviewText(item) {
   }
   if (item.status === 'working') return t('parts.bio.' + item.detail);
   if (item.status === 'unavailable') return t('parts.bio.not_available');
+  if (item.status === 'serial_only') return t('parts.status.serial_only', { s: item.serial || '' });
   let text = t('parts.status.' + item.status);
   if (item.part === 'display' && display.panelSerial && item.status === 'genuine') text += ` · ${display.panelSerial}`;
+  const camera = PartsHistory.cameraCheck(hardwareReport, item.part);
+  if (item.status === 'serial_match' && camera && camera.current) text += ` · ${camera.current}`;
+  if (item.status === 'serial_mismatch' && camera && camera.factory && camera.current) {
+    text = t('parts.cam.mismatch', { f: camera.factory, c: camera.current });
+  }
   if (item.status === 'replaced') {
     const sys = (hardwareReport.syscfg || []).find(entry => entry && entry.part === item.part);
     if (sys && sys.factory && sys.current) text = t('parts.sys.mismatch', { f: sys.factory, c: sys.current });
@@ -864,6 +1019,18 @@ function overviewText(item) {
   if (item.factory) text += ' · ' + t('parts.sys.factory', { s: item.factory });
   if (item.source === 'log') text += ' ' + t('parts.fromLog');
   return text;
+}
+
+// Từng module camera của một dòng: sê-ri đọc được và nguồn của nó, để lần
+// sau nhận ra module nào đổi (camera chính đã nằm ở dòng trên).
+function cameraFacts(part) {
+  const main = { rear_camera: 'rear_main', front_camera: 'front' }[part];
+  return PartsHistory.cameraModules(hardwareReport)
+    .filter(entry => entry.part === part && entry.module !== main && entry.current)
+    .map(entry => `${t('parts.cam.' + entry.module)}: ${entry.current}`)
+    .concat(PartsHistory.cameraModules(hardwareReport)
+      .filter(entry => entry.part === part && entry.sourcesAgree === false)
+      .map(entry => t('parts.cam.sourcesDiffer', { m: t('parts.cam.' + entry.module), a: entry.ioreg, b: entry.gestalt })));
 }
 
 function batteryFacts(battery) {
@@ -890,7 +1057,10 @@ function renderHardwareRaw(host, paragraph, addRow) {
       ios: window.__IOS_VERSION__ || '', display: hardwareReport.display || {},
       battery: hardwareReport.battery || {}, parts: hardwareReport.parts || [],
       components: hardwareReport.components || [], biometrics: hardwareReport.biometrics || {},
-      syscfg: hardwareReport.syscfg || [], probe, raw,
+      syscfg: hardwareReport.syscfg || [], cameras: hardwareReport.cameras || [],
+      cameraSerials: hardwareReport.cameraSerials || [], syscfgSource: hardwareReport.syscfgSource || '',
+      syscfgKeys: hardwareReport.syscfgKeys || [],
+      cameraValidation: hardwareReport.cameraValidation || {}, web: window.__WEB_BUILD__ || 0, probe, raw,
       errors: hardwareReport.errors || []
     };
     const text = JSON.stringify(payload, null, 1);
@@ -995,6 +1165,8 @@ function renderIncidentList() {
     if (currentFilter === 'normal' && g.severity !== 'normal') return false;
     if (currentFilter === 'i2c' && g.family !== 'I2C') return false;
     if (currentFilter === 'smc' && g.family !== 'SMC') return false;
+    if (currentFilter === 'apps' && !(g.latestRecord && g.latestRecord.appCrash)) return false;
+    if (currentFilter === 'panics' && !(g.latestRecord && g.latestRecord.logType === 'kernel_panic')) return false;
 
     // Search Query
     if (currentSearchQuery) {
@@ -1031,7 +1203,7 @@ function renderIncidentList() {
     const rec = g.latestRecord;
 
     html += `
-      <div class="incident-card ${g.severity}" onclick="openDetailModal(${idx})">
+      <div class="incident-card ${g.severity}" onclick="openDetailModal(${incidentGroups.indexOf(g)})">
         <div class="incident-card-header">
           <div class="incident-title">${escapeHtml(g.title)}</div>
           <span class="freq-badge">${freqText}</span>
@@ -1041,6 +1213,7 @@ function renderIncidentList() {
           <span>${t('card.suspect')}</span>
           <span class="suspect-highlight">${escapeHtml(g.suspectedComponent)}</span>
         </div>
+        ${rec.appCrash ? `<div class="suspect-line"><span>${t('crash.reason')}</span><span>${escapeHtml(crashReason(rec.appCrash) || '—')}</span></div>` : ''}
 
         <div class="time-line">
           <span>${t('card.latest')}</span>
@@ -1151,6 +1324,7 @@ function openDetailModal(index) {
         </div>
       </div>
 
+      ${appCrashHtml(rec.appCrash)}
       ${sensorHtml}
       ${resetCountHtml}
       ${i2cHtml}
@@ -1179,6 +1353,25 @@ function openDetailModal(index) {
   if (adminBtn) adminBtn.style.display = needsAdminHelp(g) ? '' : 'none';
 
   if (modal) modal.classList.add('open');
+}
+
+function appCrashHtml(crash) {
+  if (!crash) return '';
+  const row = (label, value) => value ? `<b>${label}</b> ${escapeHtml(String(value))}<br>` : '';
+  const origin = crash.firstParty === true ? t('crash.app.apple') : (crash.firstParty === false ? t('crash.app.thirdParty') : '');
+  return `
+      <div class="detail-section">
+        <div class="detail-label">${t('crash.info')}</div>
+        <div class="detail-text">
+          ${row(t('crash.app'), crash.name + (origin ? ` · ${origin}` : ''))}
+          ${row('Bundle ID', crash.bundleID)}
+          ${row(t('crash.version'), crash.version)}
+          ${row(t('crash.time'), crash.time)}
+          ${row(t('crash.reason'), crashReason(crash))}
+          ${row('Termination', crash.termination)}
+          ${row(t('crash.crashedIn'), crash.crashedIn)}
+        </div>
+      </div>`;
 }
 
 function closeDetailModal() {
@@ -1216,7 +1409,8 @@ function exportSanitizedReport() {
   report += `${t('r.raw')}\n`;
   
   // Sanitize raw text
-  let safeRaw = rec.panicString || rec.rawText.substring(0, 800);
+  // Crash của chính PanicAnalyzer: iOSVN cần cả file để tìm lỗi.
+  let safeRaw = rec.ownCrash ? rec.rawText.slice(0, 200000) : (rec.panicString || rec.rawText.substring(0, 800));
   safeRaw = safeRaw.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '<UUID>');
   report += safeRaw;
 
@@ -1272,14 +1466,19 @@ function triggerFilePicker() {
   if (input) input.click();
 }
 
-window.onNativeScanMode = function(isAutoScan, count, source) {
+window.onNativeScanMode = function(isAutoScan, count, source, summary) {
   clearScanTimeout();
   if (partsScanState === 'error') return;
   if (count > 0) {
     setDemoBanner(false);
     const sourceLabel = t(source === 'pairing' ? 's.src.pairing'
       : (source === 'share' ? 's.src.share' : (source === 'file' ? 's.src.file' : 's.src.device')));
-    updateScanStatus(t('s.analyzed', { n: count, src: sourceLabel }), false);
+    let status = t('s.analyzed', { n: count, src: sourceLabel });
+    // Quá giới hạn một lần quét: nói rõ đã đọc bao nhiêu trong số tìm thấy.
+    if (summary && summary.truncated) {
+      status += ' ' + t('scan.limited', { r: summary.read, n: summary.found, f: summary.maxFiles, mb: summary.maxMB });
+    }
+    updateScanStatus(status, false);
     showToast(t('s.readToast', { n: count, src: sourceLabel }), 3000);
   } else {
     showEmptyState();
@@ -1583,6 +1782,64 @@ window.onNativeAppUpdate = function (info) {
     + notes;
   el.style.display = '';
 };
+
+// Bản sửa giao diện (web/) đã tải xong: dùng từ lần mở sau, hoặc ngay khi bấm.
+window.onWebUpdateReady = function (build) {
+  if (document.getElementById('webUpdateBanner')) return;
+  const el = document.createElement('div');
+  el.id = 'webUpdateBanner';
+  el.className = 'notice-banner';
+  const text = document.createElement('span');
+  text.textContent = t('webupd.ready');
+  const apply = document.createElement('button');
+  apply.className = 'link-btn';
+  apply.textContent = t('webupd.apply');
+  apply.onclick = () => postNative({ action: 'applyWebUpdate' }) || el.remove();
+  el.append(text, apply);
+  el.dataset.build = String(build || '');
+  document.body.appendChild(el);
+};
+
+function postNative(message) {
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge;
+  if (!bridge) return false;
+  bridge.postMessage(message);
+  return true;
+}
+
+// PanicAnalyzer bị dừng ở lần mở trước (native tự ghi lại): mời gửi iOSVN.
+function appCrashReport(crashes) {
+  let text = `PanicAnalyzer crash · app ${window.__APP_VERSION__ || '?'} · web ${window.__WEB_BUILD__ || 0}`
+    + ` · ${window.__DEVICE_MODEL__ || '?'} · iOS ${window.__IOS_VERSION__ || '?'}\n`;
+  for (const crash of crashes) {
+    text += `\n=== ${crash.time || ''} · ${crash.kind || ''} · ${crash.title || ''}\n${crash.text || ''}\n`;
+  }
+  return text;
+}
+
+function showAppCrashes() {
+  const crashes = Array.isArray(window.__APP_CRASHES__) ? window.__APP_CRASHES__ : [];
+  if (!crashes.length || document.getElementById('appCrashBanner')) return;
+  const el = document.createElement('div');
+  el.id = 'appCrashBanner';
+  el.className = 'notice-banner crash';
+  const text = document.createElement('span');
+  text.innerHTML = `<b>${escapeHtml(t('crash.title'))}</b> ${escapeHtml(t('crash.body'))}`;
+  const send = document.createElement('button');
+  send.className = 'link-btn';
+  send.textContent = t('crash.send');
+  send.onclick = () => {
+    postNative({ action: 'shareText', text: appCrashReport(crashes) });
+    postNative({ action: 'clearAppCrashes' });
+    el.remove();
+  };
+  const dismiss = document.createElement('button');
+  dismiss.className = 'link-btn muted';
+  dismiss.textContent = t('crash.dismiss');
+  dismiss.onclick = () => { postNative({ action: 'clearAppCrashes' }); el.remove(); };
+  el.append(text, send, dismiss);
+  document.body.appendChild(el);
+}
 
 function openAppUpdate() {
   const url = (appUpdateInfo && appUpdateInfo.url)

@@ -161,6 +161,44 @@ assert.deepEqual(PartsHistory.changedParts({ display: 'G9N1', battery: 'OLD9' },
 assert.deepEqual(PartsHistory.changedParts(null, ids), []);
 assert.equal(PartsHistory.partsOverview(iphone17, [], 'iPhone18,2', ['battery'])[1].status, 'changed');
 
+// Camera: từng module ghi riêng; khác sê-ri gốc chỉ là "cần kiểm tra".
+const cams = {
+  cameraSerials: [
+    { module: 'rear_main', factory: 'DNL3375372Z1V6P4V', factoryKey: 'BCMS', gestalt: 'DNL3375372Z1V6P4V' },
+    { module: 'front', factory: 'F0W63831QH8GMJFBQ', factoryKey: 'FCMS', gestalt: 'F0W00000000000000' },
+    { module: 'truedepth_ir', gestalt: 'IR1234567' }],
+  cameras: [{ module: 'back', serial: 'DNL3375372Z1V6P4V', expected: true },
+    { module: 'back_super_wide', serial: 'DNL9999999999999A' }, { module: 'back_depth', expected: true }]
+};
+const modules = PartsHistory.cameraModules(cams);
+assert.deepEqual(modules.map(m => [m.module, m.part, m.current]), [
+  ['rear_main', 'rear_camera', 'DNL3375372Z1V6P4V'], ['rear_ultra_wide', 'rear_camera', 'DNL9999999999999A'],
+  ['front', 'front_camera', 'F0W00000000000000'], ['truedepth_ir', 'face_id', 'IR1234567']]);
+assert.equal(modules[0].match, true);
+assert.equal(modules[0].sourcesAgree, true);
+assert.equal(modules[2].match, false);
+const camView = PartsHistory.partsOverview(cams, [], 'iPhone13,3');
+assert.equal(camView.find(i => i.part === 'rear_camera').status, 'serial_match');
+assert.equal(camView.find(i => i.part === 'front_camera').status, 'serial_mismatch');
+assert.equal(PartsHistory.isAlert('serial_mismatch'), true);
+assert.equal(PartsHistory.isAlert('serial_match'), false);
+assert.equal(PartsHistory.assessScan(0, [], [], PartsHistory.fromHardware({ cameraSerials: [cams.cameraSerials[0]] })), 'verified');
+// Chỉ đọc được sê-ri đang lắp (bản chưa có SysCfg): không kết luận.
+assert.deepEqual(PartsHistory.partsOverview({ cameras: [{ module: 'back', serial: 'DNL1111111111111A' }] }, [], 'iPhone13,3')
+  .find(i => i.part === 'rear_camera'), { part: 'rear_camera', status: 'serial_only', serial: 'DNL1111111111111A' });
+// Mỗi module một khoá: đổi riêng góc siêu rộng vẫn báo Camera sau đã thay đổi.
+const camIds = PartsHistory.partIdentities(cams);
+assert.equal(camIds['cam:rear_ultra_wide'], 'DNL9999999999999A');
+const movedCam = PartsHistory.changedParts(Object.assign({}, camIds, { 'cam:rear_ultra_wide': 'DNL8888888888888B' }), camIds);
+assert.deepEqual(movedCam, ['cam:rear_ultra_wide']);
+assert.equal(PartsHistory.partsOverview(cams, [], 'iPhone13,3', movedCam).find(i => i.part === 'rear_camera').status, 'changed');
+// Hai lần đọc cùng sê-ri viết khác nhau không bị coi là đã đổi.
+assert.deepEqual(PartsHistory.changedParts({ battery: 'fg9a-1234' }, { battery: 'FG9A1234' }), []);
+// Báo cáo tại chỗ (camera MobileGestalt) không xoá camera đọc qua pairing.
+const camMerged = PartsHistory.mergeHardwareReport({ cameras: cams.cameras }, { cameraSerials: cams.cameraSerials });
+assert.equal(camMerged.cameras.length, 3);
+assert.equal(camMerged.cameraSerials.length, 3);
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

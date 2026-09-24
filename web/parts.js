@@ -126,6 +126,67 @@ const PartsHistory = (() => {
     return percent >= 102 && cycles >= 200 ? { percent, cycles } : null;
   }
 
+  // Cùng một sê-ri viết khác nhau (hoa/thường, khoảng trắng, đệm).
+  function sameSerial(a, b) {
+    const clean = value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const x = clean(a), y = clean(b);
+    if (x.length < 6 || y.length < 6) return false;
+    return x === y || x.includes(y) || y.includes(x);
+  }
+
+  // Camera: mỗi module ghi riêng — sau chính / góc siêu rộng / tele, camera
+  // trước RGB, và cụm TrueDepth (camera hồng ngoại, máy chiếu điểm). Mỗi
+  // module có thể có tới ba nguồn, giữ nguyên nguồn nào nói gì:
+  //  - factory: sê-ri ghi lúc xuất xưởng trong SysCfg (BCMS camera sau chính,
+  //    FCMS camera trước) — chỉ bản TrollStore/JB đọc được;
+  //  - ioreg: "…CameraModuleSerialNumString" của driver camera (qua ghép đôi);
+  //  - gestalt: khoá MobileGestalt "…CameraModuleSerialNumber".
+  // Chưa kiểm chứng trên máy đã thay camera rằng ioreg/gestalt là sê-ri module
+  // ĐANG lắp, nên khác sê-ri gốc chỉ là "cần kiểm tra", không kết luận đã thay;
+  // khớp sê-ri cũng không chứng minh cả cụm chưa từng sửa.
+  const CAMERA_MODULES = ['rear_main', 'rear_ultra_wide', 'rear_tele', 'front', 'truedepth_ir', 'truedepth_projector'];
+  const CAMERA_PART = { rear_main: 'rear_camera', rear_ultra_wide: 'rear_camera', rear_tele: 'rear_camera',
+    front: 'front_camera', truedepth_ir: 'face_id', truedepth_projector: 'face_id' };
+  const MAIN_MODULE = { rear_camera: 'rear_main', front_camera: 'front' };
+  // Tên module của driver camera (tiền tố trước "CameraModuleSerialNumString").
+  const IOREG_MODULE = { back: 'rear_main', back_super_wide: 'rear_ultra_wide', back_tele: 'rear_tele',
+    front: 'front', front_ir: 'truedepth_ir' };
+
+  function cameraModules(report) {
+    const byModule = {};
+    const get = module => (byModule[module] = byModule[module] || { module, part: CAMERA_PART[module] });
+    for (const item of Array.isArray(report && report.cameraSerials) ? report.cameraSerials : []) {
+      if (!item || !CAMERA_PART[item.module]) continue;
+      const entry = get(item.module);
+      if (item.factory) { entry.factory = String(item.factory); entry.factoryKey = String(item.factoryKey || ''); }
+      if (item.gestalt) entry.gestalt = String(item.gestalt);
+    }
+    for (const item of Array.isArray(report && report.cameras) ? report.cameras : []) {
+      const module = item && IOREG_MODULE[item.module];
+      if (!module) continue;
+      const entry = get(module);
+      if (item.serial) entry.ioreg = String(item.serial);
+      if (typeof item.expected === 'boolean') entry.expected = item.expected;
+    }
+    return CAMERA_MODULES.filter(module => byModule[module] &&
+      (byModule[module].factory || byModule[module].ioreg || byModule[module].gestalt)).map(module => {
+      const entry = byModule[module];
+      entry.current = entry.ioreg || entry.gestalt || '';
+      if (entry.ioreg && entry.gestalt) entry.sourcesAgree = sameSerial(entry.ioreg, entry.gestalt);
+      if (entry.factory && entry.current) {
+        // Khác nếu BẤT KỲ nguồn đang lắp nào khác sê-ri gốc.
+        entry.match = [entry.ioreg, entry.gestalt].filter(Boolean).every(v => sameSerial(entry.factory, v));
+      }
+      return entry;
+    });
+  }
+
+  // Kết quả của camera chính cho một dòng (rear_camera / front_camera).
+  function cameraCheck(report, part) {
+    const module = MAIN_MODULE[part];
+    return module ? cameraModules(report).find(entry => entry.module === module) || null : null;
+  }
+
   function fromHardware(report) {
     const findings = [];
     if (!report || typeof report !== 'object') return findings;
@@ -172,6 +233,12 @@ const PartsHistory = (() => {
       findings.push({ part: item.part, status: 'replaced', source: 'hardware',
         factory: String(item.factory || ''), current: String(item.current || '') });
     }
+    for (const part of Object.keys(MAIN_MODULE)) {
+      const check = cameraCheck(report, part);
+      if (!check || typeof check.match !== 'boolean' || findings.some(f => f.part === part)) continue;
+      findings.push({ part, status: check.match ? 'serial_match' : 'serial_mismatch', source: 'hardware',
+        factory: check.factory, current: check.current });
+    }
     const flags = battery.authFlags || {};
     const values = Object.values(flags).filter(v => v === 0 || v === 1);
     if (values.length && !findings.some(f => f.part === 'battery')) {
@@ -192,7 +259,7 @@ const PartsHistory = (() => {
   // Xác thực phần cứng chỉ nói về linh kiện đã đọc được, không phải toàn máy.
   function assessScan(logCount, statusSignals, cableSignals, hardwareSignals) {
     const hardware = Array.isArray(hardwareSignals) ? hardwareSignals : [];
-    if (hardware.some(f => f.status !== 'genuine')) return 'found';
+    if (hardware.some(f => f.status !== 'genuine' && f.status !== 'serial_match')) return 'found';
     const hasLogs = Number.isFinite(logCount) && logCount > 0;
     if (hasLogs && Array.isArray(statusSignals) && statusSignals.length) return 'found';
     if (hardware.length) return 'verified';
@@ -214,7 +281,7 @@ const PartsHistory = (() => {
     if (next.errors) merged.errors = next.errors; else delete merged.errors;
     if (!has(next.display) && has(previous.display)) merged.display = previous.display;
     if (has(previous.battery)) merged.battery = Object.assign({}, previous.battery, next.battery || {});
-    for (const key of ['parts', 'components', 'raw', 'syscfg']) {
+    for (const key of ['parts', 'components', 'raw', 'syscfg', 'cameras', 'cameraSerials']) {
       if (!filled(next[key]) && filled(previous[key])) merged[key] = previous[key];
     }
     if (!filled(next.raw) && previous.probe) merged.probe = previous.probe;
@@ -247,13 +314,18 @@ const PartsHistory = (() => {
     for (const item of Array.isArray(report && report.syscfg) ? report.syscfg : []) {
       if (item && item.part && item.current && !ids[item.part]) ids[item.part] = String(item.current);
     }
+    // Mỗi module camera một khoá, để nhận ra cả khi chỉ thay tele hay góc rộng.
+    for (const entry of cameraModules(report)) {
+      if (entry.current) ids['cam:' + entry.module] = entry.current;
+    }
     return ids;
   }
 
   function changedParts(previousIds, currentIds) {
     if (!previousIds || typeof previousIds !== 'object') return [];
+    const differs = (a, b) => String(a) !== String(b) && !sameSerial(a, b);
     return Object.keys(currentIds || {})
-      .filter(part => previousIds[part] && previousIds[part] !== currentIds[part]);
+      .filter(part => previousIds[part] && differs(previousIds[part], currentIds[part]));
   }
 
   // Một dòng cho mỗi linh kiện: bằng chứng mạnh nhất từ phần cứng, SysCfg,
@@ -267,7 +339,9 @@ const PartsHistory = (() => {
     const parts = expectedParts(model);
     for (const f of hardware) if (!parts.includes(f.part)) parts.push(f.part);
     return parts.map(part => {
-      if (moved.includes(part)) return { part, status: 'changed' };
+      if (moved.some(key => key === part || CAMERA_PART[String(key).replace(/^cam:/, '')] === part)) {
+        return { part, status: 'changed' };
+      }
       const hw = hardware.filter(f => f.part === part);
       const bad = hw.find(f => isAlert(f.status));
       if (bad) return { part, status: bad.status };
@@ -275,6 +349,7 @@ const PartsHistory = (() => {
       if (sys && sys.match === false) return { part, status: 'replaced' };
       const logBad = logs.find(f => f.part === part && isAlert(f.status));
       if (logBad) return { part, status: logBad.status, source: 'log' };
+      if (hw.some(f => f.status === 'serial_match')) return { part, status: 'serial_match' };
       if (hw.some(f => f.status === 'genuine') || (sys && sys.match === true)) return { part, status: 'genuine' };
       if (bio.part === part && (bio.state === 'ok' || bio.state === 'not_enrolled')) {
         return { part, status: 'working', detail: bio.state };
@@ -282,12 +357,16 @@ const PartsHistory = (() => {
       const logAny = logs.find(f => f.part === part);
       if (logAny) return { part, status: logAny.status, source: 'log' };
       if (part === 'speaker') return { part, status: 'not_authenticated' };
+      const camera = cameraCheck(report, part);
+      if (camera && camera.current) return { part, status: 'serial_only', serial: camera.current };
+      if (camera && camera.factory) return { part, status: 'no_flag', factory: camera.factory };
       return sys && sys.factory ? { part, status: 'no_flag', factory: String(sys.factory) } : { part, status: 'no_flag' };
     });
   }
 
   return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport,
-    isAlert, expectedParts, partIdentities, changedParts, partsOverview };
+    isAlert, expectedParts, partIdentities, changedParts, partsOverview, sameSerial, cameraModules, cameraCheck,
+    CAMERA_PART };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;

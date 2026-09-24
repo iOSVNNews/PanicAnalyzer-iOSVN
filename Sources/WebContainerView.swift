@@ -7,6 +7,8 @@ import WebKit
 struct WebContainerView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
+        // An interface update downloaded last time is used from this start.
+        WebUpdater.shared.promotePending()
         let config = WKWebViewConfiguration()
         let ucc = WKUserContentController()
 

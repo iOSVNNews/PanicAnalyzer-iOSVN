@@ -18,14 +18,21 @@
     <string>/var/db/CrashReporter/</string>
   </array>
   <!-- Sê-ri linh kiện gốc (SysCfg, như app Chẩn đoán của Apple) và sê-ri đang
-       lắp (như corerepaird): so pin / Touch ID với sê-ri gốc của máy. -->
+       lắp (như corerepaird): so pin / Touch ID / camera với sê-ri gốc của máy. -->
   <key>com.apple.private.MobileGestalt.AllowedProtectedKeys</key>
   <array>
     <string>SysCfg</string>
+    <string>SysCfgDict</string>
     <string>BatterySerialNumber</string>
     <string>MesaSerialNumber</string>
     <string>RosalineSerialNumber</string>
     <string>SavageSerialNumber</string>
+    <string>RearFacingCameraModuleSerialNumber</string>
+    <string>RearFacingSuperWideCameraModuleSerialNumber</string>
+    <string>RearFacingTelephotoCameraModuleSerialNumber</string>
+    <string>FrontFacingCameraModuleSerialNumber</string>
+    <string>FrontFacingIRCameraModuleSerialNumber</string>
+    <string>FrontFacingIRStructuredLightProjectorModuleSerialNumber</string>
   </array>
   <key>com.apple.security.exception.files.home-relative-path.read-only</key>
   <array>

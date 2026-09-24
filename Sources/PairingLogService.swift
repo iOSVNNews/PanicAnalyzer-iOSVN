@@ -12,6 +12,8 @@ final class PairingLogService {
     private let maxFileBytes = 12 * 1024 * 1024
     private let maxTotalBytes = 24 * 1024 * 1024
     private let maxEntries = 1_500
+    /// Found/read counts of the last log scan (see LogOrder.summary).
+    private(set) var lastScanSummary: [String: Any] = [:]
     private let operationLock = NSLock()
 
     enum PairingError: LocalizedError {
@@ -472,16 +474,15 @@ final class PairingLogService {
         let readStarted = Date()
         var pending = [PendingDirectory(path: "", depth: 0)]
         var visited = Set<String>()
-        var results: [[String: String]] = []
-        var totalBytes = 0
+        var candidates: [String] = []
         var entryCount = 0
 
-        scan: while !pending.isEmpty,
-                    results.count < maxFiles,
-                    totalBytes < maxTotalBytes,
-                    entryCount < maxEntries {
+        // 1. List the folders first (cheap) and collect every log file, so the
+        //    limits below keep the most useful files, not the first listed.
+        listing: while !pending.isEmpty, entryCount < maxEntries {
             let directory = pending.removeFirst()
             guard visited.insert(directory.path).inserted else { continue }
+            if Date().timeIntervalSince(readStarted) > readBudget { break }
 
             let entries: [String]
             if directory.depth == 0 {
@@ -491,7 +492,7 @@ final class PairingLogService {
                     entries = try list(session: session, directory: directory.path)
                 } catch {
                     // A dead connection fails every later call too: keep what we have.
-                    if pa_session_is_broken(session) { break scan }
+                    if pa_session_is_broken(session) { break listing }
                     continue
                 }
             }
@@ -499,31 +500,39 @@ final class PairingLogService {
 
             for entry in entries {
                 guard entry != ".", entry != "..", !entry.contains("/") else { continue }
-                // Deadline for reading: return the logs already read.
-                if Date().timeIntervalSince(readStarted) > readBudget { break scan }
                 let path = directory.path.isEmpty ? entry : "\(directory.path)/\(entry)"
                 if isLogFile(entry) {
-                    guard results.count < maxFiles, totalBytes < maxTotalBytes else { break }
-                    let data: Data
-                    do {
-                        data = try pull(session: session, path: path)
-                    } catch {
-                        if pa_session_is_broken(session) { break scan }
-                        continue
-                    }
-                    guard !data.isEmpty,
-                          data.count <= maxFileBytes,
-                          totalBytes + data.count <= maxTotalBytes else { continue }
-                    totalBytes += data.count
-                    results.append([
-                        "name": path,
-                        "content": String(decoding: data, as: UTF8.self)
-                    ])
+                    candidates.append(path)
                 } else if directory.depth < 3 {
                     pending.append(PendingDirectory(path: path, depth: directory.depth + 1))
                 }
             }
         }
+
+        // 2. Panics first, then newest first, until a limit is reached.
+        var results: [[String: String]] = []
+        var totalBytes = 0
+        for path in LogOrder.sorted(candidates) {
+            guard results.count < maxFiles, totalBytes < maxTotalBytes,
+                  Date().timeIntervalSince(readStarted) <= readBudget else { break }
+            let data: Data
+            do {
+                data = try pull(session: session, path: path)
+            } catch {
+                if pa_session_is_broken(session) { break }
+                continue
+            }
+            guard !data.isEmpty,
+                  data.count <= maxFileBytes,
+                  totalBytes + data.count <= maxTotalBytes else { continue }
+            totalBytes += data.count
+            results.append([
+                "name": path,
+                "content": String(decoding: data, as: UTF8.self)
+            ])
+        }
+        lastScanSummary = LogOrder.summary(found: candidates.count, read: results.count,
+                                           maxFiles: maxFiles, maxBytes: maxTotalBytes)
         return results
     }
 

@@ -380,6 +380,65 @@ enum HardwareIdentity {
         return order.compactMap { summary[$0] }
     }
 
+    // MARK: - Cameras
+
+    /// "BackSuperWide" -> "back_super_wide".
+    static func moduleID(_ prefix: String) -> String {
+        var id = ""
+        var previousUpper = true
+        for char in prefix {
+            if char.isUppercase, !previousUpper { id += "_" }
+            previousUpper = char.isUppercase
+            id += char.lowercased()
+        }
+        return id
+    }
+
+    /// Camera modules the camera driver (AppleH1xCamIn) describes: the serial
+    /// of each fitted module ("BackCameraModuleSerialNumString",
+    /// "FrontCameraModuleSerialNumString", "BackTeleCamera…", "BackSuperWideCamera…"),
+    /// whether this model expects it and whether it answered. Apple's own
+    /// check compares these serials with the ones sealed at the factory.
+    static func cameras(_ nodes: [ComponentNode]) -> [[String: Any]] {
+        var order: [String] = []
+        var modules: [String: [String: Any]] = [:]
+        func set(_ prefix: String, _ key: String, _ value: Any) {
+            let id = moduleID(prefix)
+            if modules[id] == nil { order.append(id); modules[id] = ["module": id] }
+            if modules[id]?[key] == nil { modules[id]?[key] = value }
+        }
+        let suffixes = [("CameraModuleSerialNumString", "serial"), ("CameraExpected", "expected"),
+                        ("CameraActive", "active")]
+        for node in nodes where node.part == "camera" {
+            for key in node.hit.props.keys.sorted() {
+                guard let value = node.hit.props[key],
+                      let (suffix, field) = suffixes.first(where: { key.hasSuffix($0.0) }) else { continue }
+                let prefix = String(key.dropLast(suffix.count))
+                guard !prefix.isEmpty else { continue }
+                if field == "serial" {
+                    guard let serial = LocalHardware.serialText(value) else { continue }
+                    set(prefix, "serial", serial)
+                    set(prefix, "node", node.hit.className ?? node.hit.path)
+                } else if let flag = integer(value), flag == 0 || flag == 1 {
+                    set(prefix, field, flag == 1)
+                }
+            }
+        }
+        return order.compactMap { modules[$0] }
+            .filter { $0["serial"] != nil || $0["expected"] as? Bool == true }
+    }
+
+    /// Validation results the camera driver may publish (CmClValidationStatus…).
+    static func cameraValidation(_ nodes: [ComponentNode]) -> [String: String] {
+        var out: [String: String] = [:]
+        for node in nodes where node.part == "camera" {
+            for (key, value) in node.hit.props where key.lowercased().contains("validationstatus") && out[key] == nil {
+                out[key] = describe(value)
+            }
+        }
+        return out
+    }
+
     // MARK: - Raw data (to learn the flag names of each iPhone generation)
 
     /// Short text for one IORegistry value.
@@ -399,12 +458,20 @@ enum HardwareIdentity {
     }
 
     /// Properties of auth-related entries, as sent to the UI for copying.
+    /// Identity-looking keys first, so a node with hundreds of properties
+    /// still shows its serials and auth results within the limit.
+    static func rawKeyOrder(_ keys: [String]) -> [String] {
+        let words = ["serial", "auth", "validation", "expected", "active", "cert", "trust"]
+        let important = { (key: String) in words.contains { key.lowercased().contains($0) } }
+        return keys.filter(important).sorted() + keys.filter { !important($0) }.sorted()
+    }
+
     static func rawEntries(_ entries: [(name: String, entry: [String: Any])], limit: Int = 30) -> [[String: Any]] {
         entries.compactMap { item -> [String: Any]? in
             let (name, entry) = item
             guard entry["error"] == nil, !entry.isEmpty else { return nil }
             var props: [String: String] = [:]
-            for key in entry.keys.sorted().prefix(limit) {
+            for key in rawKeyOrder(Array(entry.keys)).prefix(limit) {
                 if let value = entry[key] { props[key] = describe(value) }
             }
             return ["name": name, "props": props]
@@ -435,6 +502,10 @@ enum HardwareIdentity {
         let components = componentNodes(in: first, classResults: classResults)
         let componentList = componentSummary(components)
         if !componentList.isEmpty { report["components"] = componentList }
+        let cameraList = cameras(components)
+        if !cameraList.isEmpty { report["cameras"] = cameraList }
+        let validation = cameraValidation(components)
+        if !validation.isEmpty { report["cameraValidation"] = validation }
         var raw = rawEntries(Array(zip(candidates, second).map { (name: $0, entry: $1) }))
         raw += rawEntries([(name: "AppleBatteryAuth", entry: batteryAuth),
                            (name: "RoswellAuthI2CRelayInterface", entry: roswell)])

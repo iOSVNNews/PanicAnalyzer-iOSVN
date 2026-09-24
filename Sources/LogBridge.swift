@@ -67,6 +67,7 @@ final class LogBridge: NSObject {
         var logs: [[String: String]] = []
         var accessibleRoots = 0
         var unreadableLogs = 0
+        var found = 0
     }
 
     private func readFilesystemLogs() -> FilesystemScan {
@@ -74,13 +75,17 @@ final class LogBridge: NSObject {
         var scan = FilesystemScan()
         var seen = Set<String>()
         var totalBytes = 0
+        // Every log file first (path → name shown, size, date), then read the
+        // most useful ones: panics first, then newest (LogOrder).
+        var names: [String: String] = [:]
+        var sizes: [String: Int] = [:]
+        var dates: [String: Date] = [:]
 
         for root in searchDirs {
             guard (try? fm.contentsOfDirectory(atPath: root)) != nil else { continue }
             scan.accessibleRoots += 1
             guard let enumerator = fm.enumerator(atPath: root) else { continue }
             for case let rel as String in enumerator {
-                if scan.logs.count >= maxFilesystemLogs || totalBytes >= maxFilesystemBytes { break }
                 let name = (rel as NSString).lastPathComponent
                 guard isLogFile(name) else { continue }
                 let path = (root as NSString).appendingPathComponent(rel)
@@ -93,17 +98,26 @@ final class LogBridge: NSObject {
                     scan.unreadableLogs += 1
                     continue
                 }
-                guard size > 0, size <= maxFileBytes,
-                      totalBytes + size <= maxFilesystemBytes else { continue }
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-                    scan.unreadableLogs += 1
-                    continue
-                }
-                guard data.count <= maxFileBytes,
-                      totalBytes + data.count <= maxFilesystemBytes else { continue }
-                totalBytes += data.count
-                scan.logs.append(["name": rel, "content": String(decoding: data, as: UTF8.self)])
+                guard size > 0 else { continue }
+                names[path] = rel
+                sizes[path] = size
+                if let date = attrs[.modificationDate] as? Date { dates[path] = date }
             }
+        }
+        scan.found = names.count
+
+        for path in LogOrder.sorted(Array(names.keys), dates: dates) {
+            if scan.logs.count >= maxFilesystemLogs || totalBytes >= maxFilesystemBytes { break }
+            guard let size = sizes[path], size <= maxFileBytes,
+                  totalBytes + size <= maxFilesystemBytes else { continue }
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+                scan.unreadableLogs += 1
+                continue
+            }
+            guard data.count <= maxFileBytes,
+                  totalBytes + data.count <= maxFilesystemBytes else { continue }
+            totalBytes += data.count
+            scan.logs.append(["name": names[path] ?? path, "content": String(decoding: data, as: UTF8.self)])
         }
         return scan
     }
@@ -127,6 +141,11 @@ final class LogBridge: NSObject {
     /// Phiên bản ứng dụng đang cài, ví dụ "2.5.0".
     var appVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+    }
+
+    /// Build number (CI run number), e.g. 58.
+    var appBuild: Int {
+        Int((Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "") ?? 0
     }
 
     /// Bản mới nhất trên kho phát hành (điền sau khi kiểm tra).
@@ -269,6 +288,23 @@ final class LogBridge: NSObject {
             }
             if notifyJS { self.pushRulesToJS(changed: updated > 0) }
             self.checkAppUpdate()
+            self.checkWebUpdate()
+        }
+    }
+
+    /// Small fixes ship as interface updates (web/), without a new app
+    /// version: download now, use from the next start or when the user taps
+    /// "apply" on the page.
+    func checkWebUpdate() {
+        WebUpdater.shared.checkForUpdate { [weak self] build in
+            guard let build else { return }
+            self?.webView?.evaluateJavaScript("window.onWebUpdateReady && window.onWebUpdateReady(\(build))")
+        }
+    }
+
+    func applyWebUpdate() {
+        DispatchQueue.main.async {
+            if WebUpdater.shared.promotePending() { WebLoadMonitor.shared.reloadInterface() }
         }
     }
 
@@ -295,16 +331,25 @@ final class LogBridge: NSObject {
                   let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let data,
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let remote = obj["version"] as? String,
-                  self.isNewer(remote, than: self.appVersion)
+                  let remote = obj["version"] as? String
             else { return }
+            // A native fix can ship under the same version label with a higher
+            // build number: compare the build too. Interface and rule fixes
+            // arrive without a new installer (WebUpdater, refreshRules).
+            let remoteBuild = Int("\(obj["build"] ?? "")") ?? 0
+            let sameVersion = !self.isNewer(remote, than: self.appVersion) && !self.isNewer(self.appVersion, than: remote)
+            guard self.isNewer(remote, than: self.appVersion)
+                    || (sameVersion && remoteBuild > self.appBuild) else { return }
             self.latestVersion = remote
             self.latestURL = (obj["url"] as? String) ?? ""
-            let notes = (obj["notes"] as? String) ?? ""
+            let label = sameVersion ? "\(remote) (\(remoteBuild))" : remote
+            let info: [String: Any] = [
+                "version": label, "url": self.latestURL, "notes": (obj["notes"] as? String) ?? "",
+                "current": sameVersion ? "\(self.appVersion) (\(self.appBuild))" : self.appVersion
+            ]
+            guard let json = try? JSONSerialization.data(withJSONObject: info),
+                  let payload = String(data: json, encoding: .utf8) else { return }
             DispatchQueue.main.async {
-                let payload = """
-                {"version":"\(remote)","url":"\(self.latestURL)","notes":"\(notes)","current":"\(self.appVersion)"}
-                """
                 self.webView?.evaluateJavaScript("""
                 (function(){ if (window.onNativeAppUpdate) window.onNativeAppUpdate(\(payload)); })();
                 """)
@@ -341,6 +386,14 @@ final class LogBridge: NSObject {
         parts.append("window.__IOS_VERSION__ = \"\(iosVersion)\";")
         parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
         parts.append("window.__APP_LANG__ = \"\(Loc.lang)\";")
+        parts.append("window.__WEB_BUILD__ = \(WebUpdater.shared.currentBuild);")
+        parts.append("window.__WEB_UPDATE_PENDING__ = \(WebUpdater.shared.hasPending ? "true" : "false");")
+        parts.append("window.__PRIVILEGED__ = \(isPrivilegedBuild ? "true" : "false");")
+        let crashes = CrashCatcher.shared.reports()
+        if !crashes.isEmpty, let data = try? JSONSerialization.data(withJSONObject: crashes),
+           let json = String(data: data, encoding: .utf8) {
+            parts.append("window.__APP_CRASHES__ = \(json);")
+        }
         if let notice = launchPairingNotice,
            let data = try? JSONSerialization.data(withJSONObject: [notice.message]),
            let array = String(data: data, encoding: .utf8) {
@@ -418,7 +471,10 @@ final class LogBridge: NSObject {
             // Trên máy JB / TrollStore đọc thẳng file log, không cần ghép đôi.
             let direct = self.readFilesystemLogs()
             if !direct.logs.isEmpty {
-                self.deliver(direct.logs, autoScan: true, source: "filesystem")
+                self.deliver(direct.logs, autoScan: true, source: "filesystem",
+                             summary: LogOrder.summary(found: direct.found, read: direct.logs.count,
+                                                       maxFiles: self.maxFilesystemLogs,
+                                                       maxBytes: self.maxFilesystemBytes))
                 return
             }
             if self.isPrivilegedBuild {
@@ -474,7 +530,8 @@ final class LogBridge: NSObject {
                         isError: false
                     )
                 }
-                self.deliver(pairedLogs, autoScan: true, source: "pairing")
+                self.deliver(pairedLogs, autoScan: true, source: "pairing",
+                             summary: PairingLogService.shared.lastScanSummary)
             } catch {
                 let notPaired: Bool
                 if case PairingLogService.PairingError.notPaired = error { notPaired = true } else { notPaired = false }
@@ -866,9 +923,12 @@ final class LogBridge: NSObject {
 
     // MARK: - Đẩy kết quả về JS
 
-    func deliver(_ logs: [[String: String]], autoScan: Bool, source: String) {
+    func deliver(_ logs: [[String: String]], autoScan: Bool, source: String,
+                 summary: [String: Any] = [:]) {
         guard let data = try? JSONSerialization.data(withJSONObject: logs),
               let jsonStr = String(data: data, encoding: .utf8) else { return }
+        let summaryJSON = (try? JSONSerialization.data(withJSONObject: summary))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         // Bọc thành string literal an toàn cho JS (bỏ cặp ngoặc vuông của mảng)
         guard let qData = try? JSONSerialization.data(withJSONObject: [jsonStr],
                                                       options: .fragmentsAllowed),
@@ -878,7 +938,7 @@ final class LogBridge: NSObject {
         let js = """
         (function(){
           if (window.handleNativeLogsReceived) window.handleNativeLogsReceived(\(quoted));
-          if (window.onNativeScanMode) window.onNativeScanMode(\(autoScan ? "true" : "false"), \(logs.count), "\(source)");
+          if (window.onNativeScanMode) window.onNativeScanMode(\(autoScan ? "true" : "false"), \(logs.count), "\(source)", \(summaryJSON));
         })();
         """
         DispatchQueue.main.async { self.webView?.evaluateJavaScript(js) }
@@ -930,6 +990,8 @@ extension LogBridge: WKScriptMessageHandler {
         case "notifyParts":  PartsNotifier.shared.post(title: body["title"] as? String ?? "",
                                                        body: body["body"] as? String ?? "")
         case "refreshRules": refreshRules()
+        case "applyWebUpdate": applyWebUpdate()
+        case "clearAppCrashes": CrashCatcher.shared.clear()
         case "openURL":      openExternal(body["url"] as? String ?? "")
         default: break
         }

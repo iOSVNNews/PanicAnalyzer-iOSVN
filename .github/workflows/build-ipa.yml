@@ -1,9 +1,19 @@
 name: Build unsigned IPA
 
+# Builds the installers only when native code changes. Interface fixes
+# (web/) and diagnostic data (assets/) reach installed apps on their own:
+# see web-update.yml and LogBridge.refreshRules.
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths-ignore:
+      - 'web/**'
+      - 'assets/**'
+      - '**.md'
+      - 'Tests/parts.test.js'
+      - 'Tests/crash.test.js'
+      - '.github/workflows/web-update.yml'
 
 concurrency:
   group: build-ipa
@@ -16,6 +26,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the interface build number counts web/ commits
 
       - name: Select latest Xcode
         run: |
@@ -35,6 +47,7 @@ jobs:
           node --check web/parts.js
           node --check web/app.js
           node Tests/parts.test.js
+          node Tests/crash.test.js
           python3 Tests/test_package_deb.py
 
       - name: Build Remote Pairing bridge
@@ -72,6 +85,8 @@ jobs:
           cat assets/app_version.json
           echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
           echo "APP_BUILD=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+          # Interface build inside the installer; newer ones are downloaded.
+          python3 scripts/web_manifest.py
 
       - name: Build (unsigned)
         run: |
@@ -169,8 +184,18 @@ jobs:
             PanicAnalyzer-rootless.deb
             PanicAnalyzer-rootful.deb
 
+      - name: Keep debug symbols (to read app crash reports)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PanicAnalyzer-dSYM-${{ github.run_number }}
+          path: build/Build/Products/Release-iphoneos/*.dSYM
+          if-no-files-found: warn
+          retention-days: 90
+
       - name: Record version for the in-app update check
         run: |
+          # web_update.json is published by web-update.yml, not here.
+          git checkout -- assets/web_update.json 2>/dev/null || rm -f assets/web_update.json
           cat assets/app_version.json
           if [ -z "$(git status --porcelain assets/app_version.json)" ]; then
             echo "version unchanged"

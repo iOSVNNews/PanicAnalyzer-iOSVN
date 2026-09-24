@@ -38,8 +38,9 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        // A downloaded interface update replaces web/<file> (see WebUpdater).
         guard let url = task.request.url,
-              let file = Self.fileURL(for: url),
+              let file = WebUpdater.shared.overrideFile(for: url) ?? Self.fileURL(for: url),
               let data = try? Data(contentsOf: file),
               let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
                   "Content-Type": Self.mimeType(for: file),
@@ -82,6 +83,8 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
 
     private weak var webView: WKWebView?
     private var usingScheme = false
+    /// The page comes from a downloaded interface update, not the bundle.
+    private var usingUpdate = false
     private var pageReady = false
     private var terminations = 0
     private var lastError: String?
@@ -151,9 +154,14 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
     private func load(viaScheme: Bool) {
         guard let webView else { return }
         usingScheme = viaScheme
+        let update = WebUpdater.shared.activeDirectory
+        usingUpdate = update != nil
         pageReady = false
         if viaScheme {
             webView.load(URLRequest(url: BundleSchemeHandler.indexURL))
+        } else if let update {
+            // Same file:// origin as the bundled page, so saved data is kept.
+            webView.loadFileURL(update.appendingPathComponent("index.html"), allowingReadAccessTo: update)
         } else if let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "web") {
             // Read access to the whole bundle so ../assets resolves.
             webView.loadFileURL(index, allowingReadAccessTo: Bundle.main.bundleURL)
@@ -173,9 +181,34 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: item)
     }
 
+    /// Reloads the interface, e.g. after a downloaded update was applied.
+    func reloadInterface() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let webView else { return }
+        // Fresh start-up values (__WEB_BUILD__, pairing state…).
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(source: LogBridge.shared.injectionScript(),
+                                              injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        terminations = 0
+        lastError = nil
+        statusPanel.isHidden = true
+        load(viaScheme: usingScheme)
+    }
+
+    /// A downloaded interface that does not start is dropped for good and
+    /// the one inside the app is loaded instead.
+    private func dropUpdate() -> Bool {
+        guard usingUpdate else { return false }
+        WebUpdater.shared.rejectActiveBuild()
+        load(viaScheme: usingScheme)
+        return true
+    }
+
     /// The page never ran its script: try the other way once, then explain.
     private func pageDidNotStart() {
         guard !pageReady else { return }
+        if dropUpdate() { return }
         if !usingScheme {
             load(viaScheme: true)
             return
@@ -188,6 +221,7 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
         let code = (error as NSError).code
         guard !pageReady, code != NSURLErrorCancelled else { return }
         lastError = error.localizedDescription
+        if dropUpdate() { return }
         if !usingScheme {
             load(viaScheme: true)
             return
@@ -200,7 +234,8 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
         self.headline = headline
         var lines = [headline]
         if let lastError { lines.append(lastError) }
-        lines.append(Loc.s("Chế độ tải: ", "Load mode: ", "加载方式：") + (usingScheme ? "scheme" : "file"))
+        lines.append(Loc.s("Chế độ tải: ", "Load mode: ", "加载方式：") + (usingScheme ? "scheme" : "file")
+                     + " · web \(WebUpdater.shared.currentBuild)")
         lines.append(Loc.s("Vị trí cài: ", "Installed at: ", "安装位置：") + Bundle.main.bundlePath)
         lines.append(Loc.s("Thư mục dữ liệu: ", "Data folder: ", "数据目录：") + NSHomeDirectory()
                      + (Self.hasDataContainer ? "" : Loc.s(" (không có container)", " (no container)", "（无容器）")))
@@ -256,6 +291,9 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
         lastError = Loc.s("Tiến trình WebKit đã dừng (\(terminations) lần).",
                           "The WebKit process stopped (\(terminations) times).",
                           "WebKit 进程已停止（\(terminations) 次）。")
+        if usingUpdate && !pageReady && terminations >= 2 && dropUpdate() {
+            return
+        }
         if terminations <= 2 {
             load(viaScheme: usingScheme || terminations == 2)
         } else {
