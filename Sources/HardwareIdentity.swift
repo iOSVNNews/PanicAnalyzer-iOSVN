@@ -12,23 +12,56 @@ enum HardwareIdentity {
     /// Device-tree nodes that hold the display authentication IC. Apple renames
     /// them between generations, so the tree is also scanned for similar names.
     static let knownDisplayAuthNodes = ["mogul-display", "display-auth", "panel-auth"]
-    static let maxCandidates = 12
+    static let maxCandidates = 16
 
-    /// Queries for the first pass: tree names, battery, panel id.
-    static let firstPass: [[String: Any]] = [
-        ["plane": "IODeviceTree", "namesOnly": true],
-        ["name": "AppleSmartBattery"],
-        ["class": "AppleSmartBattery"],
-        ["class": "AppleCLCD2"],
-        ["name": "AppleCLCD2"]
-    ]
+    /// First pass. Display auth hardware differs by generation: newer iPhones
+    /// keep an Apple-signed certificate + "auth-passed" on a device-tree node
+    /// (mogul-display…); older ones relay through an I2C auth driver under
+    /// display-eeprom (RoswellAuthI2CRelayInterface on iPhone 11). The battery
+    /// has its own relay, AppleBatteryAuth. The IOService names come last:
+    /// that dump is the largest and may time out.
+    enum First: Int, CaseIterable {
+        case treeNames, batteryByName, batteryByClass, panelByClass, panelByName,
+             batteryAuth, roswellAuth, serviceNames
+    }
 
-    static func displayAuthCandidates(from names: [String]) -> [String] {
+    static let firstPass: [[String: Any]] = First.allCases.map { (query: First) -> [String: Any] in
+        switch query {
+        case .treeNames: return ["plane": "IODeviceTree", "namesOnly": true]
+        case .batteryByName: return ["name": "AppleSmartBattery"]
+        case .batteryByClass: return ["class": "AppleSmartBattery"]
+        case .panelByClass: return ["class": "AppleCLCD2"]
+        case .panelByName: return ["name": "AppleCLCD2"]
+        case .batteryAuth: return ["class": "AppleBatteryAuth"]
+        case .roswellAuth: return ["class": "RoswellAuthI2CRelayInterface"]
+        case .serviceNames: return ["plane": "IOService", "namesOnly": true]
+        }
+    }
+
+    static func entry(_ results: [[String: Any]], _ query: First) -> [String: Any] {
+        query.rawValue < results.count ? results[query.rawValue] : [:]
+    }
+
+    /// Nodes that may hold a display authentication result, newest naming first.
+    static func displayAuthCandidates(treeNames: [String], serviceNames: [String]) -> [String] {
         var result = knownDisplayAuthNodes
-        for name in names where result.count < maxCandidates && !result.contains(name) {
+        func add(_ name: String) {
+            if result.count < maxCandidates, !result.contains(name) { result.append(name) }
+        }
+        for name in treeNames {
             let lower = name.lowercased()
-            if lower.hasSuffix("-display") || lower.contains("display-auth") || lower.contains("panel-auth") {
-                result.append(name)
+            if lower.hasSuffix("-display") || lower.contains("display-auth") || lower.contains("panel-auth")
+                || (lower.contains("display") && lower.contains("auth")) {
+                add(name)
+            }
+        }
+        // Auth drivers in the IOService plane, minus the Lightning accessory
+        // (AuthCPAID), user clients, the generic relay child and the battery.
+        for name in serviceNames {
+            let lower = name.lowercased()
+            if lower.contains("auth"), !lower.contains("userclient"), !lower.contains("authcpaid"),
+               lower != "appleauthcprelay", lower != "applebatteryauth" {
+                add(name)
             }
         }
         return result
@@ -112,6 +145,12 @@ enum HardwareIdentity {
             }
             return out
         }
+        // Older nodes: the same "auth-passed" flag without a certificate.
+        for (name, entry) in candidates {
+            if let passed = integer(entry["auth-passed"]) {
+                return ["node": name, "authPassed": passed != 0]
+            }
+        }
         for entry in panelEntries {
             if let panel = text(entry["Panel_ID"]) {
                 return ["panelId": panel]
@@ -137,11 +176,11 @@ enum HardwareIdentity {
         }
         // iOS 17+: the "Maximum Capacity" shown in Settings > Battery.
         out["settingsHealthPercent"] = integer(data["MaximumCapacityPercent"])
-        // Any authenticity flag the battery driver states, reported verbatim.
+        // Only flags whose name states success (1 = passed). Counters such as
+        // "AuthFailures" must never turn into a verdict.
         var flags: [String: Int] = [:]
         for source in [entry, data] {
-            for (key, value) in source
-            where key.range(of: "auth|genuine", options: [.regularExpression, .caseInsensitive]) != nil {
+            for (key, value) in source where isPassFlagName(key) {
                 if let number = integer(value), number == 0 || number == 1 { flags[key] = number }
             }
         }
@@ -149,10 +188,76 @@ enum HardwareIdentity {
         return out
     }
 
+    static func isPassFlagName(_ key: String) -> Bool {
+        let lower = key.lowercased()
+        let positive = ["auth-passed", "authpassed", "auth_passed", "authenticated", "isauthentic",
+                        "authok", "auth-ok", "authvalid", "isgenuine", "genuine"]
+        let negative = ["fail", "error", "count", "attempt", "retry", "time"]
+        return positive.contains { lower.contains($0) } && !negative.contains { lower.contains($0) }
+    }
+
+    // MARK: - Raw data (to learn the flag names of each iPhone generation)
+
+    /// Short text for one IORegistry value.
+    static func describe(_ value: Any) -> String {
+        switch value {
+        case let data as Data:
+            let hex = data.prefix(16).map { String(format: "%02x", $0) }.joined()
+            return "<\(data.count) byte\(data.count == 1 ? "" : "s")> \(hex)\(data.count > 16 ? "…" : "")"
+        case let dict as [String: Any]:
+            return "{\(dict.count) keys}"
+        case let array as [Any]:
+            return "[\(array.count) items]"
+        default:
+            let text = "\(value)"
+            return text.count > 80 ? String(text.prefix(80)) + "…" : text
+        }
+    }
+
+    /// Properties of auth-related entries, as sent to the UI for copying.
+    static func rawEntries(_ entries: [(name: String, entry: [String: Any])]) -> [[String: Any]] {
+        entries.compactMap { item -> [String: Any]? in
+            let (name, entry) = item
+            guard entry["error"] == nil, !entry.isEmpty else { return nil }
+            var props: [String: String] = [:]
+            for key in entry.keys.sorted().prefix(30) {
+                if let value = entry[key] { props[key] = describe(value) }
+            }
+            return ["name": name, "props": props]
+        }
+    }
+
+    /// Everything the Linh kiện tab needs, from both passes.
+    static func report(first: [[String: Any]], candidates: [String], second: [[String: Any]]) -> [String: Any] {
+        let pairs = zip(candidates, second).map { (name: $0, entry: $1) }
+        let batteryAuth = entry(first, .batteryAuth)
+        let roswell = entry(first, .roswellAuth)
+        var report: [String: Any] = [
+            "display": display(candidates: pairs,
+                               panelEntries: [entry(first, .panelByClass), entry(first, .panelByName)]),
+            "battery": battery(from: [entry(first, .batteryByName), entry(first, .batteryByClass)])
+        ]
+        var raw = rawEntries(pairs)
+        raw += rawEntries([(name: "AppleBatteryAuth", entry: batteryAuth),
+                           (name: "RoswellAuthI2CRelayInterface", entry: roswell)])
+        if !raw.isEmpty { report["raw"] = raw }
+        report["probe"] = [
+            "treeNames": (entry(first, .treeNames)["names"] as? [Any])?.count ?? 0,
+            "serviceNames": (entry(first, .serviceNames)["names"] as? [Any])?.count ?? 0,
+            "candidates": candidates
+        ] as [String: Any]
+        let errorList = errors(in: first + second)
+        if !errorList.isEmpty { report["errors"] = errorList }
+        return report
+    }
+
     /// First few errors, so the UI can say what could not be read.
     static func errors(in entries: [[String: Any]]) -> [String] {
         var seen: [String] = []
-        for message in entries.compactMap({ $0["error"] as? String }) where !seen.contains(message) {
+        // "non-Success Status" = that node does not exist on this model: expected
+        // while probing candidate names, not worth showing.
+        for message in entries.compactMap({ $0["error"] as? String })
+        where !seen.contains(message) && !message.contains("non-Success") {
             seen.append(message)
             if seen.count == 3 { break }
         }

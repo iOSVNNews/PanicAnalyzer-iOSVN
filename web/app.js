@@ -792,6 +792,39 @@ function renderHardwareReport(host, paragraph) {
     paragraph(t('parts.hw.error', { e: String(hardwareReport.errors[0]).slice(0, 200) }), 'parts-note parts-error');
   }
   paragraph(t('parts.hwCaution'));
+  renderHardwareRaw(host, paragraph, addRow);
+}
+
+// Dữ liệu thô của các node xác thực: mỗi đời iPhone đặt tên khác nhau, nên
+// cần dữ liệu thật từ máy người dùng để nhận diện cờ màn hình/pin.
+function renderHardwareRaw(host, paragraph, addRow) {
+  const raw = Array.isArray(hardwareReport.raw) ? hardwareReport.raw : [];
+  const probe = hardwareReport.probe || {};
+  paragraph(t('parts.hw.rawTitle'), 'parts-source');
+  paragraph(t('parts.hw.probe', {
+    t: probe.treeNames || 0, s: probe.serviceNames || 0,
+    c: Array.isArray(probe.candidates) ? probe.candidates.length : 0
+  }));
+  for (const item of raw.slice(0, 12)) {
+    addRow(String(item.name || '?'), t('parts.hw.rawKeys', { n: Object.keys(item.props || {}).length }), '');
+  }
+  const button = document.createElement('button');
+  button.className = 'action-btn secondary';
+  button.textContent = t('parts.hw.rawShare');
+  button.onclick = () => {
+    const payload = {
+      app: window.__APP_VERSION__ || '', model: window.__DEVICE_MODEL__ || '',
+      ios: window.__IOS_VERSION__ || '', display: hardwareReport.display || {},
+      battery: hardwareReport.battery || {}, probe, raw, errors: hardwareReport.errors || []
+    };
+    const text = JSON.stringify(payload, null, 1);
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
+      window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'shareText', text });
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+  };
+  host.appendChild(button);
 }
 
 function renderPartsHistory() {

@@ -569,20 +569,14 @@ final class PairingLogService {
         }
         let started = Date()
         let first = try query(HardwareIdentity.firstPass)
-        let names = (first.first?["names"] as? [String]) ?? []
-        let candidates = HardwareIdentity.displayAuthCandidates(from: names)
+        let candidates = HardwareIdentity.displayAuthCandidates(
+            treeNames: HardwareIdentity.entry(first, .treeNames)["names"] as? [String] ?? [],
+            serviceNames: HardwareIdentity.entry(first, .serviceNames)["names"] as? [String] ?? [])
         var second: [[String: Any]] = []
-        if Date().timeIntervalSince(started) < 40 {
+        if Date().timeIntervalSince(started) < 50 {
             second = try query(candidates.map { ["name": $0] })
         }
-        let pairs = zip(candidates, second).map { (name: $0, entry: $1) }
-        var report: [String: Any] = [
-            "display": HardwareIdentity.display(candidates: pairs, panelEntries: Array(first.dropFirst(3))),
-            "battery": HardwareIdentity.battery(from: Array(first.dropFirst().prefix(2)))
-        ]
-        let errors = HardwareIdentity.errors(in: first + second)
-        if !errors.isEmpty { report["errors"] = errors }
-        return report
+        return HardwareIdentity.report(first: first, candidates: candidates, second: second)
     }
 
     typealias HardwareCall = (UnsafePointer<CChar>, UnsafePointer<UInt8>?, Int,
