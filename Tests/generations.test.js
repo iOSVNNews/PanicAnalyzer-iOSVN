@@ -191,6 +191,8 @@ for (const [api, action] of [[2, 'shareFile'], [undefined, 'shareText']]) {
 {
   const page = load('iPhone15,3', false);
   page.context.__NATIVE_API__ = 3;
+  page.context.__IOS_VERSION__ = '27.0';
+  vm.runInContext('ruleDatabases.model_database = { "iPhone15,3": "iPhone 14 Pro Max" }', page.context);
   page.context.onNativeHardwareReport(iphone14);
   vm.runInContext('sendToIosvn', page.context)('linh-kien', vm.runInContext('partsExportText', page.context));
   const dialog = page.context.document.body.children.find(node => node.id === 'reportDialog');
@@ -199,7 +201,8 @@ for (const [api, action] of [[2, 'shareFile'], [undefined, 'shareText']]) {
   dialog.querySelector('#reportSend').onclick();
   const sent = page.posted.find(m => m.action === 'sendReport');
   assert.ok(sent && sent.url === 'https://report.iosvn.com.vn/report.php' && sent.note === 'Máy vào nước');
-  assert.ok(sent.text.startsWith('PanicAnalyzer') && sent.meta.model === 'iPhone15,3');
+  assert.ok(sent.text.startsWith('PanicAnalyzer') && sent.meta.model === 'iPhone 14 Pro Max (iPhone15,3)', sent.meta.model);
+  assert.ok(sent.text.includes('Máy: iPhone 14 Pro Max (iPhone15,3) · iOS'), sent.text.slice(0, 300));
   page.context.onReportSent({ ok: false, error: 'network' });
   assert.ok(page.posted.some(m => m.action === 'shareFile'), 'failed send: share sheet');
 }

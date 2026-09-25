@@ -1818,12 +1818,19 @@ function exportStamp() {
   return `${window.__DEVICE_MODEL__ || 'iPhone'}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
+// "iPhone 14 Pro Max (iPhone15,3)": tên thương mại kèm mã máy.
+function deviceLabel() {
+  const id = window.__DEVICE_MODEL__ || '';
+  const name = (ruleDatabases.model_database || {})[id];
+  return name && name !== id ? `${name} (${id})` : (id || '?');
+}
+
 function exportHeader(title) {
   return [
     `PanicAnalyzer — ${title}`,
     `${t('export.app')}: ${window.__APP_VERSION__ || '?'} · web ${window.__WEB_BUILD__ || 0}`
       + ` · ${window.__PRIVILEGED__ ? 'TrollStore/JB' : 'IPA'}`,
-    `${t('export.device')}: ${window.__DEVICE_MODEL__ || '?'} · iOS ${window.__IOS_VERSION__ || '?'}`,
+    `${t('export.device')}: ${deviceLabel()} · iOS ${window.__IOS_VERSION__ || '?'}`,
     `${t('r.exported')}: ${new Date().toLocaleString(dateLocale())}`
   ].join('\n') + '\n';
 }
@@ -1957,7 +1964,7 @@ function openReportDialog(kind, buildText) {
     postNative({
       action: 'sendReport', url: REPORT_URL, name: `PanicAnalyzer-${kind}-${exportStamp()}.txt`, text, note,
       contact: contact.value.trim(),
-      meta: { app: window.__APP_VERSION__ || '', web: window.__WEB_BUILD__ || 0, model: window.__DEVICE_MODEL__ || '',
+      meta: { app: window.__APP_VERSION__ || '', web: window.__WEB_BUILD__ || 0, model: deviceLabel(),
         ios: window.__IOS_VERSION__ || '', build: window.__PRIVILEGED__ ? 'TrollStore/JB' : 'IPA', kind }
     });
   };
