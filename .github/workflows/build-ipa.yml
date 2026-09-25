@@ -198,23 +198,30 @@ jobs:
 
       - name: Record version for the in-app update check
         run: |
-          # web_update.json is published by web-update.yml, not here.
-          git checkout -- assets/web_update.json 2>/dev/null || rm -f assets/web_update.json
-          cat assets/app_version.json
-          if [ -z "$(git status --porcelain assets/app_version.json)" ]; then
-            echo "version unchanged"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Written on top of the newest main (another build or the interface
+          # workflow may have pushed meanwhile); an older build never
+          # overwrites a newer one. web_update.json belongs to web-update.yml.
+          cp assets/app_version.json "$RUNNER_TEMP/app_version.json"
+          git checkout -- assets 2>/dev/null || true
+          rm -f assets/web_update.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for i in 1 2 3 4 5; do
+            git fetch -q origin main
+            git checkout -q -B main origin/main
+            REMOTE_BUILD=$(python3 -c "import json;print(int(json.load(open('assets/app_version.json')).get('build') or 0))" 2>/dev/null || echo 0)
+            if [ "$REMOTE_BUILD" -ge "$GITHUB_RUN_NUMBER" ]; then
+              echo "main already records build $REMOTE_BUILD"
+              exit 0
+            fi
+            cp "$RUNNER_TEMP/app_version.json" assets/app_version.json
             git add assets/app_version.json
-            git commit -m "Version $APP_VERSION (build ${GITHUB_RUN_NUMBER})"
-            for i in 1 2 3; do
-              git fetch origin main
-              git pull --rebase --autostash origin main || true
-              git push origin HEAD:main && break
-              echo "retry $i"; sleep 5
-            done
-          fi
+            git commit -q -m "Version $APP_VERSION (build ${GITHUB_RUN_NUMBER})"
+            git push origin HEAD:main && exit 0
+            echo "retry $i"; sleep 5
+          done
+          echo "::error::Could not record the version on main"
+          exit 1
 
       - name: Publish latest release
         env:
