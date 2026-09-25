@@ -33,6 +33,7 @@ jobs:
           node Tests/crash.test.js
           node Tests/generations.test.js
           node Tests/report-lambda.test.mjs
+          bash Tests/report-php.test.sh
 
       - name: Publish the manifest
         run: |

@@ -104,6 +104,12 @@ for several), timeout 30 s, and a Function URL with auth type NONE. Put the
 Function URL in `REPORT_URL` in `web/app.js`; the change reaches installed apps
 as an interface update.
 
+PHP hosting (cPanel) instead: `server/report-php/report.php` does the same.
+Put it in the web root of a subdomain with AutoSSL (e.g.
+`https://report.iosvn.com.vn/report.php`) and its settings in
+`panic-report-config.php` one level above that web root:
+`<?php return ['bot_token' => '…', 'chat_id' => '…'];`
+
 ## Building
 
 Requires macOS, Xcode 16+, XcodeGen and Rust:
