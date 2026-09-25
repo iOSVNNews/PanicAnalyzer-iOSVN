@@ -207,4 +207,44 @@ for (const [api, action] of [[2, 'shareFile'], [undefined, 'shareText']]) {
   assert.ok(page.posted.some(m => m.action === 'shareFile'), 'failed send: share sheet');
 }
 
-console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export; send to iOSVN — passed');
+// iPhone XS Max (iPhone11,6, iOS 18.7), IPA — shape of a real report, serials
+// replaced. Replacement battery: chip silent (16) and 104.8% after 472 cycles.
+// The camera driver reports the TrueDepth dot projector (RomeoStatus).
+const xsMax = {
+  biometrics: { part: 'face_id', state: 'ok' },
+  cameras: [
+    { module: 'back', serial: 'DNL00000000000001', expected: true, node: 'AppleH10CamIn' },
+    { module: 'back_tele', serial: 'DNL00000000000002', expected: true, node: 'AppleH10CamIn' },
+    { module: 'front', serial: 'DNM00000000000003', expected: true, node: 'AppleH10CamIn' },
+    { module: 'front_ir', serial: 'FX800000000000004', expected: true, node: 'AppleH10CamIn' },
+    { module: 'front_ir_structured_light', serial: 'DN800000000000005', expected: true, node: 'AppleH10CamIn' }],
+  components: [{ nodes: 7, part: 'face_id' }, { nodes: 3, part: 'camera' }],
+  display: {},
+  battery: { serial: 'B0400000000000000', auth: { trustedEnabled: false, coprocError: 16, commError: 16, driver: true },
+    fullChargeCapacity: 3307, nominalChargeCapacity: 3307, designCapacity: 3156, healthPercent: 104.8,
+    settingsHealthPercent: 104, cycleCount: 472 },
+  raw: [
+    { name: 'AppleBatteryAuth', props: { CommunicationError: '16', CoProcError: '16', TrustedBatteryEnabled: '0' } },
+    { name: 'camera: AppleH10CamIn', props: { RomeoStatus: 'Valid', IOClass: 'AppleH10CamIn' } }]
+};
+{
+  const page = load('iPhone11,6', false);
+  page.context.onNativeHardwareReport(xsMax);
+  const overview = vm.runInContext('PartsHistory', page.context).partsOverview(xsMax, [], 'iPhone11,6', []);
+  const status = Object.fromEntries(overview.map(item => [item.part, item.status]));
+  assert.equal(status.face_id, 'working');
+  assert.equal(status.battery, 'nongenuine');
+  const exported = vm.runInContext('partsExportText', page.context)();
+  assert.ok(exported.includes('Máy chiếu điểm (iOS kiểm tra): Valid'), exported.slice(0, 900));
+  assert.ok(exported.includes('dung lượng đo 104.8% sau 472 chu kỳ'), exported.slice(0, 900));
+  assert.ok(exported.includes('không phản hồi (mã 16)'), exported.slice(0, 900));
+}
+{
+  const broken = JSON.parse(JSON.stringify(xsMax));
+  broken.raw[1].props.RomeoStatus = 'Invalid';
+  r = render('iPhone11,6', broken);
+  assert.equal(r.status.face_id, 'projector_fault');
+  assert.ok(r.rows.some(row => row.includes('máy chiếu điểm TrueDepth: Invalid')), r.rows.join('\n'));
+}
+
+console.log('Parts tab: iPhone XS, XS Max, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export; send to iOSVN — passed');

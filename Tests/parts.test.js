@@ -200,6 +200,17 @@ const camMerged = PartsHistory.mergeHardwareReport({ cameras: cams.cameras }, { 
 assert.equal(camMerged.cameras.length, 3);
 assert.equal(camMerged.cameraSerials.length, 3);
 
+// Máy chiếu điểm TrueDepth (RomeoStatus của driver camera): "Valid" là bình
+// thường, giá trị khác là cần kiểm tra — trước cả trạng thái Face ID tắt.
+const romeoRaw = value => ({ biometrics: { part: 'face_id', state: 'not_available' },
+  raw: [{ name: 'camera: AppleH10CamIn', props: { RomeoStatus: value } }] });
+assert.equal(PartsHistory.romeoStatus(romeoRaw('Valid')), 'Valid');
+assert.deepEqual(PartsHistory.fromHardware(romeoRaw('Valid')).map(f => f.status), ['unavailable']);
+const romeoBad = PartsHistory.fromHardware(romeoRaw('Invalid'));
+assert.deepEqual(romeoBad.map(({ part, status, value }) => [part, status, value]), [['face_id', 'projector_fault', 'Invalid']]);
+assert.ok(PartsHistory.isAlert('projector_fault'));
+assert.equal(PartsHistory.romeoStatus({}), '');
+
 // Không còn API đọc ảnh/OCR.
 assert.equal(typeof PartsHistory.fromSettings, 'undefined');
 

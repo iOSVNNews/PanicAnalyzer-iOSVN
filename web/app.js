@@ -1021,6 +1021,7 @@ function overviewText(item) {
   const camera = PartsHistory.cameraCheck(hardwareReport, item.part);
   if ((item.status === 'serial_match' || item.status === 'validated') && camera && camera.current) text += ` · ${camera.current}`;
   if (item.status === 'validation_fail') text = t('parts.status.validation_fail', { v: item.value || '' });
+  if (item.status === 'projector_fault') text = t('parts.status.projector_fault', { v: item.value || '' });
   if (item.status === 'serial_mismatch' && camera && camera.factory && camera.current) {
     text = t('parts.cam.mismatch', { f: camera.factory, c: camera.current });
   }
@@ -1043,12 +1044,13 @@ function overviewText(item) {
 // sau nhận ra module nào đổi (camera chính đã nằm ở dòng trên).
 function cameraFacts(part) {
   const main = { rear_camera: 'rear_main', front_camera: 'front' }[part];
-  return PartsHistory.cameraModules(hardwareReport)
+  const romeo = part === 'face_id' ? PartsHistory.romeoStatus(hardwareReport) : '';
+  return (romeo ? [t('parts.faceid.romeo', { v: romeo })] : []).concat(PartsHistory.cameraModules(hardwareReport)
     .filter(entry => entry.part === part && entry.module !== main && entry.current)
     .map(entry => `${t('parts.cam.' + entry.module)}: ${entry.current}`)
     .concat(PartsHistory.cameraModules(hardwareReport)
       .filter(entry => entry.part === part && entry.sourcesAgree === false)
-      .map(entry => t('parts.cam.sourcesDiffer', { m: t('parts.cam.' + entry.module), a: entry.ioreg, b: entry.gestalt })));
+      .map(entry => t('parts.cam.sourcesDiffer', { m: t('parts.cam.' + entry.module), a: entry.ioreg, b: entry.gestalt }))));
 }
 
 function batteryFacts(battery) {
@@ -1082,6 +1084,8 @@ function hardwareSummaryText() {
     if (item.part === 'battery') {
       const facts = batteryFacts(hardwareReport.battery || {});
       if (facts.length) lines.push('   ' + facts.join(' · '));
+      const clue = PartsHistory.capacityClue(hardwareReport.battery);
+      if (clue) lines.push('   ' + t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }));
     }
     if (['rear_camera', 'front_camera', 'face_id'].includes(item.part)) {
       const facts = cameraFacts(item.part);

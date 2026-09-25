@@ -207,6 +207,18 @@ const PartsHistory = (() => {
     return module ? cameraModules(report).find(entry => entry.module === module) || null : null;
   }
 
+  // TrueDepth: driver camera (AppleH1xCamIn) công bố "RomeoStatus" — trạng
+  // thái máy chiếu điểm (Romeo) sau khi đọc dữ liệu hiệu chuẩn của module.
+  // Máy Face ID bình thường báo "Valid"; giá trị khác là dấu hiệu máy chiếu
+  // điểm hỏng hoặc đã bị thay (Face ID thường báo không khả dụng).
+  function romeoStatus(report) {
+    for (const entry of Array.isArray(report && report.raw) ? report.raw : []) {
+      const value = entry && entry.props && entry.props.RomeoStatus;
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return '';
+  }
+
   // iOS không chạy kiểm tra "trusted battery" trên đời máy này (iPhone 14…):
   // AppleBatteryAuth có TrustedBatteryEnabled = 0 nên không bao giờ có cờ pass.
   // Bản native cũ chỉ gửi giá trị này trong dữ liệu thô.
@@ -277,6 +289,10 @@ const PartsHistory = (() => {
       if (findings.some(f => f.part === item.part)) continue;
       findings.push({ part: item.part, status: item.authPassed ? 'genuine' : 'authfail',
         source: 'hardware', path: String(item.path || '') });
+    }
+    const romeo = romeoStatus(report);
+    if (romeo && !/^valid$/i.test(romeo) && !findings.some(f => f.part === 'face_id')) {
+      findings.push({ part: 'face_id', status: 'projector_fault', source: 'hardware', value: romeo });
     }
     // Face ID / Touch ID: iOS tắt khi cảm biến hỏng hoặc không khớp máy.
     const bio = report.biometrics || {};
@@ -354,7 +370,7 @@ const PartsHistory = (() => {
   // ---- Tổng quan toàn bộ linh kiện + phát hiện thay thế ----------------------
   // Trạng thái cần báo cho người dùng (thông báo iOS + băng cảnh báo).
   const ALERT = new Set(['authfail', 'nongenuine', 'replaced', 'unavailable', 'auth_error', 'changed', 'validation_fail',
-    'serial_mismatch',
+    'serial_mismatch', 'projector_fault',
     'unknown', 'serial_mismatch', 'used', 'finish_repair', 'unverified']);
   const isAlert = status => ALERT.has(status);
 
@@ -437,7 +453,7 @@ const PartsHistory = (() => {
 
   return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport,
     isAlert, expectedParts, partIdentities, changedParts, partsOverview, sameSerial, cameraModules, cameraCheck,
-    cameraValidation, batteryTrustedOff, displaySerial, displaySerialCheck, CAMERA_PART };
+    cameraValidation, batteryTrustedOff, displaySerial, displaySerialCheck, romeoStatus, CAMERA_PART };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;
