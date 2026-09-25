@@ -18,9 +18,10 @@ final class WebUpdater {
 
     static let shared = WebUpdater()
 
-    /// Native bridge level of this app. Bump when the page starts relying on
-    /// a new native action; web builds asking for more wait for the app update.
-    static let nativeApi = 1
+    /// Native bridge level of this app (window.__NATIVE_API__). Web builds
+    /// that require more (manifest "nativeApi") wait for the app update.
+    /// 2: "shareFile" (reports as .txt files).
+    static let nativeApi = 2
 
     private let baseURL = "https://raw.githubusercontent.com/iOSVNNews/PanicAnalyzer-iOSVN/main/"
     private let allowedFiles: Set<String> = ["index.html", "app.js", "parts.js", "i18n.js", "app.css"]

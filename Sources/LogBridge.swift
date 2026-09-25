@@ -387,6 +387,7 @@ final class LogBridge: NSObject {
         parts.append("window.__APP_VERSION__ = \"\(appVersion)\";")
         parts.append("window.__APP_LANG__ = \"\(Loc.lang)\";")
         parts.append("window.__WEB_BUILD__ = \(WebUpdater.shared.currentBuild);")
+        parts.append("window.__NATIVE_API__ = \(WebUpdater.nativeApi);")
         parts.append("window.__WEB_UPDATE_PENDING__ = \(WebUpdater.shared.hasPending ? "true" : "false");")
         parts.append("window.__PRIVILEGED__ = \(isPrivilegedBuild ? "true" : "false");")
         let crashes = CrashCatcher.shared.reports()
@@ -911,6 +912,33 @@ final class LogBridge: NSObject {
 
     // MARK: - Chia sẻ báo cáo
 
+    /// Writes `text` to a .txt file and opens the share sheet with it (Save to
+    /// Files, Telegram, Zalo, AirDrop…): long reports stay whole and readable.
+    func shareFile(name: String, text: String) {
+        guard !text.isEmpty else { return }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        var base = String(name.unicodeScalars.filter { allowed.contains($0) && $0.isASCII }.map(Character.init))
+        if base.isEmpty { base = "PanicAnalyzer" }
+        if !base.lowercased().hasSuffix(".txt") { base += ".txt" }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
+        // Only the file being shared is kept.
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(String(base.suffix(120)))
+        guard (try? Data(text.utf8).write(to: url, options: .atomic)) != nil else {
+            share(text)
+            return
+        }
+        DispatchQueue.main.async {
+            let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            if let pop = vc.popoverPresentationController, let host = self.topViewController()?.view {
+                pop.sourceView = host
+                pop.sourceRect = CGRect(x: host.bounds.midX, y: host.bounds.midY, width: 0, height: 0)
+            }
+            self.topViewController()?.present(vc, animated: true)
+        }
+    }
+
     func share(_ text: String) {
         guard !text.isEmpty else { return }
         let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
@@ -987,6 +1015,7 @@ extension LogBridge: WKScriptMessageHandler {
         case "cancelPairing": PairingLogService.shared.cancelPairing()
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
+        case "shareFile":    shareFile(name: body["name"] as? String ?? "", text: body["text"] as? String ?? "")
         case "notifyParts":  PartsNotifier.shared.post(title: body["title"] as? String ?? "",
                                                        body: body["body"] as? String ?? "")
         case "refreshRules": refreshRules()

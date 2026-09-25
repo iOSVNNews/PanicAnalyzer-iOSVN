@@ -148,4 +148,32 @@ assert.ok(r.rows.some(row => row.includes('Đã thay') && row.includes('DN800000
 render('iPhone14,7', { errors: ['D1 diagnostics_relay: timeout'] });
 render('iPhone14,7', {});
 
-console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max — passed');
+// Export to .txt: file on app builds with shareFile, text on older ones.
+for (const [api, action] of [[2, 'shareFile'], [undefined, 'shareText']]) {
+  const page = load('iPhone15,3', false);
+  page.context.__NATIVE_API__ = api;
+  page.context.__APP_VERSION__ = '2.9';
+  page.context.onNativeHardwareReport(iphone14);
+  const button = page.host.children.find(node => node.tag === 'button');
+  button.onclick();
+  const sent = page.posted.find(m => m.action === action);
+  assert.ok(sent, `export uses ${action}`);
+  assert.ok(sent.text.includes('Camera sau: Chính hãng') && sent.text.includes('"cameraValidation"'), sent.text.slice(0, 400));
+  if (action === 'shareFile') assert.ok(/^PanicAnalyzer-linh-kien-iPhone15,3-\d{8}-\d{4}\.txt$/.test(sent.name), sent.name);
+}
+{
+  const page = load('iPhone15,3', false);
+  page.context.__NATIVE_API__ = 2;
+  vm.runInContext('ruleDatabases.panic_rules = []', page.context);
+  const log = JSON.stringify({ bug_type: '309', app_name: 'Zalo', timestamp: '2026-09-20 10:15:30.00 +0700' })
+    + '\n' + JSON.stringify({ procName: 'Zalo', exception: { type: 'EXC_BAD_ACCESS', signal: 'SIGSEGV' },
+      note: 'id 12345678-1234-1234-1234-123456789abc' });
+  vm.runInContext('parseAndIngestLogs', page.context)([{ name: 'Zalo-2026-09-20-101530.ips', content: log }]);
+  vm.runInContext('exportAllData', page.context)();
+  const sent = page.posted.find(m => m.action === 'shareFile');
+  assert.ok(sent && /PanicAnalyzer-toan-bo-/.test(sent.name));
+  assert.ok(sent.text.includes('Zalo bị crash') && sent.text.includes('Zalo-2026-09-20-101530.ips'), sent.text.slice(0, 600));
+  assert.ok(sent.text.includes('<UUID>') && !sent.text.includes('12345678-1234-1234-1234-123456789abc'));
+}
+
+console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export — passed');

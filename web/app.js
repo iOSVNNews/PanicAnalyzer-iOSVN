@@ -31,6 +31,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setActiveTab('panic');
   updatePartsPairingRequirement();
   renderPartsScanSummary();
+  // Nhãn phiên bản ở đầu trang lấy từ app đang cài, không ghi cứng.
+  const badge = document.querySelector('.version-badge');
+  if (badge && window.__APP_VERSION__) badge.textContent = `v${window.__APP_VERSION__} Pro`;
   const settingsVersion = document.getElementById('settingsVersion');
   if (settingsVersion) settingsVersion.textContent = (window.__APP_VERSION__
     || document.querySelector('.version-badge')?.textContent?.replace(/^v| Pro$/g, '') || '')
@@ -1060,31 +1063,42 @@ function batteryFacts(battery) {
 
 // Dữ liệu thô của các node xác thực: không hiện trong app (tên node dài, chỉ
 // dành cho iOSVN), chỉ giữ nút gửi để nhận diện đời máy mới.
+// Toàn bộ báo cáo phần cứng (kể cả dữ liệu thô của các node) — để iOSVN nhận
+// diện đời máy mới.
+function hardwarePayload() {
+  const report = hardwareReport || {};
+  return Object.assign({
+    app: window.__APP_VERSION__ || '', web: window.__WEB_BUILD__ || 0, model: window.__DEVICE_MODEL__ || '',
+    ios: window.__IOS_VERSION__ || '', privileged: !!window.__PRIVILEGED__
+  }, report);
+}
+
+// Bảng linh kiện dạng chữ, giống tab Linh kiện.
+function hardwareSummaryText() {
+  if (!hardwareReport) return t('export.none') + '\n';
+  const lines = [];
+  for (const item of PartsHistory.partsOverview(hardwareReport, logPartSignals, window.__DEVICE_MODEL__, changedPartsNow)) {
+    lines.push(`${t('parts.part.' + item.part)}: ${overviewText(item)}`);
+    if (item.part === 'battery') {
+      const facts = batteryFacts(hardwareReport.battery || {});
+      if (facts.length) lines.push('   ' + facts.join(' · '));
+    }
+    if (['rear_camera', 'front_camera', 'face_id'].includes(item.part)) {
+      const facts = cameraFacts(item.part);
+      if (facts.length) lines.push('   ' + facts.join(' · '));
+    }
+  }
+  for (const error of hardwareReport.errors || []) lines.push(t('parts.hw.error', { e: error }));
+  return lines.join('\n') + '\n';
+}
+
 function renderHardwareRaw(host, paragraph, addRow) {
-  const raw = Array.isArray(hardwareReport.raw) ? hardwareReport.raw : [];
-  const probe = hardwareReport.probe || {};
   const button = document.createElement('button');
   button.className = 'action-btn secondary';
   button.textContent = t('parts.hw.rawShare');
-  button.onclick = () => {
-    const payload = {
-      app: window.__APP_VERSION__ || '', model: window.__DEVICE_MODEL__ || '',
-      ios: window.__IOS_VERSION__ || '', display: hardwareReport.display || {},
-      battery: hardwareReport.battery || {}, parts: hardwareReport.parts || [],
-      components: hardwareReport.components || [], biometrics: hardwareReport.biometrics || {},
-      syscfg: hardwareReport.syscfg || [], cameras: hardwareReport.cameras || [],
-      cameraSerials: hardwareReport.cameraSerials || [], syscfgSource: hardwareReport.syscfgSource || '',
-      syscfgKeys: hardwareReport.syscfgKeys || [],
-      cameraValidation: hardwareReport.cameraValidation || {}, web: window.__WEB_BUILD__ || 0, probe, raw,
-      errors: hardwareReport.errors || []
-    };
-    const text = JSON.stringify(payload, null, 1);
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-      window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'shareText', text });
-    } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
-  };
+  button.onclick = () => exportTextFile('linh-kien', exportHeader(t('export.partsTitle'))
+    + `\n=== ${t('export.parts')} ===\n` + hardwareSummaryText()
+    + `\n=== ${t('export.raw')} ===\n` + JSON.stringify(hardwarePayload(), null, 2) + '\n');
   host.appendChild(button);
 }
 
@@ -1421,28 +1435,9 @@ function exportSanitizedReport() {
   if (times) report += ` - ${t('r.allTimes')}:\n${times}\n`;
   report += `\n`;
   report += `${t('r.advice')}\n${g.repairAdvice}\n\n`;
-  report += `${t('r.raw')}\n`;
-  
-  // Sanitize raw text
-  // Crash của chính PanicAnalyzer: iOSVN cần cả file để tìm lỗi.
-  let safeRaw = rec.ownCrash ? rec.rawText.slice(0, 200000) : (rec.panicString || rec.rawText.substring(0, 800));
-  safeRaw = safeRaw.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '<UUID>');
-  report += safeRaw;
-
-  // If in native iOS, trigger UIActivityViewController
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    window.webkit.messageHandlers.nativeBridge.postMessage({
-      action: 'shareText',
-      text: report
-    });
-  } else {
-    // Web copy to clipboard or download file
-    navigator.clipboard.writeText(report).then(() => {
-      alert(t('r.copied'));
-    }).catch(() => {
-      alert(t('r.report') + "\n\n" + report);
-    });
-  }
+  // File .txt: kèm nguyên văn mọi lần xảy ra (UUID được che).
+  report += `=== ${t('export.logs')} ===\n` + fullLogsText(sortedOccurrences(g));
+  exportTextFile('log', report);
 }
 
 // ---------------------------------------------------------------------------
@@ -1815,6 +1810,74 @@ window.onWebUpdateReady = function (build) {
   document.body.appendChild(el);
 };
 
+// ---- Xuất file .txt -------------------------------------------------------
+const EXPORT_LIMIT_BYTES = 20 * 1024 * 1024;
+const UUID_PATTERN = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+
+function exportStamp() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${window.__DEVICE_MODEL__ || 'iPhone'}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function exportHeader(title) {
+  return [
+    `PanicAnalyzer — ${title}`,
+    `${t('export.app')}: ${window.__APP_VERSION__ || '?'} · web ${window.__WEB_BUILD__ || 0}`
+      + ` · ${window.__PRIVILEGED__ ? 'TrollStore/JB' : 'IPA'}`,
+    `${t('export.device')}: ${window.__DEVICE_MODEL__ || '?'} · iOS ${window.__IOS_VERSION__ || '?'}`,
+    `${t('r.exported')}: ${new Date().toLocaleString(dateLocale())}`
+  ].join('\n') + '\n';
+}
+
+// Nguyên văn các log (UUID được che), dừng ở giới hạn dung lượng.
+function fullLogsText(records) {
+  let out = '';
+  let size = 0;
+  const list = Array.isArray(records) ? records : [];
+  for (let i = 0; i < list.length; i++) {
+    const rec = list[i];
+    const raw = String(rec.rawText || '').replace(UUID_PATTERN, '<UUID>');
+    const block = `\n--- ${i + 1}/${list.length} · ${rec.filename || ''} · ${formatLogTime(rec.timestampMs)} ---\n${raw}\n`;
+    if (size + block.length > EXPORT_LIMIT_BYTES) {
+      out += `\n${t('export.truncated', { n: list.length - i, mb: EXPORT_LIMIT_BYTES / 1048576 })}\n`;
+      break;
+    }
+    out += block;
+    size += block.length;
+  }
+  return out || t('export.none') + '\n';
+}
+
+// Mở bảng chia sẻ với file .txt (bản app mới); bản cũ chia sẻ dạng chữ.
+function exportTextFile(kind, text) {
+  const name = `PanicAnalyzer-${kind}-${exportStamp()}.txt`;
+  if (Number(window.__NATIVE_API__ || 1) >= 2 && postNative({ action: 'shareFile', name, text })) return;
+  if (postNative({ action: 'shareText', text })) return;
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => showToast(t('r.copied'), 2500)).catch(() => {});
+}
+
+// Mọi thứ app đang có: máy, linh kiện, kết quả phân tích, nguyên văn log.
+function exportAllData() {
+  let text = exportHeader(t('export.allTitle'));
+  text += `\n=== ${t('export.parts')} ===\n` + hardwareSummaryText();
+  text += `\n=== ${t('export.incidents')} (${incidentGroups.length}) ===\n`;
+  if (!incidentGroups.length) text += t('export.none') + '\n';
+  for (const g of incidentGroups) {
+    const rec = g.latestRecord || {};
+    text += `\n• [${t('sev.' + g.severity)}] ${g.title}\n`
+      + `  ${t('r.suspect')}: ${g.suspectedComponent} · ${t('r.conf')}: ${confLabel(g.confidence)} · ${t('r.times', { n: g.count })}\n`
+      + `  ${t('r.latest')}: ${formatLogTime(rec.timestampMs)} · ${rec.filename || ''}\n`;
+    if (rec.appCrash) text += `  ${t('crash.reason')} ${crashReason(rec.appCrash)}\n`;
+  }
+  const crashes = Array.isArray(window.__APP_CRASHES__) ? window.__APP_CRASHES__ : [];
+  if (crashes.length) text += `\n=== ${t('export.ownCrashes')} ===\n` + appCrashReport(crashes);
+  text += `\n=== ${t('export.raw')} ===\n` + JSON.stringify(hardwarePayload(), null, 2) + '\n';
+  const records = diagnosticRecords.slice().sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
+  text += `\n=== ${t('export.logs')} (${records.length}) ===\n` + fullLogsText(records);
+  exportTextFile('toan-bo', text);
+}
+
 function postNative(message) {
   const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge;
   if (!bridge) return false;
@@ -1844,7 +1907,7 @@ function showAppCrashes() {
   send.className = 'link-btn';
   send.textContent = t('crash.send');
   send.onclick = () => {
-    postNative({ action: 'shareText', text: appCrashReport(crashes) });
+    exportTextFile('crash', appCrashReport(crashes));
     postNative({ action: 'clearAppCrashes' });
     el.remove();
   };
