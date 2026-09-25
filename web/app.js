@@ -1887,8 +1887,7 @@ function allDataText() {
 }
 
 // ---- Gửi thẳng cho iOSVN qua Telegram ----------------------------------------
-// App gửi file lên máy chủ trung gian (server/report-lambda, giữ token bot),
-// máy chủ chuyển vào Telegram của iOSVN. Chưa có máy chủ hoặc bản app cũ:
+// App gửi file lên máy chủ của iOSVN, máy chủ chuyển vào Telegram của iOSVN. Chưa có máy chủ hoặc bản app cũ:
 // mở bảng chia sẻ file như nút Xuất.
 const REPORT_URL = '';
 const REPORT_CONTACT_KEY = 'panic.reportContact';

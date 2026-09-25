@@ -939,8 +939,8 @@ final class LogBridge: NSObject {
         }
     }
 
-    /// Sends a report straight to iOSVN's Telegram through the report relay
-    /// (server/report-lambda: it holds the bot token, the app never does).
+    /// Sends a report straight to iOSVN through iOSVN's report server (the app
+    /// holds no credentials).
     /// The text is compressed (raw DEFLATE); the page gets
     /// window.onReportSent({ok, error}) and falls back to the share sheet.
     func sendReport(_ body: [String: Any]) {
@@ -951,10 +951,9 @@ final class LogBridge: NSObject {
                 self?.webView?.evaluateJavaScript("window.onReportSent && window.onReportSent(\(result))")
             }
         }
-        // Only HTTPS relays of iOSVN's own services.
-        let hosts = [".on.aws", ".amazonaws.com", "iosvn.com.vn", ".workers.dev", ".sslip.io"]
+        // Only iOSVN's own HTTPS server.
         guard let url = URL(string: body["url"] as? String ?? ""), url.scheme == "https",
-              let host = url.host?.lowercased(), hosts.contains(where: { host == $0 || host.hasSuffix($0) }),
+              let host = url.host?.lowercased(), host == "iosvn.com.vn" || host.hasSuffix(".iosvn.com.vn"),
               let text = body["text"] as? String, !text.isEmpty else {
             return finish(false, "config")
         }
@@ -962,7 +961,7 @@ final class LogBridge: NSObject {
             let raw = Data(text.utf8)
             let compressed = (try? (raw as NSData).compressed(using: .zlib)) as Data?
             let payloadData = compressed ?? raw
-            // The relay (Lambda Function URL) accepts about 6 MB per request.
+            // Keep requests small (the server accepts a few MB).
             guard payloadData.count < 4_300_000 else { return finish(false, "too_large") }
             var payload: [String: Any] = [
                 "name": body["name"] as? String ?? "PanicAnalyzer.txt",
