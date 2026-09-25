@@ -10,7 +10,9 @@ function element(tag) {
   return {
     tag, style: {}, children: [], className: '', textContent: '', innerHTML: '', dataset: {},
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
-    replaceChildren() { this.children = []; }, remove() {}, classList: { add() {}, remove() {} }
+    replaceChildren() { this.children = []; }, remove() {}, classList: { add() {}, remove() {} },
+    querySelector(sel) { this.q = this.q || {}; return (this.q[sel] = this.q[sel] || element(sel)); },
+    querySelectorAll() { return []; }
   };
 }
 
@@ -176,15 +178,30 @@ for (const [api, action] of [[2, 'shareFile'], [undefined, 'shareText']]) {
   assert.ok(sent.text.includes('<UUID>') && !sent.text.includes('12345678-1234-1234-1234-123456789abc'));
 }
 
-// Send to iOSVN: without a relay URL (or on older builds) it falls back to the
-// share sheet; with one, the dialog posts sendReport and handles the answer.
+// Send to iOSVN: older builds (no sendReport) open the share sheet; newer
+// ones show the dialog, post sendReport and fall back if sending fails.
+{
+  const page = load('iPhone15,3', false);
+  page.context.__NATIVE_API__ = 2;
+  page.context.onNativeHardwareReport(iphone14);
+  vm.runInContext('sendToIosvn', page.context)('linh-kien', vm.runInContext('partsExportText', page.context));
+  assert.ok(page.posted.some(m => m.action === 'shareFile'), 'older build: share sheet');
+  assert.ok(vm.runInContext('allDataText', page.context)().startsWith('PanicAnalyzer'), 'server accepts the file');
+}
 {
   const page = load('iPhone15,3', false);
   page.context.__NATIVE_API__ = 3;
   page.context.onNativeHardwareReport(iphone14);
   vm.runInContext('sendToIosvn', page.context)('linh-kien', vm.runInContext('partsExportText', page.context));
-  assert.ok(page.posted.some(m => m.action === 'shareFile'), 'no relay URL yet: share sheet');
-  assert.ok(vm.runInContext('allDataText', page.context)().startsWith('PanicAnalyzer'), 'relay accepts the file');
+  const dialog = page.context.document.body.children.find(node => node.id === 'reportDialog');
+  assert.ok(dialog, 'dialog shown');
+  dialog.querySelector('#reportNote').value = 'Máy vào nước';
+  dialog.querySelector('#reportSend').onclick();
+  const sent = page.posted.find(m => m.action === 'sendReport');
+  assert.ok(sent && sent.url === 'https://report.iosvn.com.vn/report.php' && sent.note === 'Máy vào nước');
+  assert.ok(sent.text.startsWith('PanicAnalyzer') && sent.meta.model === 'iPhone15,3');
+  page.context.onReportSent({ ok: false, error: 'network' });
+  assert.ok(page.posted.some(m => m.action === 'shareFile'), 'failed send: share sheet');
 }
 
-console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export; send fallback — passed');
+console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export; send to iOSVN — passed');
