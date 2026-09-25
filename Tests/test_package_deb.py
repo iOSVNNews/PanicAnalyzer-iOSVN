@@ -41,15 +41,14 @@ def main():
         }))
         (app / "PanicAnalyzer").write_bytes(b"signed-arm64-fixture")
         (app / "PanicAnalyzer").chmod(0o755)
-        for rootless, expected_arch, expected_path in [
-            (True, "iphoneos-arm64", "var/jb/Applications/PanicAnalyzer.app"),
-            (False, "iphoneos-arm", "Applications/PanicAnalyzer.app"),
+        for flags, expected_arch, expected_path in [
+            (["--rootless"], "iphoneos-arm64", "var/jb/Applications/PanicAnalyzer.app"),
+            ([], "iphoneos-arm", "Applications/PanicAnalyzer.app"),
+            (["--scheme", "roothide"], "iphoneos-arm64e", "Applications/PanicAnalyzer.app"),
         ]:
-            package = workspace / ("rootless.deb" if rootless else "rootful.deb")
+            package = workspace / (expected_arch + ".deb")
             command = [sys.executable, str(ROOT / "scripts/package_deb.py"),
-                       "--app", str(app), "--output", str(package)]
-            if rootless:
-                command.append("--rootless")
+                       "--app", str(app), "--output", str(package)] + flags
             subprocess.run(command, check=True)
             members = read_ar(package)
             assert list(members) == ["debian-binary", "control.tar.gz", "data.tar.gz"]
@@ -63,7 +62,7 @@ def main():
                 binary = tar.getmember(expected_path + "/PanicAnalyzer")
                 assert binary.mode & 0o111
                 assert tar.extractfile(binary).read() == b"signed-arm64-fixture"
-    print("DEB: rootless/rootful metadata, app paths and executable passed")
+    print("DEB: rootless/rootful/roothide metadata, app paths and executable passed")
 
 
 if __name__ == "__main__":

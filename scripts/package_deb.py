@@ -10,6 +10,13 @@ import tarfile
 
 PACKAGE = "com.iosvn.panicanalyzer"
 
+# scheme: (install prefix, dpkg architecture)
+SCHEMES = {
+    "rootful": ("", "iphoneos-arm"),
+    "rootless": ("/var/jb", "iphoneos-arm64"),
+    "roothide": ("", "iphoneos-arm64e"),
+}
+
 
 def tar_member(name, data, mode):
     info = tarfile.TarInfo(name)
@@ -84,8 +91,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
-    parser.add_argument("--rootless", action="store_true")
+    parser.add_argument("--rootless", action="store_true", help="same as --scheme rootless")
+    # roothide keeps jailbreak files in a random jbroot under
+    # /var/containers/Bundle/Application/.jbroot-…; its packages use the
+    # rootful layout (/Applications, resolved inside jbroot) and arm64e.
+    # Shipping our own keeps the app's entitlements: RootHide Patcher re-signs
+    # converted packages with com.apple.private.security.no-sandbox, and an
+    # unsandboxed host kills WebKit's WebContent process (blank interface).
+    parser.add_argument("--scheme", choices=sorted(SCHEMES), default=None)
     args = parser.parse_args()
+    scheme = args.scheme or ("rootless" if args.rootless else "rootful")
     app = args.app.resolve(strict=True)
     if not app.is_dir() or app.suffix != ".app":
         parser.error("--app must be a built iOS .app bundle")
@@ -96,8 +111,8 @@ def main():
     executable_name = info["CFBundleExecutable"]
     if not (app / executable_name).is_file():
         parser.error("app main executable is missing")
-    install_path = f"{'/var/jb' if args.rootless else ''}/Applications/{app.name}"
-    architecture = "iphoneos-arm64" if args.rootless else "iphoneos-arm"
+    prefix, architecture = SCHEMES[scheme]
+    install_path = f"{prefix}/Applications/{app.name}"
     members = (
         ("debian-binary", b"2.0\n"),
         ("control.tar.gz", control_archive(version, architecture, install_path)),
@@ -108,7 +123,7 @@ def main():
         output.write(b"!<arch>\n")
         for name, data in members:
             write_ar_member(output, name, data)
-    print(f"Created {args.output} ({architecture}, {version}, {install_path})")
+    print(f"Created {args.output} ({scheme}, {architecture}, {version}, {install_path})")
 
 
 if __name__ == "__main__":

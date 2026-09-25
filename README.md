@@ -13,8 +13,16 @@ Latest builds are on the [Releases page](../../releases/latest).
 | [PanicAnalyzer-TrollStore.tipa](../../releases/latest/download/PanicAnalyzer-TrollStore.tipa) | TrollStore |
 | [PanicAnalyzer-rootless.deb](../../releases/latest/download/PanicAnalyzer-rootless.deb) | Sileo/Zebra, rootless jailbreak |
 | [PanicAnalyzer-rootful.deb](../../releases/latest/download/PanicAnalyzer-rootful.deb) | Sileo/Zebra, rootful jailbreak |
+| [PanicAnalyzer-roothide.deb](../../releases/latest/download/PanicAnalyzer-roothide.deb) | Sileo/Zebra, roothide (Bootstrap, Dopamine roothide) |
 
 Remove any IPA install with the same bundle ID before installing the TIPA or DEB.
+On roothide install `PanicAnalyzer-roothide.deb` as is: converting the rootless
+package with RootHide Patcher turns the app's sandbox off and the interface
+(WebKit) cannot start.
+
+The IPA and TIPA change only with a new app version. Fixes in between reach
+them as interface updates; native fixes for jailbreaks replace only the .deb
+files, under the same version and build number.
 
 ## Features
 

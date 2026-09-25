@@ -3,8 +3,20 @@ name: Build unsigned IPA
 # Builds the installers only when native code changes. Interface fixes
 # (web/) and diagnostic data (assets/) reach installed apps on their own:
 # see web-update.yml and LogBridge.refreshRules.
+#
+# The IPA and TrollStore .tipa are published only when the app version
+# (CFBundleShortVersionString in project.yml) changes. Any other native
+# change is a general patch: only the jailbreak .deb packages are rebuilt and
+# replaced in the latest release, under the IPA's version and build number,
+# so IPA users are not asked to update.
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'auto: IPA only when the version changes · jailbreak: .deb only · all: everything'
+        type: choice
+        options: [auto, jailbreak, all]
+        default: auto
   push:
     branches: [main]
     paths-ignore:
@@ -29,6 +41,33 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # the interface build number counts web/ commits
+
+      - name: Choose what to publish
+        env:
+          REQUESTED: ${{ github.event.inputs.publish || 'auto' }}
+        run: |
+          read -r NEW OLD OLD_BUILD <<< "$(python3 - <<'PY'
+          import json, re
+          new = re.search(r"CFBundleShortVersionString:\s*'?([^'\s]+)", open('project.yml').read()).group(1)
+          try:
+              recorded = json.load(open('assets/app_version.json'))
+          except (OSError, ValueError):
+              recorded = {}
+          print(new, recorded.get('version') or '-', recorded.get('build') or '0')
+          PY
+          )"
+          MODE="$REQUESTED"
+          if [ "$MODE" = auto ]; then
+            if [ "$NEW" != "$OLD" ]; then MODE=all; else MODE=jailbreak; fi
+          fi
+          if [ "$MODE" = jailbreak ] && [ "$NEW" != "$OLD" ]; then
+            echo "::error::version $NEW is not released yet (latest IPA is $OLD); publish all"
+            exit 1
+          fi
+          if [ "$MODE" = jailbreak ]; then BUILD="$OLD_BUILD"; else BUILD="$GITHUB_RUN_NUMBER"; fi
+          echo "version $NEW (released: $OLD build $OLD_BUILD) -> publish $MODE, build number $BUILD"
+          echo "PUBLISH=$MODE" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD" >> "$GITHUB_ENV"
 
       - name: Select latest Xcode
         run: |
@@ -79,7 +118,7 @@ jobs:
           cat > assets/app_version.json <<EOF
           {
             "version": "$APP_VERSION",
-            "build": "${GITHUB_RUN_NUMBER}",
+            "build": "${BUILD_NUMBER}",
             "commit": "${GITHUB_SHA::7}",
             "rules": $RULES,
             "url": "https://github.com/${GITHUB_REPOSITORY}/releases/latest",
@@ -88,7 +127,7 @@ jobs:
           EOF
           cat assets/app_version.json
           echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
-          echo "APP_BUILD=${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+          echo "APP_BUILD=${BUILD_NUMBER}" >> $GITHUB_ENV
           # Interface build inside the installer; newer ones are downloaded.
           python3 scripts/web_manifest.py
 
@@ -102,7 +141,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
-            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            CURRENT_PROJECT_VERSION="${BUILD_NUMBER}" \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
             ENABLE_BITCODE=NO \
             clean build > build.log 2>&1
@@ -159,7 +198,9 @@ jobs:
             --rootless --output PanicAnalyzer-rootless.deb
           python3 scripts/package_deb.py --app "$SIGNED_APP" \
             --output PanicAnalyzer-rootful.deb
-          python3 - PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb <<'PY'
+          python3 scripts/package_deb.py --app "$SIGNED_APP" \
+            --scheme roothide --output PanicAnalyzer-roothide.deb
+          python3 - PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb PanicAnalyzer-roothide.deb <<'PY'
           from pathlib import Path
           import sys
 
@@ -187,6 +228,7 @@ jobs:
             PanicAnalyzer-TrollStore.tipa
             PanicAnalyzer-rootless.deb
             PanicAnalyzer-rootful.deb
+            PanicAnalyzer-roothide.deb
 
       - name: Keep debug symbols (to read app crash reports)
         uses: actions/upload-artifact@v4
@@ -197,6 +239,7 @@ jobs:
           retention-days: 90
 
       - name: Record version for the in-app update check
+        if: env.PUBLISH == 'all'
         run: |
           # Written on top of the newest main (another build or the interface
           # workflow may have pushed meanwhile); an older build never
@@ -228,6 +271,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RULES=$(python3 -c "import json;print(len(json.load(open('assets/panic_rules.json'))))")
+          IPA_COMMIT="${GITHUB_SHA::7}"
+          if [ "$PUBLISH" = jailbreak ]; then
+            IPA_COMMIT=$(git show origin/main:assets/app_version.json 2>/dev/null \
+              | python3 -c "import json,sys;print(json.load(sys.stdin).get('commit',''))" || true)
+          fi
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Automatic build from main · version $APP_VERSION (build $APP_BUILD) · $RULES diagnostic rules · IPA commit \`${IPA_COMMIT}\` · jailbreak packages commit \`${GITHUB_SHA::7}\`
+
+          - **PanicAnalyzer-unsigned.ipa**: sign with your own certificate (ESign, Sideloadly, AltStore…)
+          - **PanicAnalyzer-TrollStore.tipa**: install with TrollStore
+          - **PanicAnalyzer-rootless.deb / -rootful.deb**: install with Sileo or Zebra on a jailbroken device
+          - **PanicAnalyzer-roothide.deb**: roothide (Bootstrap, Dopamine roothide): install it directly, do not convert it with RootHide Patcher (the patcher removes the sandbox and the interface cannot load)
+          EOF
+
+          if [ "$PUBLISH" = jailbreak ]; then
+            # General patch: the IPA and .tipa in the release stay as they are.
+            gh release view latest >/dev/null
+            gh release upload latest --clobber \
+              PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb PanicAnalyzer-roothide.deb
+            gh release edit latest --notes-file "$RUNNER_TEMP/notes.md"
+            gh release view latest --json assets --jq '.assets[] | "\(.name) \(.updatedAt)"'
+            exit 0
+          fi
+
           gh release delete latest --yes 2>/dev/null || true
           git push --delete origin latest 2>/dev/null || true
           # The full-history checkout also fetched the old tag; gh refuses to
@@ -235,10 +302,6 @@ jobs:
           git tag -d latest 2>/dev/null || true
           gh release create latest \
             PanicAnalyzer-unsigned.ipa PanicAnalyzer-TrollStore.tipa \
-            PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb \
+            PanicAnalyzer-rootless.deb PanicAnalyzer-rootful.deb PanicAnalyzer-roothide.deb \
             --title "PanicAnalyzer $APP_VERSION" \
-            --notes "Automatic build from main · version $APP_VERSION · $RULES diagnostic rules · commit \`${GITHUB_SHA::7}\`
-
-          - **PanicAnalyzer-unsigned.ipa**: sign with your own certificate (ESign, Sideloadly, AltStore…)
-          - **PanicAnalyzer-TrollStore.tipa**: install with TrollStore
-          - **PanicAnalyzer-rootless.deb / -rootful.deb**: install with Sileo or Zebra on a jailbroken device"
+            --notes-file "$RUNNER_TEMP/notes.md"

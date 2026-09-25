@@ -27,11 +27,11 @@ struct WebContainerView: UIViewRepresentable {
         // không cho WebContent đọc file:// trong bundle: phục vụ trang qua
         // scheme riêng thay vì file://. Xem WebLoadMonitor.
         config.setURLSchemeHandler(BundleSchemeHandler(), forURLScheme: BundleSchemeHandler.scheme)
-        // Không có data container riêng (bản .deb chạy như app hệ thống, kể cả
-        // roothide .jbroot-…): WebKit không có chỗ ghi cookie/cache nên tiến
-        // trình WebContent có thể chết ngay khi mở. Trang không cần lưu dữ liệu
-        // web, nên giữ tất cả trong RAM.
-        if WebLoadMonitor.isSystemInstall || !WebLoadMonitor.hasDataContainer {
+        // Không có data container riêng (bản .deb bị bỏ sandbox): WebKit không
+        // có chỗ ghi cookie/cache, giữ tất cả trong RAM. Bản .deb có container
+        // (uicache tạo khi app giữ sandbox, như bản roothide .deb) lưu như IPA,
+        // để lịch sử linh kiện và cài đặt trong trang còn sau khi mở lại.
+        if !WebLoadMonitor.hasDataContainer {
             config.websiteDataStore = .nonPersistent()
         }
 

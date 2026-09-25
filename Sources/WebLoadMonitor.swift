@@ -108,6 +108,29 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
         NSHomeDirectory().contains("/Containers/Data/Application/")
     }
 
+    /// nil when it cannot be checked. WebKit's WebContent process does not
+    /// start for an unsandboxed host app; the .deb keeps the sandbox unless a
+    /// tool re-signs it (RootHide Patcher adds com.apple.private.security.no-sandbox).
+    static var isSandboxed: Bool? {
+        typealias SandboxCheck = @convention(c) (pid_t, UnsafePointer<CChar>?, Int32) -> Int32
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "sandbox_check") else { return nil }
+        // SANDBOX_FILTER_NONE with no operation: non-zero when sandboxed.
+        return unsafeBitCast(symbol, to: SandboxCheck.self)(getpid(), nil, 0) != 0
+    }
+
+    /// What to do when the interface cannot start outside the sandbox.
+    static func sandboxAdvice() -> String? {
+        guard isSandboxed == false else { return nil }
+        if Bundle.main.bundlePath.contains("/.jbroot-") {
+            return Loc.s("Ứng dụng đang chạy ngoài sandbox nên WebKit không chạy được. Máy roothide: gỡ bản này, cài file PanicAnalyzer-roothide.deb trực tiếp bằng Sileo/Zebra, KHÔNG chuyển đổi bằng RootHide Patcher (Patcher tắt sandbox của app).",
+                         "The app runs outside the sandbox, where WebKit cannot start. On roothide: remove this copy and install PanicAnalyzer-roothide.deb directly with Sileo/Zebra, do NOT convert it with RootHide Patcher (it turns the sandbox off).",
+                         "应用在沙盒外运行，WebKit 无法启动。roothide 设备：卸载此版本，用 Sileo/Zebra 直接安装 PanicAnalyzer-roothide.deb，不要用 RootHide Patcher 转换（它会关闭沙盒）。")
+        }
+        return Loc.s("Ứng dụng đang chạy ngoài sandbox nên WebKit không chạy được. Hãy cài bản TrollStore (.tipa) hoặc cài lại file .deb gốc từ GitHub, không ký lại bằng công cụ khác.",
+                     "The app runs outside the sandbox, where WebKit cannot start. Install the TrollStore build (.tipa), or reinstall the original .deb from GitHub without re-signing it.",
+                     "应用在沙盒外运行，WebKit 无法启动。请安装 TrollStore 版（.tipa），或重新安装 GitHub 上的原版 .deb，不要用其他工具重新签名。")
+    }
+
     /// A bare WKWebView (no scripts, no custom scheme, data in RAM), started
     /// only after the page failed: tells whether WebKit itself cannot run in
     /// this install or only our page does not.
@@ -239,7 +262,10 @@ final class WebLoadMonitor: NSObject, WKNavigationDelegate {
         lines.append(Loc.s("Vị trí cài: ", "Installed at: ", "安装位置：") + Bundle.main.bundlePath)
         lines.append(Loc.s("Thư mục dữ liệu: ", "Data folder: ", "数据目录：") + NSHomeDirectory()
                      + (Self.hasDataContainer ? "" : Loc.s(" (không có container)", " (no container)", "（无容器）")))
+        let sandbox = Self.isSandboxed.map { $0 ? Loc.s("bật", "on", "开启") : Loc.s("TẮT", "OFF", "关闭") } ?? "?"
+        lines.append("Sandbox: " + sandbox)
         lines.append(probeResult ?? Loc.s("Đang thử WebKit tối giản…", "Testing a bare WebKit view…", "正在测试精简 WebKit…"))
+        if let advice = Self.sandboxAdvice() { lines.append(advice) }
         lines.append(Loc.s("Chụp màn hình này gửi iOSVN để được hỗ trợ.",
                            "Send a screenshot of this to iOSVN for help.",
                            "请截图发送给 iOSVN 以获取帮助。"))
