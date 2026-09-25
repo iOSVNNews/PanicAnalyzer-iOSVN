@@ -215,6 +215,13 @@
             </svg>
             <span data-i18n="btn.exportAll">Xuất toàn bộ dữ liệu (.txt)</span>
           </button>
+          <button class="action-btn primary" onclick="sendToIosvn('toan-bo', allDataText)">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            <span data-i18n="btn.sendIosvn">Gửi cho iOSVN</span>
+          </button>
           <p class="settings-hint" data-i18n="settings.exportHint">Thông tin máy, linh kiện, kết quả phân tích và nguyên văn mọi log đã đọc trong một file .txt — gửi file này cho iOSVN khi cần hỗ trợ.</p>
         </div>
 
@@ -281,7 +288,7 @@
             <line x1="22" y1="2" x2="11" y2="13"/>
             <polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
-          <span data-i18n="btn.admin">Gửi log cho admin</span>
+          <span data-i18n="btn.sendIosvn">Gửi cho iOSVN</span>
         </button>
         <button class="btn btn-primary" onclick="closeDetailModal()" data-i18n="btn.close">Đóng</button>
       </div>

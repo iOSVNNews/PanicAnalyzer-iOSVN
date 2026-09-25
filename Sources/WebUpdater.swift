@@ -20,8 +20,8 @@ final class WebUpdater {
 
     /// Native bridge level of this app (window.__NATIVE_API__). Web builds
     /// that require more (manifest "nativeApi") wait for the app update.
-    /// 2: "shareFile" (reports as .txt files).
-    static let nativeApi = 2
+    /// 2: "shareFile" (reports as .txt files). 3: "sendReport" (to Telegram).
+    static let nativeApi = 3
 
     private let baseURL = "https://raw.githubusercontent.com/iOSVNNews/PanicAnalyzer-iOSVN/main/"
     private let allowedFiles: Set<String> = ["index.html", "app.js", "parts.js", "i18n.js", "app.css"]

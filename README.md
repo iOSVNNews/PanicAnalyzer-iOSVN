@@ -92,6 +92,18 @@ on Telegram.
 - If the page needs a native action older builds lack, raise `NATIVE_API` in
   `scripts/web_manifest.py` and `WebUpdater.nativeApi` together.
 
+## Sending reports to Telegram
+
+"Send to iOSVN" posts the report (compressed .txt) to a small relay,
+`server/report-lambda/index.mjs`, which forwards it to Telegram with the bot.
+The bot token lives only in the relay, never in the app or this repository.
+
+AWS Lambda setup: Node.js 20+ function with that file as `index.mjs`,
+environment variables `BOT_TOKEN` and `CHAT_ID` (numeric chat id, comma-separated
+for several), timeout 30 s, and a Function URL with auth type NONE. Put the
+Function URL in `REPORT_URL` in `web/app.js`; the change reaches installed apps
+as an interface update.
+
 ## Building
 
 Requires macOS, Xcode 16+, XcodeGen and Rust:

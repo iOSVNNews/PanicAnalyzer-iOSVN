@@ -938,3 +938,10 @@ a.about-row b { color: var(--brand-bright); }
 .notice-banner .link-btn { background: none; border: none; padding: 4px 0; font: inherit; font-weight: 600;
   color: var(--brand-bright); cursor: pointer; }
 .notice-banner .link-btn.muted { color: var(--text-secondary); font-weight: 500; }
+
+/* Hộp gửi cho iOSVN */
+.report-label { display: block; margin: 12px 0 6px; font-size: 13px; color: var(--text-secondary); }
+.report-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); color: var(--text-primary);
+  font: inherit; font-size: 15px; resize: vertical; }
+.report-card .modal-footer { display: flex; gap: 10px; }

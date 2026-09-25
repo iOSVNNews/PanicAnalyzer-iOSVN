@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['web/**', 'scripts/web_manifest.py', '.github/workflows/web-update.yml']
+    paths: ['web/**', 'scripts/web_manifest.py', '.github/workflows/web-update.yml', 'server/**']
 
 concurrency:
   group: web-update
@@ -32,6 +32,7 @@ jobs:
           node Tests/parts.test.js
           node Tests/crash.test.js
           node Tests/generations.test.js
+          node Tests/report-lambda.test.mjs
 
       - name: Publish the manifest
         run: |

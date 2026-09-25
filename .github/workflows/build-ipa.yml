@@ -14,6 +14,8 @@ on:
       - 'Tests/parts.test.js'
       - 'Tests/crash.test.js'
       - 'Tests/generations.test.js'
+      - 'Tests/report-lambda.test.mjs'
+      - 'server/**'
       - '.github/workflows/web-update.yml'
 
 concurrency:
@@ -52,6 +54,7 @@ jobs:
           node Tests/parts.test.js
           node Tests/crash.test.js
           node Tests/generations.test.js
+          node Tests/report-lambda.test.mjs
           python3 Tests/test_package_deb.py
 
       - name: Build Remote Pairing bridge

@@ -176,4 +176,15 @@ for (const [api, action] of [[2, 'shareFile'], [undefined, 'shareText']]) {
   assert.ok(sent.text.includes('<UUID>') && !sent.text.includes('12345678-1234-1234-1234-123456789abc'));
 }
 
-console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export — passed');
+// Send to iOSVN: without a relay URL (or on older builds) it falls back to the
+// share sheet; with one, the dialog posts sendReport and handles the answer.
+{
+  const page = load('iPhone15,3', false);
+  page.context.__NATIVE_API__ = 3;
+  page.context.onNativeHardwareReport(iphone14);
+  vm.runInContext('sendToIosvn', page.context)('linh-kien', vm.runInContext('partsExportText', page.context));
+  assert.ok(page.posted.some(m => m.action === 'shareFile'), 'no relay URL yet: share sheet');
+  assert.ok(vm.runInContext('allDataText', page.context)().startsWith('PanicAnalyzer'), 'relay accepts the file');
+}
+
+console.log('Parts tab: iPhone XS, SE 2, 11, 14 Pro Max, 17 Pro Max; .txt export; send fallback — passed');

@@ -939,6 +939,54 @@ final class LogBridge: NSObject {
         }
     }
 
+    /// Sends a report straight to iOSVN's Telegram through the report relay
+    /// (server/report-lambda: it holds the bot token, the app never does).
+    /// The text is compressed (raw DEFLATE); the page gets
+    /// window.onReportSent({ok, error}) and falls back to the share sheet.
+    func sendReport(_ body: [String: Any]) {
+        let finish: (Bool, String) -> Void = { [weak self] ok, error in
+            let result = (try? JSONSerialization.data(withJSONObject: ["ok": ok, "error": error]))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false}"
+            DispatchQueue.main.async {
+                self?.webView?.evaluateJavaScript("window.onReportSent && window.onReportSent(\(result))")
+            }
+        }
+        // Only HTTPS relays of iOSVN's own services.
+        let hosts = [".on.aws", ".amazonaws.com", "iosvn.com.vn", ".workers.dev", ".sslip.io"]
+        guard let url = URL(string: body["url"] as? String ?? ""), url.scheme == "https",
+              let host = url.host?.lowercased(), hosts.contains(where: { host == $0 || host.hasSuffix($0) }),
+              let text = body["text"] as? String, !text.isEmpty else {
+            return finish(false, "config")
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let raw = Data(text.utf8)
+            let compressed = (try? (raw as NSData).compressed(using: .zlib)) as Data?
+            let payloadData = compressed ?? raw
+            // The relay (Lambda Function URL) accepts about 6 MB per request.
+            guard payloadData.count < 4_300_000 else { return finish(false, "too_large") }
+            var payload: [String: Any] = [
+                "name": body["name"] as? String ?? "PanicAnalyzer.txt",
+                "note": body["note"] as? String ?? "",
+                "contact": body["contact"] as? String ?? "",
+                "meta": body["meta"] as? [String: Any] ?? [:],
+                "encoding": compressed == nil ? "none" : "deflate-raw",
+            ]
+            payload["data"] = payloadData.base64EncodedString()
+            guard let json = try? JSONSerialization.data(withJSONObject: payload) else { return finish(false, "encode") }
+            var request = URLRequest(url: url, timeoutInterval: 90)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("PanicAnalyzer/\(self.appVersion) (\(self.appBuild))", forHTTPHeaderField: "User-Agent")
+            request.httpBody = json
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let answer = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+                if status == 200, answer["ok"] as? Bool == true { return finish(true, "") }
+                finish(false, (answer["error"] as? String) ?? (error != nil ? "network" : "http_\(status)"))
+            }.resume()
+        }
+    }
+
     func share(_ text: String) {
         guard !text.isEmpty else { return }
         let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
@@ -1016,6 +1064,7 @@ extension LogBridge: WKScriptMessageHandler {
         case "removePairing": removePairingFile()
         case "shareText":    share(body["text"] as? String ?? "")
         case "shareFile":    shareFile(name: body["name"] as? String ?? "", text: body["text"] as? String ?? "")
+        case "sendReport":   sendReport(body)
         case "notifyParts":  PartsNotifier.shared.post(title: body["title"] as? String ?? "",
                                                        body: body["body"] as? String ?? "")
         case "refreshRules": refreshRules()

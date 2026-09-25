@@ -1096,10 +1096,13 @@ function renderHardwareRaw(host, paragraph, addRow) {
   const button = document.createElement('button');
   button.className = 'action-btn secondary';
   button.textContent = t('parts.hw.rawShare');
-  button.onclick = () => exportTextFile('linh-kien', exportHeader(t('export.partsTitle'))
-    + `\n=== ${t('export.parts')} ===\n` + hardwareSummaryText()
-    + `\n=== ${t('export.raw')} ===\n` + JSON.stringify(hardwarePayload(), null, 2) + '\n');
+  button.onclick = () => exportTextFile('linh-kien', partsExportText());
   host.appendChild(button);
+  const send = document.createElement('button');
+  send.className = 'action-btn primary';
+  send.textContent = t('btn.sendIosvn');
+  send.onclick = () => sendToIosvn('linh-kien', partsExportText);
+  host.appendChild(send);
 }
 
 function renderPartsHistory() {
@@ -1379,7 +1382,7 @@ function openDetailModal(index) {
   }
 
   const adminBtn = document.getElementById('adminBtn');
-  if (adminBtn) adminBtn.style.display = needsAdminHelp(g) ? '' : 'none';
+  if (adminBtn) adminBtn.style.display = '';
 
   if (modal) modal.classList.add('open');
 }
@@ -1413,14 +1416,15 @@ function closeModalOnOverlay(e) {
 }
 
 // Export Sanitized Report (No serial / UDID / Personal Info)
-function exportSanitizedReport() {
-  if (selectedGroupIndex === null) return;
-  const g = incidentGroups[selectedGroupIndex];
-  if (!g) return;
+function selectedGroup() {
+  return selectedGroupIndex === null ? null : incidentGroups[selectedGroupIndex] || null;
+}
 
+// Báo cáo một lỗi: tóm tắt + nguyên văn mọi lần xảy ra (UUID được che).
+function logReportText(g) {
   const rec = g.latestRecord;
-  let report = `${t('r.header')}\n`;
-  report += `${t('r.exported')}: ${new Date().toLocaleString(dateLocale())}\n`;
+  // Mọi file gửi đi bắt đầu bằng "PanicAnalyzer" (máy chủ nhận log kiểm tra).
+  let report = exportHeader(t('export.logTitle')) + '\n';
   report += `${t('r.device')}: ${rec.product || "iPhone"}\n`;
   report += `${t('r.os')}: ${rec.osVersion || rec.build || "iOS"}\n\n`;
   report += `${t('r.main')}\n`;
@@ -1437,7 +1441,12 @@ function exportSanitizedReport() {
   report += `${t('r.advice')}\n${g.repairAdvice}\n\n`;
   // File .txt: kèm nguyên văn mọi lần xảy ra (UUID được che).
   report += `=== ${t('export.logs')} ===\n` + fullLogsText(sortedOccurrences(g));
-  exportTextFile('log', report);
+  return report;
+}
+
+function exportSanitizedReport() {
+  const g = selectedGroup();
+  if (g) exportTextFile('log', logReportText(g));
 }
 
 // ---------------------------------------------------------------------------
@@ -1759,19 +1768,8 @@ function buildAdminReport(g) {
 }
 
 function sendToAdmin() {
-  if (selectedGroupIndex === null) return;
-  const g = incidentGroups[selectedGroupIndex];
-  if (!g) return;
-  const report = buildAdminReport(g);
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(report);
-  } catch (e) { /* bỏ qua */ }
-  const url = window.__ADMIN_TELEGRAM__ || 'https://t.me/longdzqua';
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBridge) {
-    window.webkit.messageHandlers.nativeBridge.postMessage({ action: 'openURL', url: url });
-  } else {
-    window.open(url, '_blank');
-  }
+  const g = selectedGroup();
+  if (g) sendToIosvn('log', () => logReportText(g));
 }
 
 
@@ -1859,6 +1857,16 @@ function exportTextFile(kind, text) {
 
 // Mọi thứ app đang có: máy, linh kiện, kết quả phân tích, nguyên văn log.
 function exportAllData() {
+  exportTextFile('toan-bo', allDataText());
+}
+
+function partsExportText() {
+  return exportHeader(t('export.partsTitle'))
+    + `\n=== ${t('export.parts')} ===\n` + hardwareSummaryText()
+    + `\n=== ${t('export.raw')} ===\n` + JSON.stringify(hardwarePayload(), null, 2) + '\n';
+}
+
+function allDataText() {
   let text = exportHeader(t('export.allTitle'));
   text += `\n=== ${t('export.parts')} ===\n` + hardwareSummaryText();
   text += `\n=== ${t('export.incidents')} (${incidentGroups.length}) ===\n`;
@@ -1875,7 +1883,85 @@ function exportAllData() {
   text += `\n=== ${t('export.raw')} ===\n` + JSON.stringify(hardwarePayload(), null, 2) + '\n';
   const records = diagnosticRecords.slice().sort((a, b) => (b.timestampMs || 0) - (a.timestampMs || 0));
   text += `\n=== ${t('export.logs')} (${records.length}) ===\n` + fullLogsText(records);
-  exportTextFile('toan-bo', text);
+  return text;
+}
+
+// ---- Gửi thẳng cho iOSVN qua Telegram ----------------------------------------
+// App gửi file lên máy chủ trung gian (server/report-lambda, giữ token bot),
+// máy chủ chuyển vào Telegram của iOSVN. Chưa có máy chủ hoặc bản app cũ:
+// mở bảng chia sẻ file như nút Xuất.
+const REPORT_URL = '';
+const REPORT_CONTACT_KEY = 'panic.reportContact';
+
+function canSendReport() {
+  return !!REPORT_URL && Number(window.__NATIVE_API__ || 1) >= 3;
+}
+
+function sendToIosvn(kind, buildText) {
+  if (!canSendReport()) {
+    exportTextFile(kind, buildText());
+    return;
+  }
+  openReportDialog(kind, buildText);
+}
+
+function closeReportDialog() {
+  const old = document.getElementById('reportDialog');
+  if (old) old.remove();
+}
+
+function openReportDialog(kind, buildText) {
+  closeReportDialog();
+  const overlay = document.createElement('div');
+  overlay.id = 'reportDialog';
+  overlay.className = 'modal-overlay open';
+  overlay.innerHTML = `
+    <div class="modal-card report-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap"><h3>${escapeHtml(t('report.title'))}</h3></div>
+        <button class="modal-close-btn" data-close>&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="settings-hint">${escapeHtml(t('report.hint'))}</p>
+        <label class="report-label" for="reportNote">${escapeHtml(t('report.note'))}</label>
+        <textarea class="report-input" id="reportNote" rows="3" maxlength="600"></textarea>
+        <label class="report-label" for="reportContact">${escapeHtml(t('report.contact'))}</label>
+        <input class="report-input" id="reportContact" maxlength="80" autocomplete="off" placeholder="@telegram">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" data-close>${escapeHtml(t('report.cancel'))}</button>
+        <button class="btn btn-primary" id="reportSend">${escapeHtml(t('report.send'))}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const contact = overlay.querySelector('#reportContact');
+  try { contact.value = localStorage.getItem(REPORT_CONTACT_KEY) || ''; } catch (_) {}
+  overlay.querySelectorAll('[data-close]').forEach(node => { node.onclick = closeReportDialog; });
+  overlay.onclick = event => { if (event.target === overlay) closeReportDialog(); };
+  const send = overlay.querySelector('#reportSend');
+  send.onclick = () => {
+    const text = buildText();
+    const note = overlay.querySelector('#reportNote').value.trim();
+    try { localStorage.setItem(REPORT_CONTACT_KEY, contact.value.trim()); } catch (_) {}
+    send.disabled = true;
+    send.textContent = t('report.sending');
+    window.onReportSent = result => {
+      window.onReportSent = null;
+      closeReportDialog();
+      if (result && result.ok) {
+        showToast(t('report.sent'), 3500);
+      } else {
+        showToast(t('report.failed', { e: (result && result.error) || '?' }), 4500);
+        exportTextFile(kind, text);
+      }
+    };
+    postNative({
+      action: 'sendReport', url: REPORT_URL, name: `PanicAnalyzer-${kind}-${exportStamp()}.txt`, text, note,
+      contact: contact.value.trim(),
+      meta: { app: window.__APP_VERSION__ || '', web: window.__WEB_BUILD__ || 0, model: window.__DEVICE_MODEL__ || '',
+        ios: window.__IOS_VERSION__ || '', build: window.__PRIVILEGED__ ? 'TrollStore/JB' : 'IPA', kind }
+    });
+  };
 }
 
 function postNative(message) {
@@ -1907,7 +1993,7 @@ function showAppCrashes() {
   send.className = 'link-btn';
   send.textContent = t('crash.send');
   send.onclick = () => {
-    exportTextFile('crash', appCrashReport(crashes));
+    sendToIosvn('crash', () => appCrashReport(crashes));
     postNative({ action: 'clearAppCrashes' });
     el.remove();
   };
