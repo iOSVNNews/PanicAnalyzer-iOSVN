@@ -75,7 +75,7 @@ assert.ok(r.rows.some(row => row.includes('Màn hình') && row.includes('chưa t
 assert.ok(r.rows.some(row => row.includes('Dung lượng tối đa 75%') && row.includes('1317 chu kỳ')));
 // Build 59 sends TrustedBatteryEnabled only in the raw data: still explained.
 assert.ok(r.rows.some(row => row.includes('Pin') && row.includes('TrustedBatteryEnabled = 0')), r.rows.join('\n'));
-assert.ok(r.rows.some(row => row.includes('Camera sau') && row.includes('Đạt') && row.includes('DN83156CUMN1CDK2U')));
+assert.ok(r.rows.some(row => row.includes('Camera sau') && row.includes('Chính hãng') && row.includes('DN83156CUMN1CDK2U')));
 assert.ok(r.rows.some(row => row.includes('Góc siêu rộng: DNL32163BAJ15FY1X') && row.includes('Tele: GCF320245WL1CY057')));
 assert.ok(r.rows.some(row => row.includes('Camera hồng ngoại TrueDepth: HNQ3191058P15F81B')));
 // CmPM "Invalid" belongs to no known module: no alert, no notification.
@@ -117,21 +117,32 @@ assert.equal(r.status.display, 'authfail');
 
 // iPhone XS (iPhone11,2): Apple has no display check on this model; the
 // battery auth chip does not answer.
-r = render('iPhone11,2', { display: { panelId: 'X' }, battery: { cycleCount: 900, auth: { driver: true, commError: 3 } } });
+r = render('iPhone11,2', { display: { panelId: 'C0K123456789ABCDE+XYZ' }, battery: { cycleCount: 900, auth: { driver: true, commError: 3 } } });
 assert.equal(r.status.display, 'no_flag');
-assert.ok(r.rows.some(row => row.includes('Đời máy này không có xác thực màn hình')), r.rows.join('\n'));
-assert.equal(r.status.battery, 'auth_error');
+assert.ok(r.rows.some(row => row.includes('Apple không xác thực màn hình') && row.includes('C0K123456789ABCDE')), r.rows.join('\n'));
+// Battery auth chip does not answer → not genuine.
+assert.equal(r.status.battery, 'nongenuine');
+assert.ok(r.rows.some(row => row.includes('Không chính hãng') && row.includes('không phản hồi (mã 3)')), r.rows.join('\n'));
+// Same XS on the TrollStore build: panel serial vs the factory LCM#.
+r = render('iPhone11,2', { display: { panelId: 'C0K123456789ABCDE+XYZ' },
+  syscfg: [{ part: 'display', key: 'LCM#', factory: 'C0K123456789ABCDE' }] }, true);
+assert.equal(r.status.display, 'serial_match');
+r = render('iPhone11,2', { display: { panelId: 'F7X000000000000AA+XYZ' },
+  syscfg: [{ part: 'display', key: 'LCM#', factory: 'C0K123456789ABCDE' }] }, true);
+assert.equal(r.status.display, 'replaced');
+assert.ok(r.rows.some(row => row.includes('Đã thay') && row.includes('C0K123456789ABCDE') && row.includes('F7X000000000000AA')), r.rows.join('\n'));
 
 // iPhone SE (2nd gen, iPhone12,8): Touch ID row, no display check.
 r = render('iPhone12,8', { biometrics: { part: 'touch_id', state: 'ok' } });
 assert.equal(r.status.touch_id, 'working');
 assert.equal(r.status.face_id, undefined);
 
-// TrollStore build: factory serial differs → "check", not "replaced".
+// TrollStore build: fitted camera serial differs from the factory one → replaced.
 r = render('iPhone15,3', Object.assign({}, iphone14, {
   cameraSerials: [{ module: 'rear_main', factory: 'DN80000000000000A', factoryKey: 'BCMS' }] }), true);
-assert.equal(r.status.rear_camera, 'serial_mismatch');
-assert.ok(r.rows.some(row => row.includes('cần kiểm tra')));
+assert.equal(r.status.rear_camera, 'replaced');
+assert.ok(r.rows.some(row => row.includes('Đã thay') && row.includes('DN80000000000000A') && row.includes('DN83156CUMN1CDK2U')),
+  r.rows.join('\n'));
 
 // An empty or failed read still renders.
 render('iPhone14,7', { errors: ['D1 diagnostics_relay: timeout'] });

@@ -97,7 +97,7 @@ assert.deepEqual(trusted.map(({ part, status }) => [part, status]), [['battery',
 const trustedOk = PartsHistory.fromHardware({ battery: { auth: { passed: true }, authFlags: { authenticated: 0 } } });
 assert.deepEqual(trustedOk.map(({ status }) => status), ['genuine']);
 const chipError = PartsHistory.fromHardware({ battery: { serial: 'F8Y', auth: { driver: true, commError: 2 } } });
-assert.deepEqual(chipError.map(({ part, status, code }) => [part, status, code]), [['battery', 'auth_error', 2]]);
+assert.deepEqual(chipError.map(({ part, status, code }) => [part, status, code]), [['battery', 'nongenuine', 2]]);
 assert.equal(PartsHistory.assessScan(0, [], [], chipError), 'found');
 assert.deepEqual(PartsHistory.fromHardware({ battery: { auth: { driver: true } } }), []);
 
@@ -161,7 +161,7 @@ assert.deepEqual(PartsHistory.changedParts({ display: 'G9N1', battery: 'OLD9' },
 assert.deepEqual(PartsHistory.changedParts(null, ids), []);
 assert.equal(PartsHistory.partsOverview(iphone17, [], 'iPhone18,2', ['battery'])[1].status, 'changed');
 
-// Camera: từng module ghi riêng; khác sê-ri gốc chỉ là "cần kiểm tra".
+// Camera: từng module ghi riêng; sê-ri đang lắp khác sê-ri gốc → đã thay.
 const cams = {
   cameraSerials: [
     { module: 'rear_main', factory: 'DNL3375372Z1V6P4V', factoryKey: 'BCMS', gestalt: 'DNL3375372Z1V6P4V' },
@@ -179,7 +179,8 @@ assert.equal(modules[0].sourcesAgree, true);
 assert.equal(modules[2].match, false);
 const camView = PartsHistory.partsOverview(cams, [], 'iPhone13,3');
 assert.equal(camView.find(i => i.part === 'rear_camera').status, 'serial_match');
-assert.equal(camView.find(i => i.part === 'front_camera').status, 'serial_mismatch');
+assert.equal(camView.find(i => i.part === 'front_camera').status, 'replaced');
+assert.equal(camView.find(i => i.part === 'front_camera').factory, 'F0W63831QH8GMJFBQ');
 assert.equal(PartsHistory.isAlert('serial_mismatch'), true);
 assert.equal(PartsHistory.isAlert('serial_match'), false);
 assert.equal(PartsHistory.assessScan(0, [], [], PartsHistory.fromHardware({ cameraSerials: [cams.cameraSerials[0]] })), 'verified');

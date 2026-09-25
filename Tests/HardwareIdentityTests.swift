@@ -135,6 +135,17 @@ struct HardwareIdentityTests {
         expect(flags.first?["part"] as? String == "display" && flags.first?["authPassed"] as? Bool == false,
                "AID found by the plane scan")
 
+        // Relays inherit the part of the auth chip above them.
+        let relay = HardwareIdentity.Hit(path: "AppleSmartBattery/AppleBatteryAuth/AppleAuthCPRelay",
+                                         className: "AppleAuthCPRelay", props: ["PrimaryAuthPassed": 1])
+        expect(HardwareIdentity.part(of: relay) == "battery", "battery relay belongs to the battery")
+        let viaRelay = HardwareIdentity.batteryAuth(driver: ["TrustedBatteryEnabled": 0], scanned: [relay.props])
+        expect(viaRelay["passed"] as? Bool == true, "battery pass flag on the relay")
+        let roswellRelay = HardwareIdentity.Hit(path: "i2c3/roswell@10/RoswellAuthI2CRelayInterface",
+                                                className: "RoswellAuthI2CRelayInterface", props: ["auth-passed": 1])
+        expect(HardwareIdentity.partFlags([roswellRelay]).first?["part"] as? String == "display",
+               "roswell relay flag is the display's")
+
         // iPhone XS (iPhone11,2): battery chip does not answer.
         let rXS = report([.batteryByClass: battery14, .batteryAuth: ["CommunicationError": 3]])
         let authXS = (rXS["battery"] as? Entry)?["auth"] as? Entry ?? [:]

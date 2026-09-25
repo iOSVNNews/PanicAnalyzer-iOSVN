@@ -352,6 +352,12 @@ enum HardwareIdentity {
             if has(["rear", "back"]) { return "rear_camera" }
             return "camera"
         }
+        // Generic relays (AppleAuthCPRelay…) belong to the auth chip above them.
+        let path = hit.path.lowercased()
+        if path.contains("batteryauth") || path.contains("smartbattery") { return "battery" }
+        if ["roswell", "babbage", "mogul-display", "display-auth"].contains(where: { path.contains($0) }) {
+            return "display"
+        }
         return nil
     }
 

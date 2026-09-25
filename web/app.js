@@ -981,7 +981,7 @@ function renderHardwareReport(host, paragraph) {
     }
   }
   if (PartsHistory.cameraModules(hardwareReport).length) paragraph(t('parts.cam.caution'), 'parts-note');
-  const authError = hardwarePartSignals.find(f => f.part === 'battery' && f.status === 'auth_error');
+  const authError = hardwarePartSignals.find(f => f.part === 'battery' && f.reason === 'chip');
   if (authError) paragraph(t('parts.hw.batteryAuthError', { n: authError.code || '?' }), 'parts-note parts-error');
   const clue = PartsHistory.capacityClue(battery);
   if (clue) paragraph(t('parts.hw.capacityClue', { p: clue.percent, c: clue.cycles }), 'parts-note parts-error');
@@ -997,7 +997,8 @@ function overviewText(item) {
   const support = PartsHistory.authSupport(window.__DEVICE_MODEL__);
   const display = hardwareReport.display || {};
   if (item.status === 'no_flag' && item.part === 'display' && support.display === false) {
-    return t('parts.hw.displayNotSupported');
+    return t(PartsHistory.displaySerial(hardwareReport) ? 'parts.hw.displayWatch' : 'parts.hw.displayNotSupported',
+      { s: PartsHistory.displaySerial(hardwareReport) });
   }
   if (item.status === 'no_flag' && item.part === 'battery' && support.battery === false) {
     return t('parts.hw.batteryNotSupported');
@@ -1020,11 +1021,17 @@ function overviewText(item) {
   if (item.status === 'serial_mismatch' && camera && camera.factory && camera.current) {
     text = t('parts.cam.mismatch', { f: camera.factory, c: camera.current });
   }
-  if (item.status === 'replaced') {
-    const sys = (hardwareReport.syscfg || []).find(entry => entry && entry.part === item.part);
-    if (sys && sys.factory && sys.current) text = t('parts.sys.mismatch', { f: sys.factory, c: sys.current });
+  if (item.status === 'nongenuine' && item.reason === 'chip') {
+    return t('parts.hw.batteryChipNoAnswer', { n: item.code || '?' });
   }
-  if (item.factory) text += ' · ' + t('parts.sys.factory', { s: item.factory });
+  if (item.status === 'serial_match' && item.part === 'display') text += ` · ${PartsHistory.displaySerial(hardwareReport)}`;
+  if (item.status === 'replaced') {
+    const sys = (hardwareReport.syscfg || []).find(entry => entry && entry.part === item.part) || {};
+    const factory = item.factory || sys.factory;
+    const current = item.current || sys.current;
+    if (factory && current) return t('parts.sys.mismatch', { f: factory, c: current });
+  }
+  if (item.factory && item.status !== 'replaced') text += ' · ' + t('parts.sys.factory', { s: item.factory });
   if (item.source === 'log') text += ' ' + t('parts.fromLog');
   return text;
 }

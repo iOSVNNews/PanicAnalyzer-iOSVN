@@ -217,6 +217,25 @@ const PartsHistory = (() => {
       && entry.props && String(entry.props.TrustedBatteryEnabled) === '0');
   }
 
+  // Sê-ri màn hình đang lắp: phần đầu của Panel_ID ("GVC31971YGZ14YFAK+…")
+  // hoặc sê-ri trong chứng chỉ của IC xác thực.
+  function displaySerial(report) {
+    const display = (report && report.display) || {};
+    if (display.panelSerial) return String(display.panelSerial);
+    const first = String(display.panelId || '').split('+')[0].trim();
+    return first.length >= 8 ? first : '';
+  }
+
+  function displaySerialCheck(report) {
+    const sys = (Array.isArray(report && report.syscfg) ? report.syscfg : [])
+      .find(item => item && item.part === 'display' && item.factory);
+    const current = displaySerial(report);
+    if (!sys || !current) return null;
+    const panelId = String((report.display && report.display.panelId) || '');
+    const factory = String(sys.factory);
+    return { factory, current, match: sameSerial(factory, current) || sameSerial(factory, panelId) };
+  }
+
   function fromHardware(report) {
     const findings = [];
     if (!report || typeof report !== 'object') return findings;
@@ -224,6 +243,14 @@ const PartsHistory = (() => {
     if (typeof display.authPassed === 'boolean') {
       findings.push({ part: 'display', status: display.authPassed ? 'genuine' : 'authfail',
         source: 'hardware', serial: display.panelSerial || '' });
+    }
+    // Màn hình mọi đời máy (kể cả XS trở xuống, SE — Apple không xác thực):
+    // sê-ri màn hình đang lắp (Panel_ID / chứng chỉ) so với sê-ri gốc LCM# trong
+    // SysCfg (bản TrollStore/JB).
+    const displayCheck = displaySerialCheck(report);
+    if (displayCheck && typeof displayCheck.match === 'boolean' && !findings.some(f => f.part === 'display')) {
+      findings.push({ part: 'display', status: displayCheck.match ? 'serial_match' : 'replaced', source: 'hardware',
+        factory: displayCheck.factory, current: displayCheck.current });
     }
     // Cờ "auth-passed" tìm thấy trên node của linh kiện khác (dò theo thuộc
     // tính, không theo tên node): pin, camera, Face ID…
@@ -263,10 +290,11 @@ const PartsHistory = (() => {
       findings.push({ part: item.part, status: 'replaced', source: 'hardware',
         factory: String(item.factory || ''), current: String(item.current || '') });
     }
+    // Camera: sê-ri module đang lắp (driver camera) khác sê-ri gốc → đã thay.
     for (const part of Object.keys(MAIN_MODULE)) {
       const check = cameraCheck(report, part);
       if (!check || typeof check.match !== 'boolean' || findings.some(f => f.part === part)) continue;
-      findings.push({ part, status: check.match ? 'serial_match' : 'serial_mismatch', source: 'hardware',
+      findings.push({ part, status: check.match ? 'serial_match' : 'replaced', source: 'hardware',
         factory: check.factory, current: check.current });
     }
     for (const item of cameraValidation(report)) {
@@ -278,8 +306,10 @@ const PartsHistory = (() => {
       findings.push({ part: 'battery', status: values.every(v => v === 1) ? 'genuine' : 'authfail',
         source: 'hardware', serial });
     }
+    // Chip xác thực trong pin không phản hồi: pin chính hãng luôn có chip này,
+    // nên kết luận là pin không chính hãng.
     if ((auth.commError || auth.coprocError) && !findings.some(f => f.part === 'battery')) {
-      findings.push({ part: 'battery', status: 'auth_error', source: 'hardware', serial,
+      findings.push({ part: 'battery', status: 'nongenuine', reason: 'chip', source: 'hardware', serial,
         code: Number(auth.commError || auth.coprocError) || 0 });
     }
     if (capacityClue(report.battery)) {
@@ -324,6 +354,7 @@ const PartsHistory = (() => {
   // ---- Tổng quan toàn bộ linh kiện + phát hiện thay thế ----------------------
   // Trạng thái cần báo cho người dùng (thông báo iOS + băng cảnh báo).
   const ALERT = new Set(['authfail', 'nongenuine', 'replaced', 'unavailable', 'auth_error', 'changed', 'validation_fail',
+    'serial_mismatch',
     'unknown', 'serial_mismatch', 'used', 'finish_repair', 'unverified']);
   const isAlert = status => ALERT.has(status);
 
@@ -342,7 +373,8 @@ const PartsHistory = (() => {
   // Sê-ri đang lắp của từng linh kiện (để nhận ra lần sau có bị thay không).
   function partIdentities(report) {
     const ids = {};
-    if (report && report.display && report.display.panelSerial) ids.display = String(report.display.panelSerial);
+    const panel = displaySerial(report);
+    if (panel) ids.display = panel;
     if (report && report.battery && report.battery.serial) ids.battery = String(report.battery.serial);
     for (const item of Array.isArray(report && report.syscfg) ? report.syscfg : []) {
       if (item && item.part && item.current && !ids[item.part]) ids[item.part] = String(item.current);
@@ -377,7 +409,11 @@ const PartsHistory = (() => {
       }
       const hw = hardware.filter(f => f.part === part);
       const bad = hw.find(f => isAlert(f.status));
-      if (bad) return { part, status: bad.status };
+      if (bad) {
+        const item = { part, status: bad.status };
+        for (const key of ['factory', 'current', 'code', 'reason', 'value']) if (bad[key]) item[key] = bad[key];
+        return item;
+      }
       const sys = syscfg.find(item => item && item.part === part);
       if (sys && sys.match === false) return { part, status: 'replaced' };
       const logBad = logs.find(f => f.part === part && isAlert(f.status));
@@ -401,7 +437,7 @@ const PartsHistory = (() => {
 
   return { fromLogs, fromHardware, cableClues, assessScan, authSupport, capacityClue, mergeHardwareReport,
     isAlert, expectedParts, partIdentities, changedParts, partsOverview, sameSerial, cameraModules, cameraCheck,
-    cameraValidation, batteryTrustedOff, CAMERA_PART };
+    cameraValidation, batteryTrustedOff, displaySerial, displaySerialCheck, CAMERA_PART };
 })();
 
 if (typeof module !== 'undefined') module.exports = PartsHistory;
