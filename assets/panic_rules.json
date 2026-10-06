@@ -438,14 +438,11 @@
     "match": {
       "regexAny": [
         "DCP PANIC",
-        "AppleDCP",
-        "\\bDCP\\b.*(PANIC|RTKit|swap|timeout|assert)",
+        "\\bAppleDCP\\b.*(?:panic|fault|assert|timeout|abort)",
+        "\\bDCP\\b.*(?:PANIC|RTKit|swap|timeout|assert)",
         "dpIrq\\(",
         "DCPAV",
-        "IOMobileFramebuffer.*(assert|panic|timeout)",
-        "AppleCLCD",
-        "AppleMobileDispH\\d",
-        "com\\.apple\\.driver\\.AppleDCP"
+        "IOMobileFramebuffer.*(?:assert|panic|timeout)"
       ]
     },
     "title": "DCP Panic - Lỗi bộ đồng xử lý màn hình",
@@ -527,7 +524,7 @@
       "regexAny": [
         "PMGR_PS_ANE",
         "ANE_SYS_PS",
-        "AppleANE"
+        "AppleANE.*(?:panic|fault|timeout|error|assert)"
       ]
     },
     "title": "Panic nguồn khối ANE (Neural Engine)",
@@ -596,6 +593,33 @@
     "confidence": "Trung bình"
   },
   {
+    "id": "sep-monitor-error",
+    "family": "SEP",
+    "baseSeverity": "critical",
+    "subsystemWeight": 3,
+    "escalateAt": 1,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "SEP monitor error",
+        "INACCESSIBLE SEP REGISTERS",
+        "VOLMAN_SOC_VOLTAGE",
+        "AppleT[0-9]+PlatformErrorHandler.*SEP"
+      ]
+    },
+    "title": "SEP Monitor Error - Mất kết nối Secure Enclave",
+    "title_en": "SEP Monitor Error - Secure Enclave registers inaccessible",
+    "title_zh": "SEP Monitor Error - 安全隔区寄存器无法访问",
+    "suspected": "Hở chân viền bo ghép (interposer AP/SEP), cáp/cụm Face ID TrueDepth chập, hoặc lỗi cấp nguồn SEP/SOC",
+    "suspected_en": "Interposer board separation (AP/SEP lines), shorted Face ID TrueDepth flex, or faulty SEP/SOC power rail",
+    "suspected_zh": "双层主板中框虚焊（AP/SEP 线路）、Face ID 原深感排线短路，或 SEP/SOC 供电故障",
+    "subsystem": "Secure Enclave / Platform Error Handler",
+    "advice": "Lỗi xảy ra khi CPU không thể truy xuất thanh ghi của chip bảo mật SEP. Ở các dòng máy 2 tầng (iPhone 12 trở lên), nguyên nhân phổ biến nhất là hở chân viền bo ghép (interposer) đường áp PP_VDD_SOC/PP_SEP, hoặc cụm Face ID/máy chiếu điểm TrueDepth bị chạm chập kéo sụt áp bus SEP. Cần tách bo kiểm tra chân viền và cách ly cụm Face ID trước khi nghi CPU.",
+    "advice_en": "Occurs when the CPU cannot read SEP security registers. On stacked logic boards (iPhone 12 and later), the most common cause is cracked interposer solder joints on PP_VDD_SOC/PP_SEP rails, or a damaged Face ID/TrueDepth dot projector pulling down the SEP bus. Re-ball the interposer and disconnect Face ID before suspecting the CPU.",
+    "advice_zh": "当 CPU 无法访问 SEP 安全芯片寄存器时发生。在双层主板机型（iPhone 12 及以上）上，最常见原因是中框虚焊导致 PP_VDD_SOC/PP_SEP 供电异常，或 Face ID/点阵投影器短路拉低 SEP 总线。建议分层检查中框并断开 Face ID 排线排查，最后再怀疑 CPU。",
+    "confidence": "Cao"
+  },
+  {
     "id": "sep-panic",
     "family": "SEP",
     "baseSeverity": "warning",
@@ -604,9 +628,9 @@
     "windowHours": 48,
     "match": {
       "regexAny": [
-        "AppleSEPManager",
-        "\\bSEP\\s+(panic|PANIC|failed)",
-        "sepOS",
+        "AppleSEPManager.*(?:panic|failed|fault|timeout|abort)",
+        "\\bSEP\\s+(?:panic|PANIC|failed)",
+        "sepOS.*(?:panic|fault)",
         "AppleMesa.*SEP"
       ]
     },
@@ -681,9 +705,9 @@
     "windowHours": 48,
     "match": {
       "regexAny": [
-        "\\bAOP\\s+(PANIC|DATA ABORT|NMI)",
-        "AOPEndpoint",
-        "\\bAOP\\b.*panic"
+        "AOPEndpoint.*(?:panic|fault|timeout)",
+        "AOP PANIC",
+        "AppleAOP.*(panic|RTKit)"
       ]
     },
     "title": "AOP (Always-On Processor) Panic",
@@ -707,18 +731,8 @@
     "windowHours": 48,
     "match": {
       "regexAny": [
-        "ApplePMGR",
-        "Apple\\w*PMGR::",
+        "ApplePMGR.*(?:panic|fault|timeout|error)",
         "PMGR_PS_",
-        "quiesceHW",
-        "Apple PMGR Fatal"
-      ],
-      "anyOf": [
-        "REQUIRE failed",
-        "Fatal",
-        "coherency",
-        "PMP NMI FIQ",
-        "CP_COM_NORM",
         "quiesceHW"
       ]
     },
@@ -743,11 +757,11 @@
     "windowHours": 48,
     "match": {
       "regexAny": [
-        "AGXAccelerator",
-        "\\bIOGPU\\b",
-        "AppleGPU",
-        "\\bsgx\\b.*(fault|panic)",
-        "GPU (hang|fault|panic)"
+        "AGXAccelerator.*(?:panic|fault|timeout|hang|assert)",
+        "AppleGPU.*(?:panic|fault|timeout)",
+        "\\bGPU\\s+panic",
+        "GPUPipe.*timeout",
+        "SGX.*panic"
       ]
     },
     "title": "GPU Panic - Lỗi xử lý đồ hoạ",
@@ -798,12 +812,10 @@
     "windowHours": 48,
     "match": {
       "regexAny": [
-        "\\bANS2\\b",
-        "AppleANS",
-        "\\bNVMe\\b",
-        "\\bnvme\\b",
-        "Anc-postrand",
-        "WKDMD ERROR"
+        "AppleANS.*(?:panic|fault|timeout|crash|wkdmd)",
+        "ANS2: Fatal",
+        "WKDMD ERROR",
+        "AppleNVMeStorage.*(panic|timeout|assert)"
       ]
     },
     "title": "Lỗi bộ điều khiển ổ cứng NVMe / ANS2",
@@ -831,10 +843,13 @@
         "\\bBaseband\\b",
         "BB PMU",
         "AppleBasebandd",
-        "CommCenter.*crash"
+        "\\bCommCenter\\b[^\\n]{0,80}(?:crash|SIGABRT|SIGSEGV|EXC_CRASH|failed)"
       ],
       "noneOf": [
-        "basebandMigrated"
+        "basebandMigrated",
+        "analyticsd",
+        "diskwrites",
+        "cpu_resource"
       ]
     },
     "title": "Baseband / Modem Panic - Lỗi sóng viễn thông",
@@ -911,10 +926,9 @@
     "windowHours": 48,
     "match": {
       "regexAny": [
-        "Dart-disp\\d+ SMMU error",
-        "Port-disp\\d+ SMMU error",
-        "AppleDisplayPipe",
-        "applesysopsysMIPID"
+        "AppleDisplayPipe.*(?:error|timeout|underrun|fault)",
+        "applesysopsysMIPID.*(?:error|timeout)",
+        "SMMU.*fault.*(display|camera)"
       ]
     },
     "title": "Lỗi điều khiển Màn hình / Camera (SMMU)",
@@ -962,13 +976,10 @@
     "escalateAt": 2,
     "windowHours": 48,
     "match": {
-      "allOf": [
-        "thermalmonitord"
-      ],
-      "anyOf": [
-        "watchdog",
-        "timeout",
-        "did not check in"
+      "regexAny": [
+        "no successful checkins from thermalmonitord",
+        "thermalmonitord.*did not check in",
+        "service:\\s*thermalmonitord[^\\n]*(?:0 successful|did not check in|hung|timeout)"
       ]
     },
     "title": "Watchdog Timeout - Mất phản hồi từ thermalmonitord",
@@ -982,6 +993,35 @@
     "advice_en": "The OS restarted because it got no thermal report for 180s. Check the thermal sensor lines on the charging flex and the button flex.",
     "advice_zh": "系统因 180 秒内未收到温度报告而重启。检查尾插排线和按键排线上的温度传感器线路。",
     "confidence": "Cao"
+  },
+  {
+    "id": "watchdog-springboard",
+    "family": "Watchdog",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "no successful checkins from SpringBoard",
+        "no successful checkins from backboardd"
+      ],
+      "noneOf": [
+        "Missing sensor",
+        "no successful checkins from thermalmonitord"
+      ]
+    },
+    "title": "Watchdog Timeout - Giao diện SpringBoard bị treo",
+    "title_en": "Watchdog Timeout - SpringBoard UI hung",
+    "title_zh": "看门狗超时 - SpringBoard 界面挂起",
+    "suspected": "Xung đột ứng dụng/tweak, bộ nhớ trong đầy hoặc giao diện chính bị đóng băng > 180s",
+    "suspected_en": "App/tweak conflict, full internal storage, or main UI frozen for > 180s",
+    "suspected_zh": "应用/插件冲突、存储空间不足或主界面冻结超过 180 秒",
+    "subsystem": "SpringBoard / System UI Watchdog",
+    "advice": "Hệ điều hành buộc khởi động lại vì giao diện SpringBoard không phản hồi trong 180 giây (3 phút). Thường do ứng dụng hoặc tweak treo cứng luồng chính. Kiểm tra máy có đầy bộ nhớ trong hoặc tweak gây xung đột.",
+    "advice_en": "The OS restarted because SpringBoard did not respond for 180s. Usually caused by an app or tweak freezing the main thread. Check for full storage or conflicting tweaks.",
+    "advice_zh": "由于 SpringBoard 连续 180 秒无响应，系统强制重启。通常是应用或插件锁死主线程导致。请检查存储空间是否已满或排查冲突插件。",
+    "confidence": "Trung bình"
   },
   {
     "id": "watchdog-generic",
@@ -1018,15 +1058,12 @@
     "escalateAt": 3,
     "windowHours": 24,
     "match": {
-      "anyOf": [
+      "regexAny": [
         "ThermalTrap",
         "thermal_trap",
         "Thermal Event",
-        "kThermalLevel",
-        "thermalpressure"
-      ],
-      "noneOf": [
-        "Missing sensor"
+        "High Temperature Trap",
+        "\\bthermalmonitord.*thermal"
       ]
     },
     "title": "Thermal Event - Máy quá nhiệt",
@@ -1040,6 +1077,35 @@
     "advice_en": "A few times is normal (charging + heavy use). If it happens often, check the battery and the idle current draw.",
     "advice_zh": "偶尔几次属正常（边充边重度使用）。频繁出现则检查电池和待机电流。",
     "confidence": "Trung bình"
+  },
+  {
+    "id": "kernel-pmap-corruption",
+    "family": "Memory",
+    "baseSeverity": "warning",
+    "subsystemWeight": 2,
+    "escalateAt": 2,
+    "windowHours": 48,
+    "match": {
+      "regexAny": [
+        "pmap_tte_remove",
+        "pmap_remove",
+        "pmap_enter",
+        "pmap_destroy",
+        "@pmap\\.c:",
+        "Found inconsistent state in soon to be deleted L[0-3] table"
+      ]
+    },
+    "title": "Lỗi bảng phân trang bộ nhớ ảo Kernel (pmap / Translation Table)",
+    "title_en": "Kernel Virtual Memory Translation Table Error (pmap)",
+    "title_zh": "内核虚拟内存页表错误 (pmap)",
+    "suspected": "Xung đột can thiệp kernel (tweak/jailbreak), hoặc lỗi phần cứng RAM (LPDDR) / Cache CPU",
+    "suspected_en": "Kernel memory conflict (tweak/jailbreak), or hardware RAM (LPDDR) / CPU cache bitflip",
+    "suspected_zh": "内核内存冲突（插件/越狱），或硬件 RAM (LPDDR) / CPU 缓存故障",
+    "subsystem": "Kernel Virtual Memory (pmap)",
+    "advice": "Bảng dịch địa chỉ L3 của kernel phát hiện trạng thái không nhất quán. Nếu máy đang Jailbreak/TrollStore, gỡ bỏ các tweak can thiệp sâu hệ thống. Nếu máy chạy iOS gốc nguyên bản mà bị lặp lại, kiểm tra RAM đóng lưng CPU hoặc hở chân CPU.",
+    "advice_en": "The kernel L3 translation table detected an inconsistent state. If jailbroken or using TrollStore, remove tweaks that hook low-level memory. If on stock iOS and repeating, check the LPDDR RAM stacked on the CPU or cracked CPU solder balls.",
+    "advice_zh": "内核 L3 转换页表检测到不一致状态。如果是越狱或 TrollStore 设备，请移除底层修改插件。如果是原版 iOS 且频繁复发，请检查 CPU 叠层 RAM 或 CPU 虚焊。",
+    "confidence": "Cao"
   },
   {
     "id": "zone-metadata-corruption",
@@ -1372,7 +1438,11 @@
         "backboardd"
       ],
       "noneOf": [
-        "Missing sensor"
+        "Missing sensor",
+        "panic(",
+        "SEP monitor",
+        "INACCESSIBLE SEP",
+        "pmap_"
       ]
     },
     "title": "SpringBoard Crash - Giao diện hệ thống khởi động lại",

@@ -175,5 +175,70 @@
         }
       }
     }
+  },
+  "device_names": {
+    "ad5860": {
+      "component": "IC Điều khiển Cuộn dây OIS / Lấy nét Camera sau",
+      "component_en": "Rear Camera OIS / Focus Voice Coil Motor Driver IC",
+      "component_zh": "后置摄像头 OIS 防抖 / 对焦马达驱动 IC",
+      "advice": "Kiểm tra cụm camera sau, socket camera hoặc IC driver lấy nét",
+      "advice_en": "Check the rear camera module, camera connector or focus driver IC",
+      "advice_zh": "检查后置摄像头模组、座子或对焦驱动 IC",
+      "confidence": "Cao"
+    },
+    "roswell": {
+      "component": "Mạch Relay Xác thực Màn hình / Pin qua I2C (Roswell)",
+      "component_en": "Display / Battery I2C Auth Relay Interface (Roswell)",
+      "component_zh": "屏幕 / 电池 I2C 认证中继电路 (Roswell)",
+      "advice": "Kiểm tra IC EEPROM màn hình hoặc chip xác thực pin",
+      "advice_en": "Check the display EEPROM IC or battery authentication chip",
+      "advice_zh": "检查屏幕 EEPROM 芯片或电池认证芯片",
+      "confidence": "Cao"
+    },
+    "bcm5976": {
+      "component": "IC Điều khiển Cảm ứng Màn hình (Broadcom Touch)",
+      "component_en": "Touch Controller IC (Broadcom Touch)",
+      "component_zh": "屏幕触摸控制 IC（博通 Touch）",
+      "advice": "Kiểm tra cáp cảm ứng, socket màn hình hoặc IC cảm ứng trên bo mạch",
+      "advice_en": "Check the touch flex, screen connector or on-board touch IC",
+      "advice_zh": "检查触摸排线、屏幕座子或主板触摸 IC",
+      "confidence": "Cao"
+    },
+    "s2dos05": {
+      "component": "IC Nguồn Màn hình OLED (Display PMIC)",
+      "component_en": "OLED Display Power Management IC (Display PMIC)",
+      "component_zh": "OLED 屏幕电源管理 IC (Display PMIC)",
+      "advice": "Kiểm tra mạch cấp nguồn màn hình OLED và tụ xung quanh",
+      "advice_en": "Check the OLED power circuit and surrounding capacitors",
+      "advice_zh": "检查 OLED 屏幕供电电路及周围电容",
+      "confidence": "Cao"
+    },
+    "isl95828": {
+      "component": "IC Cấp áp Màn hình / CPU Sub-rail",
+      "component_en": "Display Bias / CPU Sub-rail Power IC",
+      "component_zh": "屏幕供电 / CPU 辅助供电 IC",
+      "advice": "Kiểm tra các đường áp phụ cấp cho màn hình",
+      "advice_en": "Check the secondary display voltage rails",
+      "advice_zh": "检查屏幕辅助供电线路",
+      "confidence": "Cao"
+    },
+    "tps65132": {
+      "component": "IC Cấp áp Đối xứng Màn hình LCD/OLED",
+      "component_en": "Dual Output LCD/OLED Bias Power IC",
+      "component_zh": "LCD/OLED 双路屏幕偏置供电 IC",
+      "advice": "Đo áp +5.7V và -5.7V cấp cho màn hình",
+      "advice_en": "Measure the +5.7V and -5.7V display supply rails",
+      "advice_zh": "测量屏幕 +5.7V 与 -5.7V 偏置供电",
+      "confidence": "Cao"
+    },
+    "sn2400": {
+      "component": "IC Điều khiển NFC / Apple Pay (NXP)",
+      "component_en": "NFC / Apple Pay Controller IC (NXP)",
+      "component_zh": "NFC / Apple Pay 控制 IC (NXP)",
+      "advice": "Kiểm tra cuộn ăng-ten NFC và IC điều khiển NFC",
+      "advice_en": "Check the NFC antenna coil and NFC controller IC",
+      "advice_zh": "检查 NFC 天线线圈及 NFC 控制芯片",
+      "confidence": "Cao"
+    }
   }
 }

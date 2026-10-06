@@ -485,28 +485,40 @@ function parseLogContent(rawText, filename = "log.ips") {
     if (fm) record.timestampMs = parseTimestamp(`${fm[1]}-${fm[2]}-${fm[3]} ${fm[4]}:${fm[5]}:${fm[6]}`);
   }
 
-  // CHỈ khớp luật trong panicString + panicInitiator + 4KB đầu file.
-  // Quét cả file (có thể >1MB stackshot) gây dương tính giả nghiêm trọng:
-  // chuỗi "ANS"/"nvme" nằm trong danh sách tiến trình của MỌI log.
+  // CHỈ khớp luật trong thông điệp panic chính (loại bỏ danh sách kexts vô can phía sau).
+  // Quét cả danh sách kexts gây dương tính giả nghiêm trọng vì AppleBaseband, AppleBCMWLAN,
+  // AppleSEPManager, AppleMobileDispH nằm trong danh sách kext của MỌI máy.
+  let cleanPanicText = record.panicString || "";
+  const kextListIdx = cleanPanicText.search(/\n(?:\s*com\.apple\.driver|\s*Kernel Extensions in backtrace:|\s*last started kext)/i);
+  if (kextListIdx !== -1) {
+    cleanPanicText = cleanPanicText.slice(0, kextListIdx);
+  }
+
   const matchText = crash
     ? record.panicString
-    : [record.panicString, record.panicInitiator, rawText.slice(0, 4096)].join("\n");
+    : [cleanPanicText, record.panicInitiator, rawText.slice(0, 2048)].join("\n");
   const text = matchText;
 
   // FileClassifier
   if (crash) {
     record.logType = "app_crash";
-  } else if (record.bugType === "210" || /panic\(/.test(record.panicString) || filename.includes("panic-full")) {
+  } else if (record.bugType === "210" || /panic\(/.test(record.panicString) || /panic[-+]/.test(filename)) {
     record.logType = "kernel_panic";
+  } else if (record.bugType === "115" || filename.includes("ResetCounter") || /rst wdog/i.test(text)) {
+    record.logType = "watchdog";
+  } else if (record.bugType === "298" || /JetsamEvent/i.test(filename) || /largestProcess/.test(text)) {
+    record.logType = "jetsam";
+  } else if (record.bugType === "140" || /cpu_resource/i.test(filename) || /EXC_RESOURCE.*(?:CPU|WAKEUPS)/i.test(text)) {
+    record.logType = "cpu_resource";
+  } else if (record.bugType === "145" || /diskwrites/i.test(filename) || /DiskWrites|WRITES_CAUSE/i.test(text)) {
+    record.logType = "disk_writes";
+  } else if (record.bugType === "288" || /stacks-/i.test(filename)) {
+    record.logType = "stackshot";
+  } else if (record.bugType === "313" || /SiriSearchFeedback/i.test(filename)) {
+    record.logType = "diagnostic_telemetry";
   } else if (/watchdog/i.test(text)) {
     record.logType = "watchdog";
-  } else if (record.bugType === "298" || /JetsamEvent|largestProcess/.test(text)) {
-    record.logType = "jetsam";
-  } else if (/EXC_RESOURCE|cpu_usage|WAKEUPS/.test(text)) {
-    record.logType = "cpu_resource";
-  } else if (/DiskWrites|disk_writes|WRITES_CAUSE/.test(text)) {
-    record.logType = "disk_writes";
-  } else if (/ThermalTrap|thermal_trap|Thermal Event|thermalpressure/i.test(text)) {
+  } else if (/ThermalTrap|thermal_trap|Thermal Event|High Temperature/i.test(text)) {
     record.logType = "thermal";
   } else if (/EXC_CRASH|EXC_BAD_ACCESS|Termination Reason|SIGABRT/.test(text) || filename.endsWith(".crash")) {
     record.logType = "app_crash";
@@ -672,6 +684,97 @@ const FALLBACK_RULES = {
     titleKey: 'rule.kp.title', suspectedKey: 'rule.kp.s',
     subsystem: 'Kernel', adviceKey: 'rule.kp.a',
     confidence: 'Thấp' },
+  watchdog: { id: 'watchdog-generic', family: 'Watchdog', baseSeverity: 'warning',
+    subsystemWeight: 2, escalateAt: 2, windowHours: 48,
+    title: 'Watchdog Timeout - Tiến trình hệ thống treo',
+    title_en: 'Watchdog Timeout - System process hung',
+    title_zh: '看门狗超时 - 系统进程挂起',
+    suspected: 'Tiến trình hệ thống bị treo, chưa chắc do phần cứng',
+    suspected_en: 'System process hung, not necessarily hardware',
+    suspected_zh: '系统进程挂起，不一定是硬件故障',
+    subsystem: 'System Watchdog',
+    advice: 'Hệ thống tự khởi động lại khi một tác vụ không phản hồi. Nếu lặp lại thường xuyên, kiểm tra xung đột phần mềm hoặc bộ nhớ.',
+    advice_en: 'The system restarted because a task did not respond. If frequent, inspect software conflicts or storage.',
+    advice_zh: '当任务无响应时系统自动重启。若频繁出现，请检查软件冲突或存储空间。',
+    confidence: 'Trung bình' },
+  jetsam: { id: 'jetsam-memory', family: 'Jetsam', baseSeverity: 'normal',
+    subsystemWeight: 0, escalateAt: 10, windowHours: 24,
+    title: 'Jetsam Event - Giải phóng bộ nhớ RAM',
+    title_en: 'Jetsam Event - RAM memory reclaim',
+    title_zh: 'Jetsam 事件 - 释放运行内存 (RAM)',
+    suspected: 'Ứng dụng nền vượt ngưỡng RAM',
+    suspected_en: 'Background app exceeded RAM footprint',
+    suspected_zh: '后台应用超出 RAM 限制',
+    subsystem: 'Memory Manager (Jetsam)',
+    advice: 'Cơ chế bảo vệ tự động của iOS khi RAM đầy, không phải lỗi phần cứng. Bỏ qua an toàn.',
+    advice_en: 'Automatic iOS protection mechanism when RAM is low, not a hardware issue. Safe to ignore.',
+    advice_zh: 'iOS 内存不足时的自动保护机制，非硬件故障。可放心忽略。',
+    confidence: 'Cao' },
+  cpu_resource: { id: 'cpu-resource', family: 'CPUResource', baseSeverity: 'normal',
+    subsystemWeight: 0, escalateAt: 10, windowHours: 24,
+    title: 'CPUResource - Ứng dụng dùng CPU vượt ngưỡng',
+    title_en: 'CPUResource - High CPU usage by process',
+    title_zh: 'CPUResource - 进程 CPU 占用过高',
+    suspected: 'Tiến trình ứng dụng chạy ngầm tiêu tốn tài nguyên CPU',
+    suspected_en: 'Background process consuming CPU resources',
+    suspected_zh: '后台进程消耗过多 CPU 资源',
+    subsystem: 'Resource Daemon',
+    advice: 'Báo cáo ghi nhận ứng dụng dùng CPU cao trong thời gian dài. Không phải lỗi phần cứng bo mạch.',
+    advice_en: 'Report logs an app using sustained high CPU. Not a logic board hardware fault.',
+    advice_zh: '记录应用持续占用高 CPU。并非主板硬件故障。',
+    confidence: 'Cao' },
+  disk_writes: { id: 'disk-writes', family: 'DiskWrites', baseSeverity: 'normal',
+    subsystemWeight: 0, escalateAt: 10, windowHours: 24,
+    title: 'DiskWrites - Ứng dụng ghi đĩa nhiều',
+    title_en: 'DiskWrites - High flash storage writes',
+    title_zh: 'DiskWrites - 存储写入量过高',
+    suspected: 'Ứng dụng ghi dữ liệu vượt hạn ngạch I/O',
+    suspected_en: 'App exceeded flash write quota',
+    suspected_zh: '应用写入闪存超出配额',
+    subsystem: 'Resource Daemon',
+    advice: 'Báo cáo dung lượng ghi flash vượt ngưỡng. Bình thường, không ảnh hưởng phần cứng.',
+    advice_en: 'Report logs storage writes exceeding threshold. Normal behavior, no hardware impact.',
+    advice_zh: '记录存储写入超出阈值。属于正常行为，不影响硬件。',
+    confidence: 'Cao' },
+  stackshot: { id: 'stackshot-report', family: 'Diagnostics', baseSeverity: 'normal',
+    subsystemWeight: 0, escalateAt: 10, windowHours: 24,
+    title: 'Báo cáo Stackshot / Phản hồi tác vụ',
+    title_en: 'Stackshot Report - Task responsiveness',
+    title_zh: 'Stackshot 报告 - 任务响应采样',
+    suspected: 'Hệ thống lấy mẫu ngăn xếp khi có hiện tượng phản hồi chậm',
+    suspected_en: 'System sampled call stacks during responsiveness dip',
+    suspected_zh: '系统在界面或任务轻微卡顿期间采样的调用栈',
+    subsystem: 'Tailspin / Microstackshots',
+    advice: 'Ghi chép chẩn đoán hiệu năng thông thường của iOS, không phải sự cố sập nguồn.',
+    advice_en: 'Routine iOS performance diagnostic record, not a panic or crash.',
+    advice_zh: 'iOS 常规性能诊断记录，并非死机崩溃。',
+    confidence: 'Cao' },
+  diagnostic_telemetry: { id: 'diagnostic-telemetry', family: 'Diagnostics', baseSeverity: 'normal',
+    subsystemWeight: 0, escalateAt: 10, windowHours: 24,
+    title: 'Log chẩn đoán đo từ xa hệ thống',
+    title_en: 'Diagnostic Telemetry Log',
+    title_zh: '系统远程诊断遥测日志',
+    suspected: 'Dữ liệu đo từ xa thông thường của iOS',
+    suspected_en: 'Normal iOS telemetry data',
+    suspected_zh: 'iOS 常规遥测数据',
+    subsystem: 'Diagnostics',
+    advice: 'Log hệ thống thu thập định kỳ, hoàn toàn bình thường.',
+    advice_en: 'System diagnostic log gathered routinely, completely normal.',
+    advice_zh: '系统定期收集的诊断日志，完全正常。',
+    confidence: 'Cao' },
+  thermal: { id: 'thermal-event', family: 'Thermal', baseSeverity: 'warning',
+    subsystemWeight: 1, escalateAt: 3, windowHours: 24,
+    title: 'Thermal Event - Máy quá nhiệt',
+    title_en: 'Thermal Event - High temperature event',
+    title_zh: 'Thermal Event - 设备过热事件',
+    suspected: 'Quá nhiệt do tải nặng, pin chai hoặc môi trường nóng',
+    suspected_en: 'Overheating due to heavy load, degraded battery or hot environment',
+    suspected_zh: '由于高负载、电池老化或高温环境导致过热',
+    subsystem: 'Thermal Monitor',
+    advice: 'Máy kích hoạt chế độ giảm xung nhịp bảo vệ do nhiệt độ cao. Kiểm tra pin và không vừa sạc vừa dùng tác vụ nặng.',
+    advice_en: 'Device throttled performance to protect hardware from high temperature. Inspect battery and avoid heavy load while charging.',
+    advice_zh: '设备因高温触发降频保护。请检查电池健康度并避免边充边玩高负载应用。',
+    confidence: 'Trung bình' },
   unknown: { id: 'unknown-log', family: 'Unknown', baseSeverity: 'normal',
     subsystemWeight: 0, escalateAt: 10, windowHours: 24,
     titleKey: 'rule.gen.title', suspectedKey: 'rule.gen.s',
@@ -683,7 +786,26 @@ function applyRules(record, text) {
   const lower = text.toLowerCase();
   const rules = ruleDatabases.panic_rules || [];
   let hit = null;
-  for (const r of rules) { if (ruleMatches(text, lower, r.match)) { hit = r; break; } }
+
+  // Lọc theo loại log để ngăn dương tính giả chéo:
+  // - Log thông thường (jetsam, cpu_resource, disk_writes, stackshot, diagnostic_telemetry, app_crash)
+  //   KHÔNG được khớp các luật lỗi phần cứng bo mạch (DCP, Baseband, I2C, SMC, SEP, Storage).
+  // - Kernel panic thật KHÔNG được khớp luật crash giao diện (SpringBoard) hay app crash.
+  const isNonPanicDiagnostic = ['jetsam', 'cpu_resource', 'disk_writes', 'stackshot', 'diagnostic_telemetry', 'app_crash'].includes(record.logType);
+
+  for (const r of rules) {
+    if (isNonPanicDiagnostic) {
+      if (record.logType === 'jetsam' && r.id !== 'jetsam-memory') continue;
+      if (record.logType === 'cpu_resource' && r.id !== 'cpu-resource') continue;
+      if (record.logType === 'disk_writes' && r.id !== 'disk-writes') continue;
+      if (record.logType === 'app_crash' && !['panicanalyzer-crash', 'generic-app-crash', 'springboard-crash'].includes(r.id)) continue;
+      if (['stackshot', 'diagnostic_telemetry'].includes(record.logType)) continue;
+    } else if (record.logType === 'kernel_panic') {
+      if (['springboard-crash', 'generic-app-crash', 'cpu-resource', 'disk-writes', 'jetsam-memory'].includes(r.id)) continue;
+    }
+
+    if (ruleMatches(text, lower, r.match)) { hit = r; break; }
+  }
   if (!hit) hit = FALLBACK_RULES[record.logType] || FALLBACK_RULES.unknown;
 
   record.rule = hit;

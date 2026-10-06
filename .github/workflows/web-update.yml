@@ -32,6 +32,7 @@ jobs:
           node Tests/parts.test.js
           node Tests/crash.test.js
           node Tests/generations.test.js
+          node Tests/telegram_panics.test.js
 
       - name: Publish the manifest
         run: |
